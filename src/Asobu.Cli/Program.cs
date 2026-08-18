@@ -14,6 +14,8 @@ try
         ["inspect", var id] => await InspectAsync(meta, id),
         ["install", var id] => await InstallAsync(http, id),
         ["play", var id, ..] => await PlayAsync(http, id, args.Length > 2 ? args[2] : "Player"),
+        ["export", var id, var zip] => Export(http, id, zip),
+        ["import", var zip] => Import(http, zip),
         ["where"] => Where(),
         _ => Usage(),
     };
@@ -33,6 +35,8 @@ static int Usage()
           inspect <version>       show what launching a version would require
           install <version>       download everything that version needs
           play <version> [name]   install, then launch it offline
+          export <version> <zip>  zip up that version's instance
+          import <zip>            import an exported instance under a new id
           where                   print the Asobu data folder
         """);
     return 2;
@@ -152,3 +156,24 @@ static async Task<int> PlayAsync(HttpClient http, string id, string username)
 static Asobu.Core.Instances.Instance FindOrCreate(AsobuLauncher launcher, string versionId) =>
     launcher.Instances.LoadAll().FirstOrDefault(i => i.MinecraftVersion == versionId)
     ?? launcher.Instances.Create(versionId, versionId);
+
+static int Export(HttpClient http, string versionId, string zipPath)
+{
+    var launcher = new AsobuLauncher(http);
+    var instance = FindOrCreate(launcher, versionId);
+    launcher.Instances.Export(instance, zipPath);
+    Console.WriteLine($"Exported '{instance.Name}' to {zipPath}");
+    return 0;
+}
+
+static int Import(HttpClient http, string zipPath)
+{
+    var launcher = new AsobuLauncher(http);
+    var instance = launcher.Instances.Import(zipPath);
+    Console.WriteLine($"Imported '{instance.Name}' as a new instance ({instance.Id})");
+    Console.WriteLine($"  version   {instance.MinecraftVersion}");
+    Console.WriteLine($"  group     {instance.Group ?? "(none)"}");
+    Console.WriteLine($"  icon      {instance.Icon}");
+    Console.WriteLine($"  env vars  {instance.EnvironmentVariables.Count}");
+    return 0;
+}

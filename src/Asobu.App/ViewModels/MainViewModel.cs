@@ -18,7 +18,8 @@ public partial class MainViewModel : ViewModelBase
         Launcher = new AsobuLauncher(_http);
 
         AccountsPage = new AccountsViewModel(Launcher);
-        InstancesPage = new InstancesViewModel(Launcher, AccountsPage, () => _ = GoNewInstanceAsync());
+        CrashReportsPage = new CrashReportsViewModel(Launcher, GoInstances);
+        InstancesPage = new InstancesViewModel(Launcher, AccountsPage, () => _ = GoNewInstanceAsync(), GoCrashReports);
         NewInstancePage = new VersionPickerViewModel(Launcher, OnInstanceCreated, GoInstances);
         SettingsPage = new SettingsViewModel(Launcher);
 
@@ -43,12 +44,14 @@ public partial class MainViewModel : ViewModelBase
     public VersionPickerViewModel NewInstancePage { get; }
     public AccountsViewModel AccountsPage { get; }
     public SettingsViewModel SettingsPage { get; }
+    public CrashReportsViewModel CrashReportsPage { get; }
 
     [ObservableProperty] public partial ViewModelBase CurrentPage { get; set; }
 
     public bool IsInstances => CurrentPage is InstancesViewModel;
     public bool IsNewInstance => CurrentPage is VersionPickerViewModel;
-    public bool IsInstancesArea => IsInstances || IsNewInstance;
+    public bool IsCrashReports => CurrentPage is CrashReportsViewModel;
+    public bool IsInstancesArea => IsInstances || IsNewInstance || IsCrashReports;
     public bool IsAccounts => CurrentPage is AccountsViewModel;
     public bool IsSettings => CurrentPage is SettingsViewModel;
 
@@ -59,6 +62,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsInstances));
         OnPropertyChanged(nameof(IsNewInstance));
+        OnPropertyChanged(nameof(IsCrashReports));
         OnPropertyChanged(nameof(IsInstancesArea));
         OnPropertyChanged(nameof(IsAccounts));
         OnPropertyChanged(nameof(IsSettings));
@@ -83,6 +87,12 @@ public partial class MainViewModel : ViewModelBase
     {
         CurrentPage = NewInstancePage;
         await NewInstancePage.EnsureLoadedAsync();
+    }
+
+    private void GoCrashReports(Instance instance)
+    {
+        CrashReportsPage.Load(instance);
+        CurrentPage = CrashReportsPage;
     }
 
     [RelayCommand]

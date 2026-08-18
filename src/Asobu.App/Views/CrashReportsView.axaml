@@ -1,0 +1,83 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:diag="using:Asobu.Core.Diagnostics"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.CrashReportsView"
+             x:DataType="vm:CrashReportsViewModel">
+
+  <Grid RowDefinitions="Auto,*" Margin="30,28,30,28">
+
+    <StackPanel Grid.Row="0">
+      <Button Classes="back" Command="{Binding BackCommand}" HorizontalAlignment="Left" Margin="-8,0,0,10">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Data="M15 4 L7 12 L15 20" Stroke="{DynamicResource TextMuted}" StrokeThickness="2"
+                StrokeLineCap="Round" StrokeJoin="Round" Width="10" Height="14" Stretch="Uniform"/>
+          <TextBlock Text="Instances" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextMuted}"/>
+        </StackPanel>
+      </Button>
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Grid.Column="0">
+          <TextBlock Text="Crash reports" Classes="h1"/>
+          <TextBlock Classes="sub" Margin="0,5,0,0"
+                     Text="{Binding Instance.Name, StringFormat='Logs and crash reports for {0}'}"/>
+        </StackPanel>
+        <Button Grid.Column="1" Classes="ghost" Content="Rescan" VerticalAlignment="Top"
+                Command="{Binding RefreshCommand}"/>
+      </Grid>
+    </StackPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="300,*" Margin="0,20,0,0">
+
+      <Border Classes="card" ClipToBounds="True">
+        <Panel>
+          <StackPanel VerticalAlignment="Center" Spacing="8" IsVisible="{Binding IsEmpty}" Margin="24">
+            <TextBlock Text="Nothing here yet" Classes="h2" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextMuted}"/>
+            <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                       Text="Crash reports and launch logs will show up after a session that hit trouble."/>
+          </StackPanel>
+
+          <ListBox ItemsSource="{Binding Reports}" SelectedItem="{Binding Selected}"
+                    IsVisible="{Binding !IsEmpty}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="diag:CrashReportEntry">
+                <StackPanel Spacing="3">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding Kind}" FontSize="13" FontWeight="Medium"/>
+                    <Border Grid.Column="1" Classes="badge">
+                      <TextBlock Text="{Binding ModifiedLabel}" FontSize="11"
+                                 Foreground="{DynamicResource TextMuted}"/>
+                    </Border>
+                  </Grid>
+                  <TextBlock Text="{Binding Name}" Classes="label" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Panel>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" ClipToBounds="True">
+        <Panel>
+          <StackPanel VerticalAlignment="Center" Spacing="8" Margin="24"
+                      IsVisible="{Binding !HasSelection}">
+            <TextBlock Text="Nothing selected" Classes="h2" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextMuted}"/>
+            <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                       Text="Pick a report on the left to read it."/>
+          </StackPanel>
+
+          <TextBlock Text="Loading…" Classes="sub" HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding IsLoadingContent}"/>
+
+          <ScrollViewer IsVisible="{Binding Content, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+            <SelectableTextBlock Text="{Binding Content}" FontFamily="Consolas,monospace" FontSize="12"
+                                  TextWrapping="Wrap" Margin="18" Foreground="{DynamicResource Text}"/>
+          </ScrollViewer>
+        </Panel>
+      </Border>
+
+    </Grid>
+  </Grid>
+</UserControl>

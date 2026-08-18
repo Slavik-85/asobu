@@ -26,6 +26,9 @@ public sealed class GameLauncher(AsobuPaths paths)
         // ArgumentList quotes each argument correctly; never hand-build a command string here.
         foreach (var argument in plan.Arguments) startInfo.ArgumentList.Add(argument);
 
+        foreach (var (key, value) in instance.EnvironmentVariables)
+            startInfo.Environment[key] = value;
+
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 
         void Capture(string? line)

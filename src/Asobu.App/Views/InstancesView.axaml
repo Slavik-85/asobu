@@ -8,108 +8,253 @@
 
   <Panel>
 
-    <!-- Empty state -->
-    <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                Spacing="14" MaxWidth="410">
-      <Border Width="92" Height="92" CornerRadius="30" HorizontalAlignment="Center"
-              Background="{DynamicResource AccentSoft}">
-        <TextBlock Text="&#x1F338;" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-      </Border>
-      <TextBlock Text="No instances yet" Classes="h1" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                 Text="Make one from any Minecraft version. Asobu fetches the game, the libraries and the right Java for you."/>
-      <Button Classes="primary" Content="New instance" HorizontalAlignment="Center" Margin="0,10,0,0"
-              Command="{Binding NewInstanceCommand}"/>
-    </StackPanel>
+    <!-- ================= Library (card grid) ================= -->
+    <Grid IsVisible="{Binding IsLibraryVisible}" RowDefinitions="Auto,*" Margin="30,28,30,0">
 
-    <!-- Instance list -->
-    <Grid IsVisible="{Binding !IsEmpty}" ColumnDefinitions="*,372" Margin="30,28,30,28">
-
-      <DockPanel>
-        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
-          <TextBlock Grid.Column="0" Text="Instances" Classes="h1" VerticalAlignment="Center"/>
+      <StackPanel Grid.Row="0" Margin="0,0,0,18">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+          <TextBlock Grid.Column="0" Text="Library" Classes="h1" VerticalAlignment="Center"/>
           <Button Grid.Column="1" Classes="primary" Content="New instance"
                   Command="{Binding NewInstanceCommand}"/>
         </Grid>
-        <Border Classes="card" ClipToBounds="True">
-          <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}">
-            <ListBox.ItemTemplate>
+
+        <!-- Toolbar -->
+        <Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding !IsEmpty}">
+          <TextBox Grid.Column="0" Classes="search" PlaceholderText="Search" Width="320"
+                   HorizontalAlignment="Left" Text="{Binding SearchText}"/>
+
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <TextBlock Text="Sort by" Classes="label" VerticalAlignment="Center"/>
+            <ComboBox ItemsSource="{Binding SortModes}" SelectedItem="{Binding SortMode}" Width="140"/>
+          </StackPanel>
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="14,0,0,0"
+                      VerticalAlignment="Center">
+            <TextBlock Text="Group" Classes="label" VerticalAlignment="Center"/>
+            <ComboBox ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroupFilter}" Width="150"/>
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+
+      <Panel Grid.Row="1">
+
+        <!-- No instances at all -->
+        <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Spacing="14" MaxWidth="410" Margin="0,0,0,60">
+          <Border Width="92" Height="92" CornerRadius="30" HorizontalAlignment="Center"
+                  Background="{DynamicResource AccentSoft}">
+            <TextBlock Text="&#x1F338;" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <TextBlock Text="No instances yet" Classes="h1" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+          <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                     Text="Make one from any Minecraft version. Asobu fetches the game, the libraries and the right Java for you."/>
+          <Button Classes="primary" Content="New instance" HorizontalAlignment="Center" Margin="0,10,0,0"
+                  Command="{Binding NewInstanceCommand}"/>
+        </StackPanel>
+
+        <!-- Search matched nothing -->
+        <StackPanel IsVisible="{Binding HasNoMatches}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Spacing="8" Margin="0,0,0,60">
+          <TextBlock Text="Nothing matches" Classes="h2" HorizontalAlignment="Center"
+                     Foreground="{DynamicResource TextMuted}"/>
+          <TextBlock Classes="sub" TextAlignment="Center"
+                     Text="Try a different search or group."/>
+        </StackPanel>
+
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,24">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="core:Instance">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                  <Border Grid.Column="0" Width="36" Height="36" CornerRadius="11"
-                          Background="{DynamicResource AccentSoft}" Margin="0,0,13,0">
-                    <TextBlock Text="&#x1F338;" FontSize="16"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Medium"/>
-                    <TextBlock Text="{Binding MinecraftVersion, StringFormat='Minecraft {0}'}" Classes="label"/>
+                <Button Classes="instanceCard" Tag="{Binding}" Click="InstanceCard_Click">
+                  <StackPanel Width="150">
+                    <Border Height="150" CornerRadius="14" Background="{DynamicResource AccentSoft}">
+                      <TextBlock Text="{Binding Icon}" FontSize="56"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
+                               Margin="3,11,3,0" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding MinecraftVersion, StringFormat='Vanilla {0}'}"
+                               FontSize="11.5" Foreground="{DynamicResource TextMuted}"
+                               Margin="3,3,3,0" TextTrimming="CharacterEllipsis"/>
                   </StackPanel>
-                  <TextBlock Grid.Column="2" Text="{Binding PlaytimeLabel}" Classes="label"
-                             VerticalAlignment="Center"/>
-                </Grid>
+                </Button>
               </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </Border>
-      </DockPanel>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
 
-      <!-- Detail / play -->
-      <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="24"
-              IsVisible="{Binding HasSelection}">
-        <DockPanel>
+      </Panel>
+    </Grid>
 
-          <StackPanel DockPanel.Dock="Top" Spacing="6">
-            <TextBlock Text="{Binding Selected.Name}" Classes="h1" TextWrapping="Wrap"/>
-            <TextBlock Text="{Binding Selected.MinecraftVersion, StringFormat='Minecraft {0}  ·  Vanilla'}"
+    <!-- ================= Instance detail ================= -->
+    <Grid IsVisible="{Binding IsDetailOpen}" RowDefinitions="Auto,*" Margin="30,28,30,28">
+
+      <StackPanel Grid.Row="0">
+        <Button Classes="back" Command="{Binding CloseDetailCommand}" HorizontalAlignment="Left"
+                Margin="-8,0,0,12">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <Path Data="M15 4 L7 12 L15 20" Stroke="{DynamicResource TextMuted}" StrokeThickness="2"
+                  StrokeLineCap="Round" StrokeJoin="Round" Width="10" Height="14" Stretch="Uniform"/>
+            <TextBlock Text="Library" FontSize="13.5" FontWeight="Medium"
+                       Foreground="{DynamicResource TextMuted}"/>
+          </StackPanel>
+        </Button>
+
+        <!-- Header: icon + name -->
+        <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,22">
+          <Panel Grid.Column="0" Margin="0,0,18,0">
+            <Button Name="IconButton" Classes="iconPickerLarge" Command="{Binding ToggleIconPickerCommand}">
+              <TextBlock Text="{Binding Selected.Icon}" FontSize="38"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Button>
+            <Popup IsOpen="{Binding IsIconPickerOpen}" PlacementTarget="{Binding #IconButton}"
+                   Placement="BottomEdgeAlignedLeft" IsLightDismissEnabled="True">
+              <Border Classes="card" Padding="10">
+                <ItemsControl ItemsSource="{Binding IconChoices}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Width="184"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <Button Classes="iconChoice" Content="{Binding}" Tag="{Binding}"
+                              Click="IconChoice_Click"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Border>
+            </Popup>
+          </Panel>
+
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+            <Grid IsVisible="{Binding !IsRenaming}" ColumnDefinitions="Auto,Auto">
+              <TextBlock Grid.Column="0" Text="{Binding Selected.Name}" Classes="h1"
+                         TextWrapping="Wrap" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Classes="iconTextButton" Command="{Binding StartRenameCommand}"
+                      ToolTip.Tip="Rename" VerticalAlignment="Center" Margin="8,0,0,0">
+                <Path Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"
+                      Fill="{DynamicResource TextMuted}" Stretch="Uniform" Width="15" Height="15"/>
+              </Button>
+            </Grid>
+
+            <Grid IsVisible="{Binding IsRenaming}" ColumnDefinitions="*,Auto,Auto" MaxWidth="440"
+                  HorizontalAlignment="Left">
+              <TextBox Grid.Column="0" Text="{Binding RenameText}" FontSize="15" MinWidth="240"/>
+              <Button Grid.Column="1" Classes="iconTextButton" Command="{Binding ConfirmRenameCommand}"
+                      ToolTip.Tip="Save" Margin="6,0,0,0">
+                <Path Data="M4 12 L9 17 L20 6" Stroke="{DynamicResource Accent}" StrokeThickness="2.4"
+                      StrokeLineCap="Round" StrokeJoin="Round" Width="14" Height="14" Stretch="Uniform"/>
+              </Button>
+              <Button Grid.Column="2" Classes="iconTextButton" Command="{Binding CancelRenameCommand}"
+                      ToolTip.Tip="Cancel" Margin="2,0,0,0">
+                <Path Data="M5 5 L19 19 M19 5 L5 19" Stroke="{DynamicResource TextMuted}" StrokeThickness="2.2"
+                      StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform"/>
+              </Button>
+            </Grid>
+
+            <TextBlock Text="{Binding Selected.MinecraftVersion, StringFormat='Vanilla  ·  Minecraft {0}'}"
                        Classes="sub"/>
           </StackPanel>
+        </Grid>
+      </StackPanel>
 
-          <StackPanel DockPanel.Dock="Bottom" Spacing="10">
+      <!-- Body: details + actions -->
+      <Grid Grid.Row="1" ColumnDefinitions="*,340">
 
-            <StackPanel Spacing="7" IsVisible="{Binding IsBusy}">
-              <TextBlock Text="{Binding Status}" Classes="label"/>
-              <ProgressBar Value="{Binding Progress}" Maximum="1" Height="6" CornerRadius="3"/>
+        <Border Classes="card" Padding="24">
+          <ScrollViewer>
+            <StackPanel Spacing="18">
+
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Loader" Classes="label"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.Loader}" Classes="value"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Playtime" Classes="label"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Disk usage" Classes="label"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DiskUsageLabel}" Classes="value"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Created" Classes="label"/>
+                <TextBlock Grid.Row="3" Grid.Column="1"
+                           Text="{Binding Selected.Created, StringFormat='{}{0:yyyy-MM-dd}'}" Classes="value"/>
+              </Grid>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <StackPanel Spacing="6">
+                <TextBlock Text="Group" Classes="label"/>
+                <TextBox Text="{Binding GroupText, UpdateSourceTrigger=LostFocus}"
+                         PlaceholderText="Ungrouped" MaxWidth="320" HorizontalAlignment="Left"/>
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Text="Environment variables" Classes="label"/>
+                <TextBox Text="{Binding EnvironmentVariablesText, UpdateSourceTrigger=LostFocus}"
+                         AcceptsReturn="True" MinHeight="90" FontFamily="Consolas,monospace"
+                         FontSize="12.5" PlaceholderText="KEY=value, one per line"/>
+              </StackPanel>
+
+            </StackPanel>
+          </ScrollViewer>
+        </Border>
+
+        <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="22">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="10">
+
+              <StackPanel Spacing="7" IsVisible="{Binding IsBusy}">
+                <TextBlock Text="{Binding Status}" Classes="label"/>
+                <ProgressBar Value="{Binding Progress}" Maximum="1" Height="6" CornerRadius="3"/>
+              </StackPanel>
+
+              <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsRunning}">
+                <Border Grid.Column="0" Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="12">
+                  <TextBlock Text="Minecraft is running" FontSize="13" FontWeight="Medium"
+                             Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
+                </Border>
+                <Button Grid.Column="1" Classes="ghost danger" Content="Stop" Margin="8,0,0,0"
+                        Command="{Binding KillCommand}"/>
+              </Grid>
+
+              <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Accent}"
+                         IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+              <Button Classes="primary" Content="{Binding PlayLabel}" HorizontalAlignment="Stretch"
+                      IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
+              <TextBlock Text="{Binding AccountLabel}" Classes="label" HorizontalAlignment="Center"/>
+
+              <Border Height="1" Background="{DynamicResource Border}" Margin="0,6,0,0"/>
+
+              <Button Classes="ghost" Content="Open folder" HorizontalAlignment="Stretch"
+                      Command="{Binding OpenFolderCommand}"/>
+              <Button Classes="ghost" Content="Crash reports" HorizontalAlignment="Stretch"
+                      Command="{Binding ViewCrashReportsCommand}"/>
+              <Button Classes="ghost" Content="Duplicate" HorizontalAlignment="Stretch"
+                      Command="{Binding CloneCommand}"/>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button Grid.Column="0" Classes="ghost" Content="Export" Name="ExportButton"
+                        HorizontalAlignment="Stretch" Click="ExportButton_Click"/>
+                <Button Grid.Column="1" Classes="ghost" Content="Import" Name="ImportButton"
+                        HorizontalAlignment="Stretch" Click="ImportButton_Click"/>
+              </Grid>
             </StackPanel>
 
-            <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="12"
-                    IsVisible="{Binding IsRunning}">
-              <TextBlock Text="Minecraft is running" FontSize="13" FontWeight="Medium"
-                         Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
-            </Border>
+            <Button DockPanel.Dock="Bottom" Classes="ghost danger" Content="{Binding DeleteLabel}"
+                    HorizontalAlignment="Stretch" Command="{Binding DeleteCommand}"/>
+          </DockPanel>
+        </Border>
 
-            <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
-                       Foreground="{DynamicResource Accent}"
-                       IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
-
-            <Button Classes="primary" Content="{Binding PlayLabel}" HorizontalAlignment="Stretch"
-                    IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
-            <TextBlock Text="{Binding AccountLabel}" Classes="label" HorizontalAlignment="Center"/>
-
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
-              <Button Grid.Column="0" Classes="ghost" Content="Open folder"
-                      HorizontalAlignment="Stretch" Command="{Binding OpenFolderCommand}"/>
-              <Button Grid.Column="1" Classes="ghost danger" Content="{Binding DeleteLabel}"
-                      HorizontalAlignment="Stretch" Command="{Binding DeleteCommand}"/>
-            </Grid>
-          </StackPanel>
-
-          <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="10"
-                VerticalAlignment="Top" Margin="0,24,0,20">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Loader" Classes="label"/>
-            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.Loader}" Classes="value"/>
-
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Playtime" Classes="label"/>
-            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
-
-            <TextBlock Grid.Row="2" Grid.Column="0" Text="Created" Classes="label"/>
-            <TextBlock Grid.Row="2" Grid.Column="1"
-                       Text="{Binding Selected.Created, StringFormat='{}{0:yyyy-MM-dd}'}" Classes="value"/>
-          </Grid>
-
-        </DockPanel>
-      </Border>
-
+      </Grid>
     </Grid>
+
   </Panel>
 </UserControl>

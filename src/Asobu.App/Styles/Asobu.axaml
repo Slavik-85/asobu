@@ -287,4 +287,90 @@
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
   </Style>
 
+  <!-- Library card: whole tile is the button, art panel sits inside it -->
+  <Style Selector="Button.instanceCard">
+    <Setter Property="Padding" Value="10"/>
+    <Setter Property="Margin" Value="0,0,6,10"/>
+    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="VerticalContentAlignment" Value="Top"/>
+  </Style>
+  <Style Selector="Button.instanceCard /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.instanceCard:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  </Style>
+
+  <!-- Search field: a touch rounder than a plain input -->
+  <Style Selector="TextBox.search">
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="14,10"/>
+  </Style>
+
+  <!-- Large icon button on the instance page -->
+  <Style Selector="Button.iconPickerLarge">
+    <Setter Property="Width" Value="86"/>
+    <Setter Property="Height" Value="86"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="22"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.iconPickerLarge /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Button.iconPickerLarge:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <!-- Instance icon picker -->
+  <Style Selector="Button.iconPicker">
+    <Setter Property="Width" Value="48"/>
+    <Setter Property="Height" Value="48"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.iconPicker /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Button.iconPicker:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <Style Selector="Button.iconChoice">
+    <Setter Property="Width" Value="38"/>
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="Margin" Value="2"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="FontSize" Value="17"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.iconChoice /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.iconChoice:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <!-- Small inline icon button, e.g. the rename pencil -->
+  <Style Selector="Button.iconTextButton">
+    <Setter Property="Width" Value="30"/>
+    <Setter Property="Height" Value="30"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.iconTextButton /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.iconTextButton:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
 </Styles>
