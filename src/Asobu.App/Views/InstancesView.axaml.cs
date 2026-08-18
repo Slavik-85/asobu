@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel;
 using Asobu.App.ViewModels;
 using Asobu.Core.Instances;
 using Avalonia.Controls;
@@ -9,12 +10,50 @@ namespace Asobu.App.Views;
 
 public partial class InstancesView : UserControl
 {
-    public InstancesView() => InitializeComponent();
+    private InstancesViewModel? _observed;
+
+    public InstancesView()
+    {
+        InitializeComponent();
+        DataContextChanged += (_, _) => Observe(DataContext as InstancesViewModel);
+    }
+
+    /// <summary>
+    /// The sheet's ScrollViewer keeps whatever offset it had last time, so a second visit would
+    /// open part-way down the page. Reset it whenever the sheet is opened.
+    /// </summary>
+    private void Observe(InstancesViewModel? viewModel)
+    {
+        if (ReferenceEquals(_observed, viewModel)) return;
+
+        if (_observed is not null) _observed.PropertyChanged -= OnViewModelPropertyChanged;
+        _observed = viewModel;
+        if (_observed is not null) _observed.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InstancesViewModel.IsDetailOpen)
+            && sender is InstancesViewModel { IsDetailOpen: true })
+        {
+            DetailScroll.ScrollToHome();
+        }
+    }
 
     private void InstanceCard_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { Tag: Instance instance } && DataContext is InstancesViewModel vm)
             vm.OpenInstanceCommand.Execute(instance);
+    }
+
+    private void CardPlay_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: Instance instance } && DataContext is InstancesViewModel vm)
+            vm.QuickPlayCommand.Execute(instance);
+
+        // Click bubbles, and the card itself is a Button listening for it — without this the
+        // instance page would open behind the launch.
+        e.Handled = true;
     }
 
     private void IconChoice_Click(object? sender, RoutedEventArgs e)

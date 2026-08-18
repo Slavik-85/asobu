@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
              xmlns:core="using:Asobu.Core.Instances"
              xmlns:conv="using:Avalonia.Data.Converters"
@@ -14,7 +15,7 @@
       <StackPanel Grid.Row="0" Margin="0,0,0,18">
         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
           <TextBlock Grid.Column="0" Text="Library" Classes="h1" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Classes="primary" Content="New instance"
+          <Button Grid.Column="1" Classes="primary" Content="New instance" IsVisible="{Binding !IsEmpty}"
                   Command="{Binding NewInstanceCommand}"/>
         </Grid>
 
@@ -37,6 +38,63 @@
       </StackPanel>
 
       <Panel Grid.Row="1">
+
+        <!-- Card grid sits underneath: when there are zero items it renders nothing, but as
+             a Panel child declared first it must stay below the overlay messages below, or it
+             would sit on top in z-order and swallow their clicks despite looking empty. -->
+        <ScrollViewer IsVisible="{Binding !IsEmpty}" ctrl:SmoothScroll.Enabled="True">
+          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,24">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="core:Instance">
+                <Button Classes="instanceCard" Tag="{Binding}" Click="InstanceCard_Click">
+                  <!-- Caption row is fixed so the play overlay can park exactly one row-height
+                       below, and ClipToBounds hides it there. Sized to just fit the two lines —
+                       any taller and the surplus shows as dead space under the version. -->
+                  <Grid Width="150" RowDefinitions="150,11,40" ClipToBounds="True">
+                    <Border Grid.Row="0" Height="150" CornerRadius="14"
+                            Background="{DynamicResource AccentSoft}">
+                      <TextBlock Text="{Binding Icon}" FontSize="56"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Row 1 is a plain gap. Kept as its own row rather than padding the
+                         caption so the caption row height stays equal to the overlay's slide
+                         distance below. -->
+
+                    <StackPanel Grid.Row="2" VerticalAlignment="Center" Margin="3,0">
+                      <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Text="{Binding MinecraftVersion, StringFormat='Vanilla {0}'}"
+                                 FontSize="11.5" Foreground="{DynamicResource TextMuted}"
+                                 Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- Slides up over the caption on hover. Painted with the card's *hover*
+                         fill, not Surface: it is only ever visible while the card is hovered, so
+                         anything else reads as a mismatched panel sitting behind the button. -->
+                    <Border Grid.Row="2" Name="playOverlay" Background="{DynamicResource Hover}">
+                      <Button Classes="cardPlay" Tag="{Binding}" Click="CardPlay_Click"
+                              IsEnabled="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).CanQuickPlay}"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
+                          <Path Data="M 0,0 L 9,5.5 L 0,11 Z" Fill="{DynamicResource OnAccent}"
+                                Width="9" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
+                          <TextBlock Text="Play" FontSize="13.5" FontWeight="SemiBold"
+                                     Foreground="{DynamicResource OnAccent}"/>
+                        </StackPanel>
+                      </Button>
+                    </Border>
+                  </Grid>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
 
         <!-- No instances at all -->
         <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -61,55 +119,65 @@
                      Text="Try a different search or group."/>
         </StackPanel>
 
-        <ScrollViewer>
-          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,24">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel/>
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="core:Instance">
-                <Button Classes="instanceCard" Tag="{Binding}" Click="InstanceCard_Click">
-                  <StackPanel Width="150">
-                    <Border Height="150" CornerRadius="14" Background="{DynamicResource AccentSoft}">
-                      <TextBlock Text="{Binding Icon}" FontSize="56"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
-                               Margin="3,11,3,0" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{Binding MinecraftVersion, StringFormat='Vanilla {0}'}"
-                               FontSize="11.5" Foreground="{DynamicResource TextMuted}"
-                               Margin="3,3,3,0" TextTrimming="CharacterEllipsis"/>
-                  </StackPanel>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+        <!-- Launching from a card shows no page, so progress surfaces here instead. -->
+        <Border Classes="card" VerticalAlignment="Bottom" Margin="0,0,0,20" Padding="16,12"
+                IsVisible="{Binding IsLaunchingFromLibrary}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
+            <StackPanel Grid.Column="0" Spacing="7" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Status}" FontSize="13" FontWeight="Medium"/>
+              <ProgressBar Value="{Binding Progress}" Maximum="1" Height="5" CornerRadius="3"
+                           IsVisible="{Binding IsBusy}"/>
+            </StackPanel>
+            <Button Grid.Column="1" Classes="ghost danger" Content="Stop" VerticalAlignment="Center"
+                    IsVisible="{Binding IsRunning}" Command="{Binding KillCommand}"/>
+          </Grid>
+        </Border>
+
+        <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap" MaxWidth="520"
+                   TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                   Margin="0,0,0,20" Foreground="{DynamicResource Accent}"
+                   IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 
       </Panel>
     </Grid>
 
-    <!-- ================= Instance detail ================= -->
-    <Grid IsVisible="{Binding IsDetailOpen}" RowDefinitions="Auto,*" Margin="30,28,30,28">
+    <!-- ================= Instance detail (slides up as a sheet) ================= -->
+    <!-- Opaque and full-bleed: the library stays mounted underneath during the slide, so the
+         sheet needs its own background to actually cover it instead of blending through. -->
+    <!-- Single cell rather than a header row plus a content row: the scroll content has to
+         start at the very top so the backdrop reaches the top edge, with the back button
+         floating over it. Declared after the ScrollViewer so it stays above it in z-order. -->
+    <Grid Classes="detailSheet" Classes.open="{Binding IsDetailOpen}"
+          Classes.closing="{Binding IsDetailClosing}"
+          IsVisible="{Binding IsDetailOpen}"
+          Background="{DynamicResource Bg}">
 
-      <StackPanel Grid.Row="0">
-        <Button Classes="back" Command="{Binding CloseDetailCommand}" HorizontalAlignment="Left"
-                Margin="-8,0,0,12">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <Path Data="M15 4 L7 12 L15 20" Stroke="{DynamicResource TextMuted}" StrokeThickness="2"
-                  StrokeLineCap="Round" StrokeJoin="Round" Width="10" Height="14" Stretch="Uniform"/>
-            <TextBlock Text="Library" FontSize="13.5" FontWeight="Medium"
-                       Foreground="{DynamicResource TextMuted}"/>
-          </StackPanel>
-        </Button>
+      <!-- No Padding here: the backdrop needs to run edge to edge, so the horizontal inset
+           moves onto the individual content blocks instead. -->
+      <ScrollViewer Name="DetailScroll" ctrl:SmoothScroll.Enabled="True">
+        <StackPanel Margin="0,0,0,28">
 
-        <!-- Header: icon + name -->
-        <Grid ColumnDefinitions="Auto,*" Margin="0,0,0,22">
-          <Panel Grid.Column="0" Margin="0,0,18,0">
-            <Button Name="IconButton" Classes="iconPickerLarge" Command="{Binding ToggleIconPickerCommand}">
-              <TextBlock Text="{Binding Selected.Icon}" FontSize="38"
+          <!-- Hero fills the visible area and centres itself in it, so the mods table below
+               starts past the fold and is reached by scrolling. MinHeight tracks the scroll
+               viewport rather than a fixed number, so it stays centred at any window size. -->
+          <Grid MinHeight="{Binding #DetailScroll.Bounds.Height}">
+
+            <!-- Scenery, veiled for legibility and fading into the page at the bottom so the
+                 mods table appears to emerge out of it as you scroll. -->
+            <Panel ClipToBounds="True" IsVisible="{Binding Backdrop, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+              <Image Source="{Binding Backdrop}" Stretch="UniformToFill"
+                     HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+              <Border Background="{DynamicResource BackdropScrim}"/>
+              <Border Background="{DynamicResource BackdropFade}"/>
+            </Panel>
+
+            <StackPanel VerticalAlignment="Center" MaxWidth="760" HorizontalAlignment="Center"
+                        Margin="30,0">
+
+          <!-- Hero: icon, name, Play -->
+          <Panel HorizontalAlignment="Center">
+            <Button Name="IconButton" Classes="heroIcon" Command="{Binding ToggleIconPickerCommand}">
+              <TextBlock Text="{Binding Selected.Icon}" FontSize="62"
                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Button>
             <Popup IsOpen="{Binding IsIconPickerOpen}" PlacementTarget="{Binding #IconButton}"
@@ -132,57 +200,171 @@
             </Popup>
           </Panel>
 
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-            <Grid IsVisible="{Binding !IsRenaming}" ColumnDefinitions="Auto,Auto">
-              <TextBlock Grid.Column="0" Text="{Binding Selected.Name}" Classes="h1"
-                         TextWrapping="Wrap" VerticalAlignment="Center"/>
-              <Button Grid.Column="1" Classes="iconTextButton" Command="{Binding StartRenameCommand}"
-                      ToolTip.Tip="Rename" VerticalAlignment="Center" Margin="8,0,0,0">
-                <Path Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"
-                      Fill="{DynamicResource TextMuted}" Stretch="Uniform" Width="15" Height="15"/>
-              </Button>
-            </Grid>
-
-            <Grid IsVisible="{Binding IsRenaming}" ColumnDefinitions="*,Auto,Auto" MaxWidth="440"
-                  HorizontalAlignment="Left">
-              <TextBox Grid.Column="0" Text="{Binding RenameText}" FontSize="15" MinWidth="240"/>
-              <Button Grid.Column="1" Classes="iconTextButton" Command="{Binding ConfirmRenameCommand}"
-                      ToolTip.Tip="Save" Margin="6,0,0,0">
-                <Path Data="M4 12 L9 17 L20 6" Stroke="{DynamicResource Accent}" StrokeThickness="2.4"
-                      StrokeLineCap="Round" StrokeJoin="Round" Width="14" Height="14" Stretch="Uniform"/>
-              </Button>
-              <Button Grid.Column="2" Classes="iconTextButton" Command="{Binding CancelRenameCommand}"
-                      ToolTip.Tip="Cancel" Margin="2,0,0,0">
-                <Path Data="M5 5 L19 19 M19 5 L5 19" Stroke="{DynamicResource TextMuted}" StrokeThickness="2.2"
-                      StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform"/>
-              </Button>
-            </Grid>
-
-            <TextBlock Text="{Binding Selected.MinecraftVersion, StringFormat='Vanilla  ·  Minecraft {0}'}"
-                       Classes="sub"/>
+          <StackPanel IsVisible="{Binding !IsRenaming}" Orientation="Horizontal" Spacing="6"
+                      HorizontalAlignment="Center" Margin="0,16,0,0">
+            <TextBlock Text="{Binding Selected.Name}" Classes="h1" VerticalAlignment="Center"/>
+            <Button Classes="iconTextButton" Command="{Binding StartRenameCommand}"
+                    ToolTip.Tip="Rename" VerticalAlignment="Center">
+              <Path Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"
+                    Fill="{DynamicResource TextMuted}" Stretch="Uniform" Width="15" Height="15"/>
+            </Button>
           </StackPanel>
-        </Grid>
-      </StackPanel>
 
-      <!-- Body: details + actions -->
-      <Grid Grid.Row="1" ColumnDefinitions="*,340">
+          <StackPanel IsVisible="{Binding IsRenaming}" Orientation="Horizontal" Spacing="6"
+                      HorizontalAlignment="Center" Margin="0,16,0,0">
+            <TextBox Text="{Binding RenameText}" FontSize="15" Width="260"/>
+            <Button Classes="iconTextButton" Command="{Binding ConfirmRenameCommand}" ToolTip.Tip="Save">
+              <Path Data="M4 12 L9 17 L20 6" Stroke="{DynamicResource Accent}" StrokeThickness="2.4"
+                    StrokeLineCap="Round" StrokeJoin="Round" Width="14" Height="14" Stretch="Uniform"/>
+            </Button>
+            <Button Classes="iconTextButton" Command="{Binding CancelRenameCommand}" ToolTip.Tip="Cancel">
+              <Path Data="M5 5 L19 19 M19 5 L5 19" Stroke="{DynamicResource TextMuted}" StrokeThickness="2.2"
+                    StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform"/>
+            </Button>
+          </StackPanel>
 
-        <Border Classes="card" Padding="24">
-          <ScrollViewer>
+          <TextBlock Text="{Binding Selected.MinecraftVersion, StringFormat='Vanilla  ·  Minecraft {0}'}"
+                     Classes="sub" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+
+          <Button Classes="primary play" Content="Play" HorizontalAlignment="Center" Margin="0,18,0,0"
+                  IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
+          <TextBlock Text="{Binding AccountLabel}" Classes="label" HorizontalAlignment="Center"
+                     Margin="0,7,0,0"/>
+
+          <StackPanel Spacing="7" Margin="0,14,0,0" MaxWidth="420" IsVisible="{Binding IsBusy}">
+            <TextBlock Text="{Binding Status}" Classes="label" HorizontalAlignment="Center"/>
+            <ProgressBar Value="{Binding Progress}" Maximum="1" Height="6" CornerRadius="3"/>
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
+                      Margin="0,14,0,0" IsVisible="{Binding IsRunning}">
+            <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="14,10">
+              <TextBlock Text="Minecraft is running" FontSize="13" FontWeight="Medium"
+                         Foreground="{DynamicResource Accent}"/>
+            </Border>
+            <Button Classes="ghost danger" Content="Stop" Command="{Binding KillCommand}"/>
+          </StackPanel>
+
+          <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap" MaxWidth="520"
+                     TextAlignment="Center" HorizontalAlignment="Center" Margin="0,12,0,0"
+                     Foreground="{DynamicResource Accent}"
+                     IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+            </StackPanel>
+
+            <!-- Nudge that there is more below the fold -->
+            <Path Data="M6 9 L12 15 L18 9" Stroke="{DynamicResource TextMuted}" StrokeThickness="2"
+                  StrokeLineCap="Round" StrokeJoin="Round" Width="18" Height="10" Stretch="Uniform"
+                  HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18"/>
+          </Grid>
+
+          <!-- Everything past the hero keeps the old reading width and side inset, which the
+               ScrollViewer no longer supplies. Stretch rather than Center: a centred panel sizes
+               to its content, so the mods card would shrink to whatever one row happens to need.
+               Stretch fills the available width and MaxWidth still centres it in the page. -->
+          <StackPanel MaxWidth="760" HorizontalAlignment="Stretch" Margin="30,0">
+
+          <!-- Mods table -->
+          <Border Classes="card" Margin="0,26,0,0" ClipToBounds="True">
+            <StackPanel>
+
+              <!-- Header and rows share one column spec so content and dividers line up exactly.
+                   Name and Creator are fixed-width and sit right next to each other, separated by
+                   an actual vertical rule running the full height of the row; the flexible column
+                   that absorbs leftover width lives AFTER Creator so Size/Toggle stay pinned to
+                   the right edge instead of dragging Creator out there with them. -->
+              <!-- Proportional columns with every label centred in its own cell. Centring is what
+                   kills the dead space: a left-aligned short word in a data-width column always
+                   strands itself against the previous divider. Header and rows share this exact
+                   spec so the rules line up straight down the table. -->
+              <Grid ColumnDefinitions="70,1,2*,1,2*,1,*,1,*" Classes="modHeader">
+                <TextBlock Grid.Column="0" Text="Icon" TextAlignment="Center"/>
+                <Border Grid.Column="1" Classes="modDivider"/>
+                <TextBlock Grid.Column="2" Text="Name" TextAlignment="Center"/>
+                <Border Grid.Column="3" Classes="modDivider"/>
+                <TextBlock Grid.Column="4" Text="Creator" TextAlignment="Center"/>
+                <Border Grid.Column="5" Classes="modDivider"/>
+                <TextBlock Grid.Column="6" Text="Size" TextAlignment="Center"/>
+                <Border Grid.Column="7" Classes="modDivider"/>
+                <TextBlock Grid.Column="8" Text="Toggle" TextAlignment="Center"/>
+              </Grid>
+
+              <Border Height="1" Background="{DynamicResource Border}" Margin="18,0"/>
+
+              <TextBlock Text="Reading mods…" Classes="sub" Margin="20" HorizontalAlignment="Center"
+                         IsVisible="{Binding IsLoadingMods}"/>
+
+              <StackPanel Spacing="6" Margin="20,24,20,26" IsVisible="{Binding HasNoMods}">
+                <TextBlock Text="No mods installed" Classes="h2" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextMuted}"/>
+                <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                           Text="Drop jars into the mods folder and they show up here. Browsing and one-click installs arrive with loader support."/>
+                <Button Classes="ghost" Content="Open mods folder" HorizontalAlignment="Center"
+                        Margin="0,8,0,0" Command="{Binding OpenModsFolderCommand}"/>
+              </StackPanel>
+
+              <ItemsControl ItemsSource="{Binding Mods}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ModRowViewModel">
+                    <Border Classes="modRowShell">
+                      <Grid ColumnDefinitions="70,1,2*,1,2*,1,*,1,*" Classes="modRow">
+                        <Border Grid.Column="0" Width="34" Height="34" CornerRadius="10"
+                                HorizontalAlignment="Center" Background="{DynamicResource SurfaceAlt}"
+                                ClipToBounds="True">
+                          <Panel>
+                            <TextBlock Text="&#x1F4E6;" FontSize="15" IsVisible="{Binding !HasIcon}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" Stretch="UniformToFill"/>
+                          </Panel>
+                        </Border>
+
+                        <Border Grid.Column="1" Classes="modDivider"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"
+                                   VerticalAlignment="Center" TextAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Margin="10,0"/>
+                        <Border Grid.Column="3" Classes="modDivider"/>
+                        <TextBlock Grid.Column="4" Text="{Binding Author}" Classes="label"
+                                   VerticalAlignment="Center" TextAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" Margin="10,0"/>
+                        <Border Grid.Column="5" Classes="modDivider"/>
+                        <TextBlock Grid.Column="6" Text="{Binding SizeLabel}" Classes="label"
+                                   VerticalAlignment="Center" TextAlignment="Center"/>
+                        <Border Grid.Column="7" Classes="modDivider"/>
+                        <ToggleSwitch Grid.Column="8" IsChecked="{Binding IsEnabled}"
+                                      HorizontalAlignment="Center"
+                                      OnContent="" OffContent="" VerticalAlignment="Center"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="18,10,18,16" IsVisible="{Binding !HasNoMods}">
+                <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Center"
+                           Text="{Binding Mods.Count, StringFormat='{}{0} mods'}"/>
+                <Button Grid.Column="1" Classes="ghost" Content="Open folder" Margin="0,0,8,0"
+                        Command="{Binding OpenModsFolderCommand}"/>
+                <Button Grid.Column="2" Classes="ghost" Content="Rescan"
+                        Command="{Binding RefreshModsCommand}"/>
+              </Grid>
+
+            </StackPanel>
+          </Border>
+
+          <!-- Details and settings. Hidden pending a nicer treatment — note this also parks
+               delete/export/import/duplicate/crash-reports, which have no other entry point. -->
+          <Border Classes="card" Padding="24" Margin="0,18,0,0" IsVisible="False">
             <StackPanel Spacing="18">
 
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Loader" Classes="label"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.Loader}" Classes="value"/>
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Playtime" Classes="label"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
 
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Playtime" Classes="label"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Disk usage" Classes="label"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiskUsageLabel}" Classes="value"/>
 
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Disk usage" Classes="label"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DiskUsageLabel}" Classes="value"/>
-
-                <TextBlock Grid.Row="3" Grid.Column="0" Text="Created" Classes="label"/>
-                <TextBlock Grid.Row="3" Grid.Column="1"
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Created" Classes="label"/>
+                <TextBlock Grid.Row="2" Grid.Column="1"
                            Text="{Binding Selected.Created, StringFormat='{}{0:yyyy-MM-dd}'}" Classes="value"/>
               </Grid>
 
@@ -197,63 +379,41 @@
               <StackPanel Spacing="6">
                 <TextBlock Text="Environment variables" Classes="label"/>
                 <TextBox Text="{Binding EnvironmentVariablesText, UpdateSourceTrigger=LostFocus}"
-                         AcceptsReturn="True" MinHeight="90" FontFamily="Consolas,monospace"
+                         AcceptsReturn="True" MinHeight="80" FontFamily="Consolas,monospace"
                          FontSize="12.5" PlaceholderText="KEY=value, one per line"/>
               </StackPanel>
 
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <WrapPanel>
+                <Button Classes="ghost" Content="Open folder" Margin="0,0,8,8"
+                        Command="{Binding OpenFolderCommand}"/>
+                <Button Classes="ghost" Content="Crash reports" Margin="0,0,8,8"
+                        Command="{Binding ViewCrashReportsCommand}"/>
+                <Button Classes="ghost" Content="Duplicate" Margin="0,0,8,8"
+                        Command="{Binding CloneCommand}"/>
+                <Button Classes="ghost" Content="Export" Margin="0,0,8,8" Click="ExportButton_Click"/>
+                <Button Classes="ghost" Content="Import" Margin="0,0,8,8" Click="ImportButton_Click"/>
+                <Button Classes="ghost danger" Content="{Binding DeleteLabel}" Margin="0,0,0,8"
+                        Command="{Binding DeleteCommand}"/>
+              </WrapPanel>
+
             </StackPanel>
-          </ScrollViewer>
-        </Border>
+          </Border>
 
-        <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="22">
-          <DockPanel>
-            <StackPanel DockPanel.Dock="Top" Spacing="10">
+          </StackPanel>
 
-              <StackPanel Spacing="7" IsVisible="{Binding IsBusy}">
-                <TextBlock Text="{Binding Status}" Classes="label"/>
-                <ProgressBar Value="{Binding Progress}" Maximum="1" Height="6" CornerRadius="3"/>
-              </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
 
-              <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsRunning}">
-                <Border Grid.Column="0" Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="12">
-                  <TextBlock Text="Minecraft is running" FontSize="13" FontWeight="Medium"
-                             Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
-                </Border>
-                <Button Grid.Column="1" Classes="ghost danger" Content="Stop" Margin="8,0,0,0"
-                        Command="{Binding KillCommand}"/>
-              </Grid>
-
-              <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
-                         Foreground="{DynamicResource Accent}"
-                         IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
-
-              <Button Classes="primary" Content="{Binding PlayLabel}" HorizontalAlignment="Stretch"
-                      IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
-              <TextBlock Text="{Binding AccountLabel}" Classes="label" HorizontalAlignment="Center"/>
-
-              <Border Height="1" Background="{DynamicResource Border}" Margin="0,6,0,0"/>
-
-              <Button Classes="ghost" Content="Open folder" HorizontalAlignment="Stretch"
-                      Command="{Binding OpenFolderCommand}"/>
-              <Button Classes="ghost" Content="Crash reports" HorizontalAlignment="Stretch"
-                      Command="{Binding ViewCrashReportsCommand}"/>
-              <Button Classes="ghost" Content="Duplicate" HorizontalAlignment="Stretch"
-                      Command="{Binding CloneCommand}"/>
-
-              <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
-                <Button Grid.Column="0" Classes="ghost" Content="Export" Name="ExportButton"
-                        HorizontalAlignment="Stretch" Click="ExportButton_Click"/>
-                <Button Grid.Column="1" Classes="ghost" Content="Import" Name="ImportButton"
-                        HorizontalAlignment="Stretch" Click="ImportButton_Click"/>
-              </Grid>
-            </StackPanel>
-
-            <Button DockPanel.Dock="Bottom" Classes="ghost danger" Content="{Binding DeleteLabel}"
-                    HorizontalAlignment="Stretch" Command="{Binding DeleteCommand}"/>
-          </DockPanel>
-        </Border>
-
-      </Grid>
+      <Button Classes="back" Command="{Binding CloseDetailCommand}"
+              HorizontalAlignment="Left" VerticalAlignment="Top" Margin="22,20,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Data="M15 4 L7 12 L15 20" StrokeThickness="2"
+                StrokeLineCap="Round" StrokeJoin="Round" Width="10" Height="14" Stretch="Uniform"/>
+          <TextBlock Text="Instances" FontSize="13.5" FontWeight="Medium"/>
+        </StackPanel>
+      </Button>
     </Grid>
 
   </Panel>

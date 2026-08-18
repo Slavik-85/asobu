@@ -1,10 +1,11 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
              x:Class="Asobu.App.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
-  <ScrollViewer>
+  <ScrollViewer ctrl:SmoothScroll.Enabled="True">
     <StackPanel Margin="30,28,30,28" MaxWidth="720" HorizontalAlignment="Left" Spacing="18">
 
       <StackPanel>

@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 using Asobu.Core;
 using Asobu.Core.Instances;
 using Asobu.Core.Minecraft;
+using Asobu.App.Controls;
+using Asobu.Core.Mods;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -40,10 +43,14 @@ public partial class InstancesViewModel : ViewModelBase
 
     public ObservableCollection<Instance> Items { get; } = [];
     public ObservableCollection<string> Groups { get; } = [AllGroupsFilter];
+    public ObservableCollection<ModRowViewModel> Mods { get; } = [];
     public IReadOnlyList<string> SortModes { get; } = ["Name", "Last played", "Newest", "Playtime"];
 
     [ObservableProperty] public partial Instance? Selected { get; set; }
     [ObservableProperty] public partial bool IsDetailOpen { get; set; }
+
+    /// <summary>True only while the sheet is sliding back down, so it stays mounted to animate.</summary>
+    [ObservableProperty] public partial bool IsDetailClosing { get; set; }
     [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial string SortMode { get; set; } = "Name";
     [ObservableProperty] public partial string SelectedGroupFilter { get; set; } = AllGroupsFilter;
@@ -61,13 +68,29 @@ public partial class InstancesViewModel : ViewModelBase
     [ObservableProperty] public partial string EnvironmentVariablesText { get; set; } = "";
     [ObservableProperty] public partial string? DiskUsageLabel { get; set; }
     [ObservableProperty] public partial bool IsIconPickerOpen { get; set; }
+    [ObservableProperty] public partial bool IsLoadingMods { get; set; }
+
+    /// <summary>Scenery behind the hero, picked per instance.</summary>
+    [ObservableProperty] public partial Bitmap? Backdrop { get; set; }
+
+    public bool HasNoMods => !IsLoadingMods && Mods.Count == 0;
 
     /// <summary>No instances exist at all — as opposed to none matching the current search.</summary>
     public bool IsEmpty => _all.Count == 0;
     public bool HasNoMatches => _all.Count > 0 && Items.Count == 0;
-    public bool IsLibraryVisible => !IsDetailOpen;
+    /// <summary>
+    /// Kept as its own flag rather than !IsDetailOpen so the library stays on screen underneath
+    /// the sheet while it slides up, and only drops out once the slide has finished.
+    /// </summary>
+    [ObservableProperty] public partial bool IsLibraryVisible { get; set; } = true;
 
     public bool CanPlay => Selected is not null && !IsBusy && !IsRunning;
+
+    /// <summary>Card play buttons don't depend on selection, only on nothing already running.</summary>
+    public bool CanQuickPlay => !IsBusy && !IsRunning;
+
+    /// <summary>Library needs its own progress strip, since launching there shows no page.</summary>
+    public bool IsLaunchingFromLibrary => IsBusy || IsRunning;
     public string PlayLabel => IsRunning ? "Running" : IsBusy ? "Working…" : "Play";
     public string DeleteLabel => ConfirmingDelete ? "Really delete?" : "Delete";
     public string AccountLabel => _accounts.Active is { } a ? $"as {a.Username}" : "no account selected";
@@ -168,6 +191,7 @@ public partial class InstancesViewModel : ViewModelBase
         GroupText = value?.Group ?? "";
         EnvironmentVariablesText = value is null ? "" : FormatEnvironment(value.EnvironmentVariables);
         DiskUsageLabel = null;
+        Backdrop = Backdrops.ForInstance(value?.Id);
 
         OnPropertyChanged(nameof(CanPlay));
 
@@ -176,7 +200,6 @@ public partial class InstancesViewModel : ViewModelBase
 
     partial void OnIsDetailOpenChanged(bool value)
     {
-        OnPropertyChanged(nameof(IsLibraryVisible));
         if (!value) Error = null;
     }
 
@@ -192,12 +215,16 @@ public partial class InstancesViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanPlay));
         OnPropertyChanged(nameof(PlayLabel));
+        OnPropertyChanged(nameof(CanQuickPlay));
+        OnPropertyChanged(nameof(IsLaunchingFromLibrary));
     }
 
     partial void OnIsRunningChanged(bool value)
     {
         OnPropertyChanged(nameof(CanPlay));
         OnPropertyChanged(nameof(PlayLabel));
+        OnPropertyChanged(nameof(CanQuickPlay));
+        OnPropertyChanged(nameof(IsLaunchingFromLibrary));
     }
 
     partial void OnConfirmingDeleteChanged(bool value) => OnPropertyChanged(nameof(DeleteLabel));
@@ -212,13 +239,71 @@ public partial class InstancesViewModel : ViewModelBase
         if (instance is null) return;
         Selected = instance;
         IsDetailOpen = true;
+        _ = LoadModsAsync(instance);
+        _ = HideLibraryAfterSlideAsync();
+    }
+
+    /// <summary>Matches the sheet's slide duration in Asobu.axaml; keep the two in step.</summary>
+    private const int SheetSlideMilliseconds = 340;
+
+    private async Task HideLibraryAfterSlideAsync()
+    {
+        await Task.Delay(SheetSlideMilliseconds);
+
+        // Guard against the sheet having been closed again mid-slide.
+        if (IsDetailOpen) IsLibraryVisible = false;
+    }
+
+    /// <summary>Reads the instance's mods folder off the UI thread — each jar is a zip open.</summary>
+    private async Task LoadModsAsync(Instance instance)
+    {
+        IsLoadingMods = true;
+        Mods.Clear();
+
+        try
+        {
+            var directory = ModScanner.ModsDirectory(_launcher.Paths, instance.Id);
+            var found = await Task.Run(() => ModScanner.Scan(directory));
+
+            if (Selected?.Id != instance.Id) return;
+
+            foreach (var mod in found) Mods.Add(new ModRowViewModel(mod));
+        }
+        finally
+        {
+            IsLoadingMods = false;
+            OnPropertyChanged(nameof(HasNoMods));
+        }
     }
 
     [RelayCommand]
-    private void CloseDetail()
+    private void OpenModsFolder()
     {
-        IsDetailOpen = false;
+        if (Selected is { } instance)
+            AsobuLauncher.OpenFolder(ModScanner.ModsDirectory(_launcher.Paths, instance.Id));
+    }
+
+    [RelayCommand]
+    private void RefreshMods()
+    {
+        if (Selected is { } instance) _ = LoadModsAsync(instance);
+    }
+
+    [RelayCommand]
+    private async Task CloseDetailAsync()
+    {
+        if (IsDetailClosing) return;
+
+        // Library comes back first so the sheet slides down onto it rather than onto a blank page.
+        IsLibraryVisible = true;
         Reload();
+
+        // Stay mounted for the length of the slide, then unmount — flipping IsDetailOpen straight
+        // away would collapse the sheet before a single frame of the animation had drawn.
+        IsDetailClosing = true;
+        await Task.Delay(SheetSlideMilliseconds);
+        IsDetailClosing = false;
+        IsDetailOpen = false;
     }
 
     [RelayCommand]
@@ -370,9 +455,20 @@ public partial class InstancesViewModel : ViewModelBase
     // ---- Play / kill ----
 
     [RelayCommand]
-    private async Task PlayAsync()
+    private Task PlayAsync() => LaunchAsync(Selected);
+
+    /// <summary>
+    /// Launch straight from a library card without opening its page. Takes the instance as a
+    /// parameter rather than leaning on Selected, so hovering one card and hitting play can
+    /// never start whichever instance happened to be selected last.
+    /// </summary>
+    [RelayCommand]
+    private Task QuickPlayAsync(Instance? instance) => LaunchAsync(instance);
+
+    private async Task LaunchAsync(Instance? target)
     {
-        if (Selected is not { } instance) return;
+        if (target is not { } instance) return;
+        if (IsBusy || IsRunning) return;
 
         Error = null;
 

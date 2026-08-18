@@ -15,4 +15,16 @@
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
     </application>
   </compatibility>
+
+  <!-- Stated explicitly rather than left to the default: an elevated foreground window makes
+       Windows withhold input from lower-privilege processes, which silently kills global
+       screenshot hotkeys (Flameshot, ShareX, Snipping Tool) while that window has focus.
+       A launcher never needs admin, so pin it down so it can't be inherited by accident. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
 </assembly>

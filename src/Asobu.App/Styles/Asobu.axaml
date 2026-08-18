@@ -20,6 +20,27 @@
           <SolidColorBrush x:Key="AccentSoft"  Color="#FFE6EE"/>
           <SolidColorBrush x:Key="OnAccent"    Color="#FFFFFF"/>
           <SolidColorBrush x:Key="Mint"        Color="#3FAE8E"/>
+          <!-- Zero-alpha twins of Hover/Surface. A BrushTransition interpolates all four
+               channels, and the literal "Transparent" is #00FFFFFF — transparent *white* — so
+               fading Transparent to a dark fill sweeps through pale grey. Resting on a colour
+               that already carries the right RGB means only the alpha moves. -->
+          <SolidColorBrush x:Key="HoverFade"   Color="#00F2E6EC"/>
+          <SolidColorBrush x:Key="SurfaceFade" Color="#00FFFFFF"/>
+          <!-- Press feedback. Translucent white so it lifts whatever fill is underneath rather
+               than needing a variant per control. On a light theme the label is already dark on
+               a pale ground, so brightening the text would erase it — it holds its colour here
+               and only the fill lifts. -->
+          <SolidColorBrush x:Key="Pressed"     Color="#59FFFFFF"/>
+          <SolidColorBrush x:Key="PressedText" Color="#2C2126"/>
+          <!-- Backdrop veil and bottom fade. Both stops carry the page background's own RGB —
+               a zero-alpha stop is still a colour, so fading from bare "Transparent" would
+               sweep the image through white on its way out. -->
+          <SolidColorBrush x:Key="BackdropScrim" Color="#A6FDF8FA"/>
+          <LinearGradientBrush x:Key="BackdropFade" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#00FDF8FA" Offset="0.35"/>
+            <GradientStop Color="#B3FDF8FA" Offset="0.78"/>
+            <GradientStop Color="#FFFDF8FA" Offset="1"/>
+          </LinearGradientBrush>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
@@ -37,11 +58,114 @@
           <SolidColorBrush x:Key="AccentSoft"  Color="#3B222B"/>
           <SolidColorBrush x:Key="OnAccent"    Color="#2A1620"/>
           <SolidColorBrush x:Key="Mint"        Color="#5CCBAB"/>
+          <!-- See the light theme note: these carry Hover/Surface RGB at zero alpha so the
+               hover fade never passes through pale grey on the way in. -->
+          <SolidColorBrush x:Key="HoverFade"   Color="#002C2429"/>
+          <SolidColorBrush x:Key="SurfaceFade" Color="#00201A1E"/>
+          <!-- See the light theme note. On dark the flash reads properly, so the label goes
+               white with the fill. -->
+          <SolidColorBrush x:Key="Pressed"     Color="#59FFFFFF"/>
+          <SolidColorBrush x:Key="PressedText" Color="#FFFFFF"/>
+          <!-- See the light theme note: stops carry the page background's RGB so the image
+               fades into the page rather than through a grey haze. -->
+          <SolidColorBrush x:Key="BackdropScrim" Color="#8C161114"/>
+          <LinearGradientBrush x:Key="BackdropFade" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#00161114" Offset="0.35"/>
+            <GradientStop Color="#B3161114" Offset="0.78"/>
+            <GradientStop Color="#FF161114" Offset="1"/>
+          </LinearGradientBrush>
         </ResourceDictionary>
 
       </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
   </Styles.Resources>
+
+  <!-- Hover/focus transitions: every button, list item and input in this file swaps a brush
+       on :pointerover/:focus via a plain Setter, so one Transitions block per element shape
+       here covers the whole app — a soft ease instead of the instant snap. -->
+  <Style Selector="Button /template/ ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- FluentTheme's own Button styles set Foreground straight onto the ContentPresenter for
+       :pointerover/:pressed, which overrides the Foreground we set on the Button itself and
+       lands instantly. Pointing the presenter back at its Button keeps our colour authoritative
+       so the transition above is what the eye actually sees. -->
+  <Style Selector="Button:pointerover /template/ ContentPresenter">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}"/>
+  </Style>
+  <!-- Pressed label flashes with the fill rather than mirroring the button's resting colour. -->
+  <Style Selector="Button:pressed /template/ ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource PressedText}"/>
+  </Style>
+  <Style Selector="RadioButton.chip /template/ Border#shell">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ListBoxItem /template/ ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- Text and icon colour. These ride Foreground/Fill/Stroke rather than Background, so they
+       need their own transitions: the label in a nav item goes TextMuted -> Accent, and the
+       gear/chevron glyphs recolour with them. All of these interpolate between two opaque
+       colours, so unlike the fills above there is no transparent-white midpoint to dodge. -->
+  <Style Selector="Button">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton.chip">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button TextBlock">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button Path">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Fill" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <BrushTransition Property="Stroke" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
 
   <!-- Typography -->
   <Style Selector="TextBlock">
@@ -94,10 +218,17 @@
     <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
   </Style>
   <Style Selector="Button.nav /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
   </Style>
   <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <!-- Label brightens on hover so there is a colour change to ease through, not just a fill. -->
+  <Style Selector="Button.nav:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.nav:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="Button.nav.active">
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
@@ -105,6 +236,11 @@
   </Style>
   <Style Selector="Button.nav.active /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <!-- Must sit after the .active rule above: equally specific styles resolve last-one-wins, so
+       declared any earlier the pink active colour would swallow the hover highlight. -->
+  <Style Selector="Button.nav.active:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
   </Style>
 
   <!-- Primary action -->
@@ -121,6 +257,9 @@
   </Style>
   <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.primary:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="Button.primary:disabled">
     <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
@@ -149,6 +288,9 @@
   <Style Selector="RadioButton.chip:pointerover /template/ Border#shell">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
   </Style>
+  <Style Selector="RadioButton.chip:pressed /template/ Border#shell">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
   <Style Selector="RadioButton.chip:checked">
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
@@ -170,9 +312,15 @@
   </Style>
   <Style Selector="ListBoxItem /template/ ContentPresenter">
     <Setter Property="CornerRadius" Value="11"/>
+    <!-- Explicit resting fill: without it the row inherits Fluent's transparent-white and the
+         hover fade sweeps through pale grey, same as the buttons above. -->
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
   </Style>
   <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="ListBoxItem:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
@@ -183,6 +331,22 @@
     <Setter Property="CornerRadius" Value="11"/>
     <Setter Property="Padding" Value="12,9"/>
     <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="CaretBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="TextBox:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="TextBox:focus-within">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderThickness" Value="1.5"/>
+  </Style>
+
+  <!-- Selected text: a soft pink wash instead of the OS-default blue, matching the caret above -->
+  <Style Selector="SelectableTextBlock">
+    <Setter Property="SelectionBrush" Value="{DynamicResource AccentSoft}"/>
   </Style>
 
   <!-- Back link -->
@@ -192,10 +356,22 @@
     <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
   </Style>
   <Style Selector="Button.back /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <!-- Resting colours live here rather than as attributes on the elements: a value set inline
+       in the view is a LocalValue, which outranks a style trigger, so the :pointerover rules
+       below would never have applied. -->
+  <Style Selector="Button.back TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.back Path">
+    <Setter Property="Stroke" Value="{DynamicResource TextMuted}"/>
   </Style>
   <Style Selector="Button.back:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.back:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="Button.back:pointerover TextBlock">
     <Setter Property="Foreground" Value="{DynamicResource Text}"/>
@@ -219,6 +395,9 @@
   <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
   </Style>
+  <Style Selector="Button.ghost:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
   <Style Selector="Button.ghost.danger">
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
   </Style>
@@ -239,10 +418,13 @@
     <Setter Property="CornerRadius" Value="11"/>
   </Style>
   <Style Selector="Button.accountChip /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
   </Style>
   <Style Selector="Button.accountChip:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.accountChip:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="Button.accountChip.active /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
@@ -258,10 +440,16 @@
     <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
   <Style Selector="Button.gearButton /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <Style Selector="Button.gearButton Path">
+    <Setter Property="Fill" Value="{DynamicResource TextMuted}"/>
   </Style>
   <Style Selector="Button.gearButton:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.gearButton:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="Button.gearButton:pointerover Path">
     <Setter Property="Fill" Value="{DynamicResource Text}"/>
@@ -282,24 +470,268 @@
     <Setter Property="CornerRadius" Value="11"/>
     <Setter Property="Padding" Value="12,9"/>
     <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="ComboBox:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="ComboBox:focus">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderThickness" Value="1.5"/>
+  </Style>
+  <Style Selector="ComboBox:dropdownopen">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderThickness" Value="1.5"/>
   </Style>
   <Style Selector="Slider">
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
   </Style>
 
-  <!-- Library card: whole tile is the button, art panel sits inside it -->
+  <!-- Library card: whole tile is the button, art panel sits inside it. Owns its template
+       (rather than reaching into FluentTheme's default Button chrome via /template/) because
+       that reach-in wasn't reliably landing on the part FluentTheme actually paints for hover —
+       the rounded shape came through but the color didn't, which is how a stock light overlay
+       showed up instead of our own. A named Border we control ourselves removes the ambiguity. -->
   <Style Selector="Button.instanceCard">
-    <Setter Property="Padding" Value="10"/>
-    <Setter Property="Margin" Value="0,0,6,10"/>
-    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="Margin" Value="0,0,4,14"/>
     <Setter Property="HorizontalContentAlignment" Value="Left"/>
     <Setter Property="VerticalContentAlignment" Value="Top"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="shell"
+                Background="{DynamicResource Surface}"
+                BorderBrush="{DynamicResource Border}"
+                BorderThickness="1"
+                CornerRadius="18"
+                Padding="10">
+          <ContentPresenter Content="{TemplateBinding Content}"
+                             HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                             VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
   </Style>
-  <Style Selector="Button.instanceCard /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+  <Style Selector="Button.instanceCard /template/ Border#shell">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
   </Style>
-  <Style Selector="Button.instanceCard:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  <!-- Outline picks up the accent on hover so the card lifts without moving. -->
+  <Style Selector="Button.instanceCard:pointerover /template/ Border#shell">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.instanceCard:pressed /template/ Border#shell">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Play overlay: parked one caption-row down and revealed on card hover. Plain descendant
+       selectors, not /template/ — this lives in the card's DataTemplate content, not its
+       control template. -->
+  <!-- Slide distance must equal the caption row height in InstancesView; keep them in step. -->
+  <Style Selector="Button.instanceCard Border#playOverlay">
+    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="RenderTransform" Value="translateY(40px)"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.instanceCard:pointerover Border#playOverlay">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <Style Selector="Button.cardPlay">
+    <Setter Property="Padding" Value="0,7"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.cardPlay /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.cardPlay:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.cardPlay:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+  <Style Selector="Button.cardPlay:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+
+  <!-- Instance sheet: rises from the bottom when opened. This is an Animation rather than a
+       Transition because the panel is collapsed while closed — a transition needs both a before
+       and an after value on a live element, which never happens here. An Animation instead fires
+       the moment the .open selector starts matching, which is exactly when it becomes visible. -->
+  <Style Selector="Grid.detailSheet.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.34" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.Y" Value="460"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="60%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Slide back down on close. Declared after .open because both classes are present while
+       closing and equally specific styles resolve last-one-wins. EaseIn is the mirror of the
+       entrance's EaseOut, so it accelerates away instead of easing to a halt mid-exit. -->
+  <Style Selector="Grid.detailSheet.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.34" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="45%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.Y" Value="460"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Big square instance icon at the top of the sheet -->
+  <Style Selector="Button.heroIcon">
+    <Setter Property="Width" Value="132"/>
+    <Setter Property="Height" Value="132"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="26"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.heroIcon /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Button.heroIcon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.heroIcon:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- Oversized Play button, the one thing on the page you cannot miss -->
+  <Style Selector="Button.primary.play">
+    <Setter Property="Padding" Value="52,15"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="FontSize" Value="19"/>
+  </Style>
+
+  <!-- Mods table -->
+  <Style Selector="Grid.modHeader">
+    <Setter Property="Margin" Value="18,14,18,10"/>
+  </Style>
+  <Style Selector="Grid.modHeader > TextBlock">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Grid.modRow">
+    <Setter Property="Height" Value="52"/>
+  </Style>
+  <!-- Actual vertical rules, full height of the row, top to bottom. -->
+  <Style Selector="Border.modDivider">
+    <Setter Property="Background" Value="{DynamicResource Border}"/>
+    <Setter Property="Width" Value="1"/>
+    <Setter Property="VerticalAlignment" Value="Stretch"/>
+  </Style>
+  <!-- Rows still get a soft hover fill on top of the rule lines, so the current row is easy
+       to track while scanning across a divider-heavy layout. -->
+  <Style Selector="Border.modRowShell">
+    <Setter Property="Padding" Value="18,0"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.modRowShell:pointerover">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+
+  <!-- Toggle switch, recoloured off Fluent's default blue -->
+  <!-- Own template rather than restyling Fluent's: the stock ToggleSwitch reserves a content
+       area beside the knob for On/OffContent, so even with those blank the visible pill sits
+       off-centre inside the control. A track we size ourselves is centred by construction. -->
+  <Style Selector="ToggleSwitch">
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="track" Width="44" Height="24" CornerRadius="12"
+                Background="{DynamicResource Border}"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+          <!-- PART_MovingKnobs and PART_SwitchKnob are required by ToggleSwitch itself, which
+               reaches for them to drive drag gestures; both must be Panels, so the visible
+               circle is an Ellipse hosted inside the knob panel. -->
+          <Panel Name="PART_MovingKnobs" HorizontalAlignment="Left" VerticalAlignment="Center"
+                 Margin="3,0,0,0">
+            <Panel Name="PART_SwitchKnob" Width="18" Height="18">
+              <Ellipse Name="knob" Fill="{DynamicResource TextMuted}"/>
+            </Panel>
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleSwitch /template/ Border#track">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <!-- The knob slides on a transform so the travel can ease; alignment can't be animated.
+       Transform rides the knob Panel, colour rides the Ellipse inside it. -->
+  <Style Selector="ToggleSwitch /template/ Panel#PART_SwitchKnob">
+    <Setter Property="RenderTransform" Value="none"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleSwitch /template/ Ellipse#knob">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Fill" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleSwitch:pointerover /template/ Border#track">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="ToggleSwitch:checked /template/ Border#track">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="ToggleSwitch:checked:pointerover /template/ Border#track">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="ToggleSwitch:checked /template/ Panel#PART_SwitchKnob">
+    <Setter Property="RenderTransform" Value="translateX(20px)"/>
+  </Style>
+  <Style Selector="ToggleSwitch:checked /template/ Ellipse#knob">
+    <Setter Property="Fill" Value="#FFFFFF"/>
   </Style>
 
   <!-- Search field: a touch rounder than a plain input -->
@@ -323,6 +755,9 @@
   <Style Selector="Button.iconPickerLarge:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
   </Style>
+  <Style Selector="Button.iconPickerLarge:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
 
   <!-- Instance icon picker -->
   <Style Selector="Button.iconPicker">
@@ -339,6 +774,9 @@
   <Style Selector="Button.iconPicker:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
   </Style>
+  <Style Selector="Button.iconPicker:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
 
   <Style Selector="Button.iconChoice">
     <Setter Property="Width" Value="38"/>
@@ -351,10 +789,13 @@
     <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
   <Style Selector="Button.iconChoice /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
   </Style>
   <Style Selector="Button.iconChoice:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.iconChoice:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
 
   <!-- Small inline icon button, e.g. the rename pencil -->
@@ -367,10 +808,13 @@
     <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
   <Style Selector="Button.iconTextButton /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
   </Style>
   <Style Selector="Button.iconTextButton:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.iconTextButton:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
 
 </Styles>

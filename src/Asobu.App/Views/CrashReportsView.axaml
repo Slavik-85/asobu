@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
              xmlns:diag="using:Asobu.Core.Diagnostics"
              xmlns:conv="using:Avalonia.Data.Converters"
@@ -11,9 +12,9 @@
     <StackPanel Grid.Row="0">
       <Button Classes="back" Command="{Binding BackCommand}" HorizontalAlignment="Left" Margin="-8,0,0,10">
         <StackPanel Orientation="Horizontal" Spacing="6">
-          <Path Data="M15 4 L7 12 L15 20" Stroke="{DynamicResource TextMuted}" StrokeThickness="2"
+          <Path Data="M15 4 L7 12 L15 20" StrokeThickness="2"
                 StrokeLineCap="Round" StrokeJoin="Round" Width="10" Height="14" Stretch="Uniform"/>
-          <TextBlock Text="Instances" FontSize="13.5" FontWeight="Medium" Foreground="{DynamicResource TextMuted}"/>
+          <TextBlock Text="Instances" FontSize="13.5" FontWeight="Medium"/>
         </StackPanel>
       </Button>
       <Grid ColumnDefinitions="*,Auto">
@@ -71,7 +72,7 @@
           <TextBlock Text="Loading…" Classes="sub" HorizontalAlignment="Center" VerticalAlignment="Center"
                      IsVisible="{Binding IsLoadingContent}"/>
 
-          <ScrollViewer IsVisible="{Binding Content, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+          <ScrollViewer IsVisible="{Binding Content, Converter={x:Static conv:ObjectConverters.IsNotNull}}" ctrl:SmoothScroll.Enabled="True">
             <SelectableTextBlock Text="{Binding Content}" FontFamily="Consolas,monospace" FontSize="12"
                                   TextWrapping="Wrap" Margin="18" Foreground="{DynamicResource Text}"/>
           </ScrollViewer>
