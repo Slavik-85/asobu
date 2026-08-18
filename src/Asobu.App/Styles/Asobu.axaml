@@ -1,0 +1,182 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="Bg"          Color="#FBF8F6"/>
+          <SolidColorBrush x:Key="Surface"     Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="SurfaceAlt"  Color="#F4EFEC"/>
+          <SolidColorBrush x:Key="Hover"       Color="#EFE8E4"/>
+          <SolidColorBrush x:Key="Border"      Color="#E9E1DC"/>
+          <SolidColorBrush x:Key="Text"        Color="#2A2325"/>
+          <SolidColorBrush x:Key="TextMuted"   Color="#8E8085"/>
+          <SolidColorBrush x:Key="Accent"      Color="#FF7A5C"/>
+          <SolidColorBrush x:Key="AccentHover" Color="#F26648"/>
+          <SolidColorBrush x:Key="AccentSoft"  Color="#FFE9E3"/>
+          <SolidColorBrush x:Key="Mint"        Color="#3FAE8E"/>
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="Bg"          Color="#161215"/>
+          <SolidColorBrush x:Key="Surface"     Color="#201B1F"/>
+          <SolidColorBrush x:Key="SurfaceAlt"  Color="#1B171A"/>
+          <SolidColorBrush x:Key="Hover"       Color="#2C252B"/>
+          <SolidColorBrush x:Key="Border"      Color="#332B32"/>
+          <SolidColorBrush x:Key="Text"        Color="#F4EEEB"/>
+          <SolidColorBrush x:Key="TextMuted"   Color="#9C8E94"/>
+          <SolidColorBrush x:Key="Accent"      Color="#FF8A6E"/>
+          <SolidColorBrush x:Key="AccentHover" Color="#FF9C84"/>
+          <SolidColorBrush x:Key="AccentSoft"  Color="#3B2822"/>
+          <SolidColorBrush x:Key="Mint"        Color="#5CCBAB"/>
+        </ResourceDictionary>
+
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- Typography -->
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="TextBlock.h1">
+    <Setter Property="FontSize" Value="24"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontSize" Value="17"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="TextBlock.sub">
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="TextBlock.label">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="TextBlock.value">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+
+  <!-- Cards -->
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="16"/>
+  </Style>
+
+  <Style Selector="Border.badge">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="7,2"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- Sidebar navigation -->
+  <Style Selector="Button.nav">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="Padding" Value="14,10"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.nav /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.nav.active">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.nav.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+
+  <!-- Primary action -->
+  <Style Selector="Button.primary">
+    <Setter Property="Padding" Value="22,12"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.primary /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.primary:disabled">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+
+  <!-- Filter chips -->
+  <Style Selector="RadioButton.chip">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="shell"
+                Background="{DynamicResource Surface}"
+                BorderBrush="{DynamicResource Border}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="15,8">
+          <ContentPresenter Content="{TemplateBinding Content}"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton.chip:pointerover /template/ Border#shell">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="RadioButton.chip:checked">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="RadioButton.chip:checked /template/ Border#shell">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Version list -->
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Padding" Value="6"/>
+  </Style>
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="14,11"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Margin" Value="0,1"/>
+  </Style>
+  <Style Selector="ListBoxItem /template/ ContentPresenter">
+    <Setter Property="CornerRadius" Value="11"/>
+  </Style>
+  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+
+  <!-- Inputs -->
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Padding" Value="12,9"/>
+    <Setter Property="FontSize" Value="13.5"/>
+  </Style>
+
+</Styles>

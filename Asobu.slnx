@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Asobu.App/Asobu.App.csproj" />
     <Project Path="src/Asobu.Cli/Asobu.Cli.csproj" />
     <Project Path="src/Asobu.Core/Asobu.Core.csproj" />
   </Folder>

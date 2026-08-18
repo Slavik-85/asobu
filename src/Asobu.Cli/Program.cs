@@ -1,3 +1,4 @@
+using Asobu.Core;
 using Asobu.Core.Minecraft;
 
 using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
@@ -60,10 +61,10 @@ static async Task<int> InspectAsync(MojangMeta meta, string id)
     Console.WriteLine($"  java          {version.JavaVersion?.MajorVersion.ToString() ?? "8 (unspecified)"}"
                     + $"  {version.JavaVersion?.Component}");
     Console.WriteLine($"  asset index   {version.AssetIndex?.Id ?? version.Assets ?? "<missing>"}"
-                    + $"  ({Bytes(version.AssetIndex?.TotalSize ?? 0)} of assets)");
+                    + $"  ({Format.Bytes(version.AssetIndex?.TotalSize ?? 0)} of assets)");
 
     var client = version.ClientJar;
-    Console.WriteLine($"  client jar    {Bytes(client?.Size ?? 0)}  sha1 {client?.Sha1 ?? "?"}");
+    Console.WriteLine($"  client jar    {Format.Bytes(client?.Size ?? 0)}  sha1 {client?.Sha1 ?? "?"}");
     Console.WriteLine($"  log config    {version.Logging?.Client?.File.Id ?? "none"}");
 
     var allowed = version.Libraries.Where(l => RuleEvaluator.Allows(l, context)).ToList();
@@ -71,7 +72,7 @@ static async Task<int> InspectAsync(MojangMeta meta, string id)
     var librarySize = allowed.Sum(l => l.Downloads?.Artifact?.Size ?? 0);
 
     Console.WriteLine($"  libraries     {allowed.Count} of {version.Libraries.Count} apply here"
-                    + $"  ({Bytes(librarySize)}, {natives} with legacy natives)");
+                    + $"  ({Format.Bytes(librarySize)}, {natives} with legacy natives)");
 
     if (version.Arguments is { } arguments)
     {
@@ -89,11 +90,3 @@ static async Task<int> InspectAsync(MojangMeta meta, string id)
 
     return 0;
 }
-
-static string Bytes(long value) => value switch
-{
-    >= 1L << 30 => $"{value / (double)(1L << 30):0.0} GB",
-    >= 1L << 20 => $"{value / (double)(1L << 20):0.0} MB",
-    >= 1L << 10 => $"{value / (double)(1L << 10):0.0} KB",
-    _ => $"{value} B",
-};
