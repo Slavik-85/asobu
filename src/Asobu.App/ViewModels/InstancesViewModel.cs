@@ -12,7 +12,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace Asobu.App.ViewModels;
 
-public partial class InstancesViewModel(AsobuLauncher launcher, AccountsViewModel accounts) : ViewModelBase
+public partial class InstancesViewModel(AsobuLauncher launcher, AccountsViewModel accounts, Action requestNewInstance) : ViewModelBase
 {
     public ObservableCollection<Instance> Items { get; } = [];
 
@@ -64,6 +64,9 @@ public partial class InstancesViewModel(AsobuLauncher launcher, AccountsViewMode
     partial void OnConfirmingDeleteChanged(bool value) => OnPropertyChanged(nameof(DeleteLabel));
 
     public void RefreshAccountLabel() => OnPropertyChanged(nameof(AccountLabel));
+
+    [RelayCommand]
+    private void NewInstance() => requestNewInstance();
 
     [RelayCommand]
     private async Task PlayAsync()

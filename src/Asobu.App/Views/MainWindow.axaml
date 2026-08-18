@@ -49,10 +49,8 @@
         </Border>
 
         <StackPanel Spacing="3" VerticalAlignment="Top">
-          <Button Classes="nav" Classes.active="{Binding IsInstances}"
+          <Button Classes="nav" Classes.active="{Binding IsInstancesArea}"
                   Command="{Binding GoInstancesCommand}" Content="Instances"/>
-          <Button Classes="nav" Classes.active="{Binding IsNewInstance}"
-                  Command="{Binding GoNewInstanceCommand}" Content="New instance"/>
         </StackPanel>
 
       </DockPanel>

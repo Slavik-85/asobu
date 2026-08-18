@@ -18,7 +18,7 @@ public partial class MainViewModel : ViewModelBase
         Launcher = new AsobuLauncher(_http);
 
         AccountsPage = new AccountsViewModel(Launcher);
-        InstancesPage = new InstancesViewModel(Launcher, AccountsPage);
+        InstancesPage = new InstancesViewModel(Launcher, AccountsPage, () => _ = GoNewInstanceAsync());
         NewInstancePage = new VersionPickerViewModel(Launcher, OnInstanceCreated);
         SettingsPage = new SettingsViewModel(Launcher);
 
@@ -48,6 +48,7 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsInstances => CurrentPage is InstancesViewModel;
     public bool IsNewInstance => CurrentPage is VersionPickerViewModel;
+    public bool IsInstancesArea => IsInstances || IsNewInstance;
     public bool IsAccounts => CurrentPage is AccountsViewModel;
     public bool IsSettings => CurrentPage is SettingsViewModel;
 
@@ -58,6 +59,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsInstances));
         OnPropertyChanged(nameof(IsNewInstance));
+        OnPropertyChanged(nameof(IsInstancesArea));
         OnPropertyChanged(nameof(IsAccounts));
         OnPropertyChanged(nameof(IsSettings));
     }
