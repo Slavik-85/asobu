@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Asobu.Cli/Asobu.Cli.csproj" />
+    <Project Path="src/Asobu.Core/Asobu.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Asobu.Core.Tests/Asobu.Core.Tests.csproj" />
+  </Folder>
+</Solution>
