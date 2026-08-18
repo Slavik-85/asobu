@@ -19,7 +19,7 @@ public partial class MainViewModel : ViewModelBase
 
         AccountsPage = new AccountsViewModel(Launcher);
         InstancesPage = new InstancesViewModel(Launcher, AccountsPage, () => _ = GoNewInstanceAsync());
-        NewInstancePage = new VersionPickerViewModel(Launcher, OnInstanceCreated);
+        NewInstancePage = new VersionPickerViewModel(Launcher, OnInstanceCreated, GoInstances);
         SettingsPage = new SettingsViewModel(Launcher);
 
         AccountsPage.Reload();

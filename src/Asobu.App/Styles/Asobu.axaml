@@ -185,6 +185,25 @@
     <Setter Property="FontSize" Value="13.5"/>
   </Style>
 
+  <!-- Back link -->
+  <Style Selector="Button.back">
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.back /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.back:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.back:pointerover TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.back:pointerover Path">
+    <Setter Property="Stroke" Value="{DynamicResource Text}"/>
+  </Style>
+
   <!-- Secondary action -->
   <Style Selector="Button.ghost">
     <Setter Property="Padding" Value="16,10"/>

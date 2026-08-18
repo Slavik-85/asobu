@@ -44,7 +44,7 @@ public sealed record VersionDetail(
     string AssetSize,
     string TotalSize);
 
-public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Instance> onCreated) : ViewModelBase
+public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Instance> onCreated, Action onBack) : ViewModelBase
 {
     private readonly List<VersionRow> _all = [];
     private CancellationTokenSource? _detailRequest;
@@ -80,6 +80,9 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
         // Downloading happens on Play, so creating an instance stays instant and offline-safe.
         onCreated(launcher.Instances.Create(name, row.Id));
     }
+
+    [RelayCommand]
+    private void Back() => onBack();
 
     public async Task EnsureLoadedAsync()
     {
