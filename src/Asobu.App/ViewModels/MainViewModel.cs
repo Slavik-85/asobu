@@ -1,7 +1,8 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Asobu.Core.Minecraft;
+using Asobu.Core;
+using Asobu.Core.Instances;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -9,29 +10,90 @@ namespace Asobu.App.ViewModels;
 
 public partial class MainViewModel : ViewModelBase
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(60) };
 
     public MainViewModel()
     {
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("Asobu/0.1 (+https://asobu.cc)");
-        Picker = new VersionPickerViewModel(new MojangMeta(_http));
+        Launcher = new AsobuLauncher(_http);
+
+        AccountsPage = new AccountsViewModel(Launcher);
+        InstancesPage = new InstancesViewModel(Launcher, AccountsPage);
+        NewInstancePage = new VersionPickerViewModel(Launcher, OnInstanceCreated);
+        SettingsPage = new SettingsViewModel(Launcher);
+
+        AccountsPage.Reload();
+        AccountsPage.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AccountsViewModel.Active))
+            {
+                InstancesPage.RefreshAccountLabel();
+                OnPropertyChanged(nameof(AccountLabel));
+                OnPropertyChanged(nameof(AccountKindLabel));
+            }
+        };
+
+        InstancesPage.Reload();
+        CurrentPage = InstancesPage;
     }
 
-    public VersionPickerViewModel Picker { get; }
+    public AsobuLauncher Launcher { get; }
 
-    [ObservableProperty] public partial bool IsAddingInstance { get; set; }
+    public InstancesViewModel InstancesPage { get; }
+    public VersionPickerViewModel NewInstancePage { get; }
+    public AccountsViewModel AccountsPage { get; }
+    public SettingsViewModel SettingsPage { get; }
 
-    public bool IsBrowsingInstances => !IsAddingInstance;
+    [ObservableProperty] public partial ViewModelBase CurrentPage { get; set; }
 
-    partial void OnIsAddingInstanceChanged(bool value) => OnPropertyChanged(nameof(IsBrowsingInstances));
+    public bool IsInstances => CurrentPage is InstancesViewModel;
+    public bool IsNewInstance => CurrentPage is VersionPickerViewModel;
+    public bool IsAccounts => CurrentPage is AccountsViewModel;
+    public bool IsSettings => CurrentPage is SettingsViewModel;
 
-    [RelayCommand]
-    private async Task NewInstanceAsync()
+    public string AccountLabel => AccountsPage.ActiveLabel;
+    public string AccountKindLabel => AccountsPage.ActiveKindLabel;
+
+    partial void OnCurrentPageChanged(ViewModelBase value)
     {
-        IsAddingInstance = true;
-        await Picker.EnsureLoadedAsync();
+        OnPropertyChanged(nameof(IsInstances));
+        OnPropertyChanged(nameof(IsNewInstance));
+        OnPropertyChanged(nameof(IsAccounts));
+        OnPropertyChanged(nameof(IsSettings));
+    }
+
+    private void OnInstanceCreated(Instance instance)
+    {
+        InstancesPage.Reload();
+        InstancesPage.Selected = instance;
+        CurrentPage = InstancesPage;
     }
 
     [RelayCommand]
-    private void ShowInstances() => IsAddingInstance = false;
+    private void GoInstances()
+    {
+        InstancesPage.Reload();
+        CurrentPage = InstancesPage;
+    }
+
+    [RelayCommand]
+    private async Task GoNewInstanceAsync()
+    {
+        CurrentPage = NewInstancePage;
+        await NewInstancePage.EnsureLoadedAsync();
+    }
+
+    [RelayCommand]
+    private void GoAccounts()
+    {
+        AccountsPage.Reload();
+        CurrentPage = AccountsPage;
+    }
+
+    [RelayCommand]
+    private void GoSettings()
+    {
+        SettingsPage.RefreshJavaOptionsCommand.Execute(null);
+        CurrentPage = SettingsPage;
+    }
 }

@@ -1,7 +1,8 @@
 using Asobu.Core;
+using Asobu.Core.Accounts;
 using Asobu.Core.Minecraft;
 
-using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
 http.DefaultRequestHeaders.UserAgent.ParseAdd("Asobu/0.1 (+https://asobu.cc)");
 var meta = new MojangMeta(http);
 
@@ -11,6 +12,9 @@ try
     {
         ["versions", ..] => await ListVersionsAsync(meta, args.Contains("--all")),
         ["inspect", var id] => await InspectAsync(meta, id),
+        ["install", var id] => await InstallAsync(http, id),
+        ["play", var id, ..] => await PlayAsync(http, id, args.Length > 2 ? args[2] : "Player"),
+        ["where"] => Where(),
         _ => Usage(),
     };
 }
@@ -25,10 +29,20 @@ static int Usage()
     Console.WriteLine("""
         asobu — Minecraft launcher (dev harness)
 
-          versions [--all]     list Minecraft versions (releases only unless --all)
-          inspect <version>    resolve a version and show what launching it would require
+          versions [--all]        list Minecraft versions
+          inspect <version>       show what launching a version would require
+          install <version>       download everything that version needs
+          play <version> [name]   install, then launch it offline
+          where                   print the Asobu data folder
         """);
     return 2;
+}
+
+static int Where()
+{
+    var paths = AsobuPaths.Resolve();
+    Console.WriteLine(paths.Root);
+    return 0;
 }
 
 static async Task<int> ListVersionsAsync(MojangMeta meta, bool all)
@@ -90,3 +104,51 @@ static async Task<int> InspectAsync(MojangMeta meta, string id)
 
     return 0;
 }
+
+static Progress<InstallProgress> Reporter()
+{
+    var lastStage = "";
+    return new Progress<InstallProgress>(p =>
+    {
+        var line = $"  {p.Stage,-34} {p.Fraction,7:P0}";
+        if (p.Stage != lastStage) { Console.WriteLine(); lastStage = p.Stage; }
+        Console.Write("\r" + line);
+    });
+}
+
+static async Task<int> InstallAsync(HttpClient http, string id)
+{
+    var launcher = new AsobuLauncher(http);
+    var instance = FindOrCreate(launcher, id);
+
+    Console.WriteLine($"Installing {id} into {launcher.Paths.Root}");
+    await launcher.InstallAsync(instance, Reporter());
+
+    Console.WriteLine("\n\nDone.");
+    return 0;
+}
+
+static async Task<int> PlayAsync(HttpClient http, string id, string username)
+{
+    var launcher = new AsobuLauncher(http);
+    var instance = FindOrCreate(launcher, id);
+    var account = Account.CreateOffline(username);
+
+    Console.WriteLine($"Launching {id} as {username} ({account.Uuid})");
+
+    var process = await launcher.LaunchAsync(
+        instance,
+        MinecraftSession.ForOffline(account),
+        Reporter(),
+        onOutput: line => Console.WriteLine("  | " + line));
+
+    Console.WriteLine($"\n\nMinecraft started, pid {process.Id}. Logs in {launcher.Paths.Logs}");
+    await process.WaitForExitAsync();
+    Console.WriteLine($"Minecraft exited with code {process.ExitCode}.");
+
+    return process.ExitCode;
+}
+
+static Asobu.Core.Instances.Instance FindOrCreate(AsobuLauncher launcher, string versionId) =>
+    launcher.Instances.LoadAll().FirstOrDefault(i => i.MinecraftVersion == versionId)
+    ?? launcher.Instances.Create(versionId, versionId);

@@ -1,0 +1,93 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:core="using:Asobu.Core.Accounts"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.AccountsView"
+             x:DataType="vm:AccountsViewModel">
+
+  <Grid RowDefinitions="Auto,*" Margin="30,28,30,28">
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,18">
+      <TextBlock Text="Accounts" Classes="h1"/>
+      <TextBlock Classes="sub" Margin="0,5,0,0"
+                 Text="Sign in with Microsoft to play online. Offline accounts work for singleplayer."/>
+    </StackPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,372">
+
+      <Border Classes="card" ClipToBounds="True">
+        <Panel>
+          <StackPanel VerticalAlignment="Center" Spacing="8" IsVisible="{Binding IsEmpty}" Margin="30">
+            <TextBlock Text="No accounts yet" Classes="h2" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextMuted}"/>
+            <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                       Text="Add one on the right. The selected account is the one Play uses."/>
+          </StackPanel>
+
+          <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Active}"
+                   IsVisible="{Binding !IsEmpty}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="core:Account">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Border Grid.Column="0" Width="34" Height="34" CornerRadius="17"
+                          Background="{DynamicResource AccentSoft}" Margin="0,0,13,0">
+                    <TextBlock Text="&#x1F338;" FontSize="14"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Username}" FontSize="14" FontWeight="Medium"/>
+                    <TextBlock Text="{Binding Uuid}" Classes="label"/>
+                  </StackPanel>
+                  <Border Grid.Column="2" Classes="badge">
+                    <TextBlock Text="{Binding Kind}" FontSize="11.5"
+                               Foreground="{DynamicResource TextMuted}"/>
+                  </Border>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Panel>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="24">
+        <StackPanel Spacing="16">
+
+          <StackPanel Spacing="9">
+            <TextBlock Text="Microsoft" Classes="h2"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Opens your browser. Asobu never sees your password — the sign-in happens with Microsoft directly."/>
+            <Button Classes="primary" Content="Sign in with Microsoft" HorizontalAlignment="Stretch"
+                    IsEnabled="{Binding !IsSigningIn}" Command="{Binding SignInMicrosoftCommand}"/>
+            <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="10" Padding="12"
+                    IsVisible="{Binding !IsMicrosoftConfigured}">
+              <TextBlock Classes="sub" TextWrapping="Wrap" FontSize="12.5"
+                         Text="Needs an Azure client id that Mojang has approved for this launcher. Paste one in Settings."/>
+            </Border>
+          </StackPanel>
+
+          <Border Height="1" Background="{DynamicResource Border}"/>
+
+          <StackPanel Spacing="9">
+            <TextBlock Text="Offline" Classes="h2"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Singleplayer only. Online servers reject offline accounts."/>
+            <TextBox Text="{Binding NewUsername}" PlaceholderText="Username"/>
+            <Button Classes="ghost" Content="Add offline account" HorizontalAlignment="Stretch"
+                    Command="{Binding AddOfflineCommand}"/>
+          </StackPanel>
+
+          <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Accent}"
+                     IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+          <Button Classes="ghost danger" Content="Remove selected" HorizontalAlignment="Stretch"
+                  IsVisible="{Binding !IsEmpty}"
+                  Command="{Binding RemoveCommand}" CommandParameter="{Binding Active}"/>
+
+        </StackPanel>
+      </Border>
+
+    </Grid>
+  </Grid>
+</UserControl>

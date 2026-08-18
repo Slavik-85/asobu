@@ -6,30 +6,36 @@
       <ResourceDictionary.ThemeDictionaries>
 
         <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="Bg"          Color="#FBF8F6"/>
+          <SolidColorBrush x:Key="Bg"          Color="#FDF8FA"/>
           <SolidColorBrush x:Key="Surface"     Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="SurfaceAlt"  Color="#F4EFEC"/>
-          <SolidColorBrush x:Key="Hover"       Color="#EFE8E4"/>
-          <SolidColorBrush x:Key="Border"      Color="#E9E1DC"/>
-          <SolidColorBrush x:Key="Text"        Color="#2A2325"/>
-          <SolidColorBrush x:Key="TextMuted"   Color="#8E8085"/>
-          <SolidColorBrush x:Key="Accent"      Color="#FF7A5C"/>
-          <SolidColorBrush x:Key="AccentHover" Color="#F26648"/>
-          <SolidColorBrush x:Key="AccentSoft"  Color="#FFE9E3"/>
+          <SolidColorBrush x:Key="SurfaceAlt"  Color="#F7EFF3"/>
+          <SolidColorBrush x:Key="Hover"       Color="#F2E6EC"/>
+          <SolidColorBrush x:Key="Border"      Color="#EDDFE6"/>
+          <SolidColorBrush x:Key="Text"        Color="#2C2126"/>
+          <SolidColorBrush x:Key="TextMuted"   Color="#8B7A82"/>
+          <!-- Sakura. Accent is deliberately deeper than blossom pink so white text on it
+               clears WCAG AA (4.8:1); AccentSoft carries the actual petal tint. -->
+          <SolidColorBrush x:Key="Accent"      Color="#C44370"/>
+          <SolidColorBrush x:Key="AccentHover" Color="#AE3A63"/>
+          <SolidColorBrush x:Key="AccentSoft"  Color="#FFE6EE"/>
+          <SolidColorBrush x:Key="OnAccent"    Color="#FFFFFF"/>
           <SolidColorBrush x:Key="Mint"        Color="#3FAE8E"/>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="Bg"          Color="#161215"/>
-          <SolidColorBrush x:Key="Surface"     Color="#201B1F"/>
-          <SolidColorBrush x:Key="SurfaceAlt"  Color="#1B171A"/>
-          <SolidColorBrush x:Key="Hover"       Color="#2C252B"/>
-          <SolidColorBrush x:Key="Border"      Color="#332B32"/>
-          <SolidColorBrush x:Key="Text"        Color="#F4EEEB"/>
-          <SolidColorBrush x:Key="TextMuted"   Color="#9C8E94"/>
-          <SolidColorBrush x:Key="Accent"      Color="#FF8A6E"/>
-          <SolidColorBrush x:Key="AccentHover" Color="#FF9C84"/>
-          <SolidColorBrush x:Key="AccentSoft"  Color="#3B2822"/>
+          <SolidColorBrush x:Key="Bg"          Color="#161114"/>
+          <SolidColorBrush x:Key="Surface"     Color="#201A1E"/>
+          <SolidColorBrush x:Key="SurfaceAlt"  Color="#1B1519"/>
+          <SolidColorBrush x:Key="Hover"       Color="#2C2429"/>
+          <SolidColorBrush x:Key="Border"      Color="#342B30"/>
+          <SolidColorBrush x:Key="Text"        Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="TextMuted"   Color="#9C8C93"/>
+          <!-- On dark the blossom pink can be light, so accent text reads at 9:1 and
+               buttons take dark text instead of white. -->
+          <SolidColorBrush x:Key="Accent"      Color="#FF9EC0"/>
+          <SolidColorBrush x:Key="AccentHover" Color="#FFB6D0"/>
+          <SolidColorBrush x:Key="AccentSoft"  Color="#3B222B"/>
+          <SolidColorBrush x:Key="OnAccent"    Color="#2A1620"/>
           <SolidColorBrush x:Key="Mint"        Color="#5CCBAB"/>
         </ResourceDictionary>
 
@@ -107,7 +113,7 @@
     <Setter Property="CornerRadius" Value="12"/>
     <Setter Property="FontSize" Value="14"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
-    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
     <Setter Property="HorizontalContentAlignment" Value="Center"/>
   </Style>
   <Style Selector="Button.primary /template/ ContentPresenter">
@@ -177,6 +183,58 @@
     <Setter Property="CornerRadius" Value="11"/>
     <Setter Property="Padding" Value="12,9"/>
     <Setter Property="FontSize" Value="13.5"/>
+  </Style>
+
+  <!-- Secondary action -->
+  <Style Selector="Button.ghost">
+    <Setter Property="Padding" Value="16,10"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ghost /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+  <Style Selector="Button.ghost:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.ghost.danger">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Sidebar account chip -->
+  <Style Selector="Button.accountChip">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="Padding" Value="12"/>
+    <Setter Property="CornerRadius" Value="14"/>
+  </Style>
+  <Style Selector="Button.accountChip /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="Button.accountChip:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.accountChip.active /template/ ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Progress and pickers -->
+  <Style Selector="ProgressBar">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Padding" Value="12,9"/>
+    <Setter Property="FontSize" Value="13.5"/>
+  </Style>
+  <Style Selector="Slider">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
   </Style>
 
 </Styles>

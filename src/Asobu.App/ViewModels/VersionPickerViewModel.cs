@@ -6,7 +6,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Asobu.Core;
+using Asobu.Core.Instances;
 using Asobu.Core.Minecraft;
+using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Asobu.App.ViewModels;
@@ -42,7 +44,7 @@ public sealed record VersionDetail(
     string AssetSize,
     string TotalSize);
 
-public partial class VersionPickerViewModel(MojangMeta meta) : ViewModelBase
+public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Instance> onCreated) : ViewModelBase
 {
     private readonly List<VersionRow> _all = [];
     private CancellationTokenSource? _detailRequest;
@@ -62,8 +64,22 @@ public partial class VersionPickerViewModel(MojangMeta meta) : ViewModelBase
     [ObservableProperty] public partial VersionRow? SelectedVersion { get; set; }
     [ObservableProperty] public partial VersionDetail? Detail { get; set; }
     [ObservableProperty] public partial bool IsLoadingDetail { get; set; }
+    [ObservableProperty] public partial string InstanceName { get; set; } = "";
 
     public bool HasNoSelection => SelectedVersion is null;
+    public bool CanCreate => Detail is not null && InstanceName.Trim().Length > 0;
+
+    partial void OnDetailChanged(VersionDetail? value) => OnPropertyChanged(nameof(CanCreate));
+    partial void OnInstanceNameChanged(string value) => OnPropertyChanged(nameof(CanCreate));
+
+    [RelayCommand]
+    private void Create()
+    {
+        if (SelectedVersion is not { } row || InstanceName.Trim() is not { Length: > 0 } name) return;
+
+        // Downloading happens on Play, so creating an instance stays instant and offline-safe.
+        onCreated(launcher.Instances.Create(name, row.Id));
+    }
 
     public async Task EnsureLoadedAsync()
     {
@@ -74,7 +90,7 @@ public partial class VersionPickerViewModel(MojangMeta meta) : ViewModelBase
         Error = null;
         try
         {
-            var manifest = await meta.GetManifestAsync();
+            var manifest = await launcher.Meta.GetManifestAsync();
             LatestRelease = manifest.Latest.Release;
             _all.AddRange(manifest.Versions.Select(v => new VersionRow(v)));
             ApplyFilter();
@@ -114,6 +130,7 @@ public partial class VersionPickerViewModel(MojangMeta meta) : ViewModelBase
     partial void OnSelectedVersionChanged(VersionRow? value)
     {
         OnPropertyChanged(nameof(HasNoSelection));
+        if (value is not null) InstanceName = value.Id;
         _ = LoadDetailAsync(value);
     }
 
@@ -129,7 +146,7 @@ public partial class VersionPickerViewModel(MojangMeta meta) : ViewModelBase
         IsLoadingDetail = true;
         try
         {
-            var version = await meta.GetResolvedVersionAsync(row.Id, request.Token);
+            var version = await launcher.Meta.GetResolvedVersionAsync(row.Id, request.Token);
             if (!request.IsCancellationRequested) Detail = Describe(row, version);
         }
         catch (OperationCanceledException)

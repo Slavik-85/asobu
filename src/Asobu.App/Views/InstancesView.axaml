@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:core="using:Asobu.Core.Instances"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.InstancesView"
+             x:DataType="vm:InstancesViewModel">
+
+  <Panel>
+
+    <!-- Empty state -->
+    <StackPanel IsVisible="{Binding IsEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Spacing="14" MaxWidth="410">
+      <Border Width="92" Height="92" CornerRadius="30" HorizontalAlignment="Center"
+              Background="{DynamicResource AccentSoft}">
+        <TextBlock Text="&#x1F338;" FontSize="40" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      </Border>
+      <TextBlock Text="No instances yet" Classes="h1" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                 Text="Make one from any Minecraft version. Asobu fetches the game, the libraries and the right Java for you."/>
+    </StackPanel>
+
+    <!-- Instance list -->
+    <Grid IsVisible="{Binding !IsEmpty}" ColumnDefinitions="*,372" Margin="30,28,30,28">
+
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Instances" Classes="h1" Margin="0,0,0,16"/>
+        <Border Classes="card" ClipToBounds="True">
+          <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Selected}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="core:Instance">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Border Grid.Column="0" Width="36" Height="36" CornerRadius="11"
+                          Background="{DynamicResource AccentSoft}" Margin="0,0,13,0">
+                    <TextBlock Text="&#x1F338;" FontSize="16"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Medium"/>
+                    <TextBlock Text="{Binding MinecraftVersion, StringFormat='Minecraft {0}'}" Classes="label"/>
+                  </StackPanel>
+                  <TextBlock Grid.Column="2" Text="{Binding PlaytimeLabel}" Classes="label"
+                             VerticalAlignment="Center"/>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Border>
+      </DockPanel>
+
+      <!-- Detail / play -->
+      <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="24"
+              IsVisible="{Binding HasSelection}">
+        <DockPanel>
+
+          <StackPanel DockPanel.Dock="Top" Spacing="6">
+            <TextBlock Text="{Binding Selected.Name}" Classes="h1" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding Selected.MinecraftVersion, StringFormat='Minecraft {0}  ·  Vanilla'}"
+                       Classes="sub"/>
+          </StackPanel>
+
+          <StackPanel DockPanel.Dock="Bottom" Spacing="10">
+
+            <StackPanel Spacing="7" IsVisible="{Binding IsBusy}">
+              <TextBlock Text="{Binding Status}" Classes="label"/>
+              <ProgressBar Value="{Binding Progress}" Maximum="1" Height="6" CornerRadius="3"/>
+            </StackPanel>
+
+            <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="12"
+                    IsVisible="{Binding IsRunning}">
+              <TextBlock Text="Minecraft is running" FontSize="13" FontWeight="Medium"
+                         Foreground="{DynamicResource Accent}" HorizontalAlignment="Center"/>
+            </Border>
+
+            <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Accent}"
+                       IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+            <Button Classes="primary" Content="{Binding PlayLabel}" HorizontalAlignment="Stretch"
+                    IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
+            <TextBlock Text="{Binding AccountLabel}" Classes="label" HorizontalAlignment="Center"/>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+              <Button Grid.Column="0" Classes="ghost" Content="Open folder"
+                      HorizontalAlignment="Stretch" Command="{Binding OpenFolderCommand}"/>
+              <Button Grid.Column="1" Classes="ghost danger" Content="{Binding DeleteLabel}"
+                      HorizontalAlignment="Stretch" Command="{Binding DeleteCommand}"/>
+            </Grid>
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="10"
+                VerticalAlignment="Top" Margin="0,24,0,20">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Loader" Classes="label"/>
+            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.Loader}" Classes="value"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Playtime" Classes="label"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
+
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Created" Classes="label"/>
+            <TextBlock Grid.Row="2" Grid.Column="1"
+                       Text="{Binding Selected.Created, StringFormat='{}{0:yyyy-MM-dd}'}" Classes="value"/>
+          </Grid>
+
+        </DockPanel>
+      </Border>
+
+    </Grid>
+  </Panel>
+</UserControl>

@@ -1,0 +1,126 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.VersionPickerView"
+             x:DataType="vm:VersionPickerViewModel">
+
+  <Grid RowDefinitions="Auto,*" Margin="30,28,30,28">
+
+    <StackPanel Grid.Row="0">
+      <TextBlock Text="New instance" Classes="h1"/>
+      <TextBlock Classes="sub" Margin="0,5,0,0"
+                 Text="Choose a Minecraft version. Java, libraries and assets are handled for you."/>
+
+      <Grid ColumnDefinitions="*,Auto" Margin="0,20,0,16">
+        <TextBox Grid.Column="0" PlaceholderText="Search versions" Width="320"
+                 HorizontalAlignment="Left" Text="{Binding SearchText}"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7">
+          <RadioButton Classes="chip" GroupName="filter" Content="Releases" IsChecked="{Binding FilterReleases}"/>
+          <RadioButton Classes="chip" GroupName="filter" Content="Snapshots" IsChecked="{Binding FilterSnapshots}"/>
+          <RadioButton Classes="chip" GroupName="filter" Content="All" IsChecked="{Binding FilterAll}"/>
+        </StackPanel>
+      </Grid>
+    </StackPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,372">
+
+      <Border Classes="card" ClipToBounds="True">
+        <Panel>
+          <TextBlock Text="Loading versions…" Classes="sub"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding IsLoading}"/>
+
+          <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap" Margin="24"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+          <ListBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:VersionRow">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                  <TextBlock Grid.Column="0" Text="{Binding Id}" FontSize="14" FontWeight="Medium"
+                             VerticalAlignment="Center"/>
+                  <Border Grid.Column="1" Classes="badge">
+                    <TextBlock Text="{Binding Kind}" FontSize="11.5" Foreground="{DynamicResource TextMuted}"/>
+                  </Border>
+                  <TextBlock Grid.Column="2" Text="{Binding Released}" Classes="label"
+                             Width="76" TextAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Panel>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="24">
+        <Panel>
+
+          <StackPanel VerticalAlignment="Center" Spacing="8" IsVisible="{Binding HasNoSelection}">
+            <TextBlock Text="Nothing selected" Classes="h2" HorizontalAlignment="Center"
+                       Foreground="{DynamicResource TextMuted}"/>
+            <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                       Text="Pick a version to see exactly what Asobu would download."/>
+          </StackPanel>
+
+          <TextBlock Text="Checking…" Classes="sub" HorizontalAlignment="Center"
+                     VerticalAlignment="Center" IsVisible="{Binding IsLoadingDetail}"/>
+
+          <DockPanel IsVisible="{Binding Detail, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+
+            <StackPanel DockPanel.Dock="Top" Spacing="10">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="{Binding Detail.Id}" Classes="h1"/>
+                <Border Classes="badge" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Detail.Kind}" FontSize="11.5"
+                             Foreground="{DynamicResource TextMuted}"/>
+                </Border>
+              </StackPanel>
+              <TextBlock Text="Vanilla · no mod loader" Classes="sub"/>
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Bottom" Spacing="9">
+              <TextBlock Text="Instance name" Classes="label"/>
+              <TextBox Text="{Binding InstanceName}" PlaceholderText="My world"/>
+              <Button Classes="primary" Content="Create instance" HorizontalAlignment="Stretch"
+                      IsEnabled="{Binding CanCreate}" Command="{Binding CreateCommand}"/>
+            </StackPanel>
+
+            <StackPanel Spacing="13" Margin="0,24,0,20">
+              <StackPanel Spacing="3">
+                <TextBlock Text="Total download" Classes="label"/>
+                <TextBlock Text="{Binding Detail.TotalSize}" FontSize="21" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Accent}"/>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="9">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Game" Classes="label"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Detail.ClientSize}" Classes="value"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Libraries" Classes="label"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Detail.LibrarySize}" Classes="value"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Assets" Classes="label"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Detail.AssetSize}" Classes="value"/>
+
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Runtime" Classes="label"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Detail.Java}" Classes="value"/>
+
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Asset index" Classes="label"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Detail.AssetIndex}" Classes="value"/>
+
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Components" Classes="label"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Detail.Libraries}"
+                           Classes="value" TextAlignment="Right"/>
+              </Grid>
+            </StackPanel>
+
+          </DockPanel>
+        </Panel>
+      </Border>
+
+    </Grid>
+  </Grid>
+</UserControl>

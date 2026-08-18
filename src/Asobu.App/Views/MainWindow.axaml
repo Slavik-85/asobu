@@ -1,206 +1,55 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Asobu.App.ViewModels"
-        xmlns:conv="using:Avalonia.Data.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1120" d:DesignHeight="720"
         x:Class="Asobu.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="Asobu"
-        Width="1120" Height="720" MinWidth="940" MinHeight="620"
+        Width="1120" Height="740" MinWidth="960" MinHeight="640"
         Background="{DynamicResource Bg}">
-
-  <Design.DataContext>
-    <vm:MainViewModel />
-  </Design.DataContext>
 
   <Grid ColumnDefinitions="232,*">
 
-    <!-- ============ Sidebar ============ -->
     <Border Grid.Column="0" Background="{DynamicResource SurfaceAlt}"
             BorderBrush="{DynamicResource Border}" BorderThickness="0,0,1,0">
       <DockPanel Margin="16">
 
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="11" Margin="6,8,0,28">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="11" Margin="6,8,0,26">
           <Border Width="32" Height="32" CornerRadius="10" Background="{DynamicResource Accent}">
-            <Path Data="M 0,0 L 9,5.5 L 0,11 Z" Fill="White" Width="9" Height="11"
+            <Path Data="M 0,0 L 9,5.5 L 0,11 Z" Fill="{DynamicResource OnAccent}" Width="9" Height="11"
                   Margin="3,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <TextBlock Text="asobu" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <Border DockPanel.Dock="Bottom" Classes="card" Padding="12" Margin="0,16,0,0">
+        <Button DockPanel.Dock="Bottom" Classes="accountChip" Classes.active="{Binding IsAccounts}"
+                Command="{Binding GoAccountsCommand}" Margin="0,16,0,0">
           <StackPanel Orientation="Horizontal" Spacing="11">
-            <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource SurfaceAlt}">
-              <TextBlock Text="?" FontSize="14" FontWeight="SemiBold"
-                         Foreground="{DynamicResource TextMuted}"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource AccentSoft}">
+              <TextBlock Text="&#x1F338;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="Not signed in" FontSize="13" FontWeight="Medium"/>
-              <TextBlock Text="Microsoft account" Classes="label"/>
+              <TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="Medium"/>
+              <TextBlock Text="{Binding AccountKindLabel}" Classes="label"/>
             </StackPanel>
           </StackPanel>
-        </Border>
+        </Button>
 
         <StackPanel Spacing="3" VerticalAlignment="Top">
-          <Button Classes="nav" Classes.active="{Binding IsBrowsingInstances}"
-                  Command="{Binding ShowInstancesCommand}" Content="Instances"/>
-          <Button Classes="nav" Classes.active="{Binding IsAddingInstance}"
-                  Command="{Binding NewInstanceCommand}" Content="New instance"/>
+          <Button Classes="nav" Classes.active="{Binding IsInstances}"
+                  Command="{Binding GoInstancesCommand}" Content="Instances"/>
+          <Button Classes="nav" Classes.active="{Binding IsNewInstance}"
+                  Command="{Binding GoNewInstanceCommand}" Content="New instance"/>
+          <Button Classes="nav" Classes.active="{Binding IsSettings}"
+                  Command="{Binding GoSettingsCommand}" Content="Settings"/>
         </StackPanel>
 
       </DockPanel>
     </Border>
 
-    <!-- ============ Instances (empty state) ============ -->
-    <StackPanel Grid.Column="1" IsVisible="{Binding IsBrowsingInstances}"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
-                Spacing="14" MaxWidth="400">
-      <Border Width="92" Height="92" CornerRadius="30" HorizontalAlignment="Center"
-              Background="{DynamicResource AccentSoft}">
-        <Path Data="M 0,0 L 18,11 L 0,22 Z" Fill="{DynamicResource Accent}" Width="18" Height="22"
-              Margin="5,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-      </Border>
-      <TextBlock Text="No instances yet" Classes="h1" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                 Text="Pick a Minecraft version and Asobu fetches everything it needs — Java included. Nothing to configure."/>
-      <Button Classes="primary" Content="Create your first instance" HorizontalAlignment="Center"
-              Margin="0,10,0,0" Command="{Binding NewInstanceCommand}"/>
-    </StackPanel>
-
-    <!-- ============ New instance ============ -->
-    <Grid Grid.Column="1" IsVisible="{Binding IsAddingInstance}"
-          RowDefinitions="Auto,*" Margin="30,28,30,28">
-
-      <StackPanel Grid.Row="0">
-        <TextBlock Text="New instance" Classes="h1"/>
-        <TextBlock Classes="sub" Margin="0,5,0,0"
-                   Text="Choose a Minecraft version. Java, libraries and assets are handled for you."/>
-
-        <Grid ColumnDefinitions="*,Auto" Margin="0,20,0,16">
-          <TextBox Grid.Column="0" PlaceholderText="Search versions" MaxWidth="320"
-                   HorizontalAlignment="Left" Width="320"
-                   Text="{Binding Picker.SearchText}"/>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7">
-            <RadioButton Classes="chip" GroupName="filter" Content="Releases"
-                         IsChecked="{Binding Picker.FilterReleases}"/>
-            <RadioButton Classes="chip" GroupName="filter" Content="Snapshots"
-                         IsChecked="{Binding Picker.FilterSnapshots}"/>
-            <RadioButton Classes="chip" GroupName="filter" Content="All"
-                         IsChecked="{Binding Picker.FilterAll}"/>
-          </StackPanel>
-        </Grid>
-      </StackPanel>
-
-      <Grid Grid.Row="1" ColumnDefinitions="*,352">
-
-        <!-- Version list -->
-        <Border Classes="card" ClipToBounds="True">
-          <Panel>
-            <TextBlock Text="Loading versions…" Classes="sub"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                       IsVisible="{Binding Picker.IsLoading}"/>
-
-            <TextBlock Text="{Binding Picker.Error}" Classes="sub" TextWrapping="Wrap" Margin="24"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                       IsVisible="{Binding Picker.Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
-
-            <ListBox ItemsSource="{Binding Picker.Versions}"
-                     SelectedItem="{Binding Picker.SelectedVersion}">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:VersionRow">
-                  <Grid ColumnDefinitions="*,Auto,Auto">
-                    <TextBlock Grid.Column="0" Text="{Binding Id}" FontSize="14" FontWeight="Medium"
-                               VerticalAlignment="Center"/>
-                    <Border Grid.Column="1" Classes="badge">
-                      <TextBlock Text="{Binding Kind}" FontSize="11.5"
-                                 Foreground="{DynamicResource TextMuted}"/>
-                    </Border>
-                    <TextBlock Grid.Column="2" Text="{Binding Released}" Classes="label"
-                               Width="76" TextAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
-          </Panel>
-        </Border>
-
-        <!-- Detail -->
-        <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="22">
-          <Panel>
-
-            <StackPanel VerticalAlignment="Center" Spacing="8"
-                        IsVisible="{Binding Picker.HasNoSelection}">
-              <TextBlock Text="Nothing selected" Classes="h2" HorizontalAlignment="Center"
-                         Foreground="{DynamicResource TextMuted}"/>
-              <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                         Text="Pick a version to see exactly what Asobu would download."/>
-            </StackPanel>
-
-            <TextBlock Text="Checking…" Classes="sub" HorizontalAlignment="Center"
-                       VerticalAlignment="Center" IsVisible="{Binding Picker.IsLoadingDetail}"/>
-
-            <DockPanel IsVisible="{Binding Picker.Detail, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
-
-              <StackPanel DockPanel.Dock="Top" Spacing="10">
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                  <TextBlock Text="{Binding Picker.Detail.Id}" Classes="h1"/>
-                  <Border Classes="badge" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Picker.Detail.Kind}" FontSize="11.5"
-                               Foreground="{DynamicResource TextMuted}"/>
-                  </Border>
-                </StackPanel>
-                <TextBlock Text="Vanilla · no mod loader" Classes="sub"/>
-              </StackPanel>
-
-              <Button DockPanel.Dock="Bottom" Classes="primary" Content="Install and play"
-                      HorizontalAlignment="Stretch" IsEnabled="False"/>
-
-              <StackPanel Spacing="13" Margin="0,24,0,20">
-                <StackPanel Spacing="3">
-                  <TextBlock Text="Total download" Classes="label"/>
-                  <TextBlock Text="{Binding Picker.Detail.TotalSize}" FontSize="21" FontWeight="SemiBold"
-                             Foreground="{DynamicResource Accent}"/>
-                </StackPanel>
-
-                <Border Height="1" Background="{DynamicResource Border}"/>
-
-                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
-                      RowSpacing="9">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Game" Classes="label"/>
-                  <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Picker.Detail.ClientSize}" Classes="value"/>
-
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Libraries" Classes="label"/>
-                  <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Picker.Detail.LibrarySize}" Classes="value"/>
-
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Assets" Classes="label"/>
-                  <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Picker.Detail.AssetSize}" Classes="value"/>
-
-                  <TextBlock Grid.Row="3" Grid.Column="0" Text="Runtime" Classes="label"/>
-                  <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Picker.Detail.Java}" Classes="value"/>
-
-                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Asset index" Classes="label"/>
-                  <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Picker.Detail.AssetIndex}" Classes="value"/>
-
-                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Components" Classes="label"/>
-                  <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Picker.Detail.Libraries}"
-                             Classes="value" TextAlignment="Right"/>
-                </Grid>
-
-                <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="10" Padding="12">
-                  <TextBlock Classes="sub" TextWrapping="Wrap" FontSize="12.5"
-                             Text="Installing arrives with the download manager. Everything above is read live from Mojang."/>
-                </Border>
-              </StackPanel>
-
-            </DockPanel>
-          </Panel>
-        </Border>
-
-      </Grid>
-    </Grid>
+    <ContentControl Grid.Column="1" Content="{Binding CurrentPage}"/>
 
   </Grid>
 </Window>
