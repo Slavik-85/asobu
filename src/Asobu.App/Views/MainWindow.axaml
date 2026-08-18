@@ -24,26 +24,35 @@
           <TextBlock Text="asobu" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <Button DockPanel.Dock="Bottom" Classes="accountChip" Classes.active="{Binding IsAccounts}"
-                Command="{Binding GoAccountsCommand}" Margin="0,16,0,0">
-          <StackPanel Orientation="Horizontal" Spacing="11">
-            <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource AccentSoft}">
-              <TextBlock Text="&#x1F338;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="Medium"/>
-              <TextBlock Text="{Binding AccountKindLabel}" Classes="label"/>
-            </StackPanel>
-          </StackPanel>
-        </Button>
+        <Border DockPanel.Dock="Bottom" Classes="accountBar" Margin="0,16,0,0">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <Button Grid.Column="0" Classes="accountChip" Classes.active="{Binding IsAccounts}"
+                    Command="{Binding GoAccountsCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="11">
+                <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource AccentSoft}">
+                  <TextBlock Text="&#x1F338;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="Medium"/>
+                  <TextBlock Text="{Binding AccountKindLabel}" Classes="label"/>
+                </StackPanel>
+              </StackPanel>
+            </Button>
+            <Border Grid.Column="1" Width="1" Margin="2,8" Background="{DynamicResource Border}"/>
+            <Button Grid.Column="2" Classes="gearButton" Classes.active="{Binding IsSettings}"
+                    Command="{Binding GoSettingsCommand}"
+                    ToolTip.Tip="Settings">
+              <Path Data="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.94 3a7.97 7.97 0 0 0-.6-2.3l1.68-1.46-2-3.46-2.1.72a8.05 8.05 0 0 0-1.99-1.15L15.5 1h-4l-.43 2.35a8.05 8.05 0 0 0-1.99 1.15l-2.1-.72-2 3.46L6.66 8.7A7.97 7.97 0 0 0 6.06 11H3.5v4h2.56c.1.81.31 1.58.6 2.3l-1.68 1.46 2 3.46 2.1-.72c.61.47 1.28.86 1.99 1.15L11.5 23h4l.43-2.35a8.05 8.05 0 0 0 1.99-1.15l2.1.72 2-3.46-1.68-1.46c.29-.72.5-1.49.6-2.3H23v-4h-2.06Z"
+                    Fill="{DynamicResource TextMuted}" Stretch="Uniform" Width="15" Height="15"/>
+            </Button>
+          </Grid>
+        </Border>
 
         <StackPanel Spacing="3" VerticalAlignment="Top">
           <Button Classes="nav" Classes.active="{Binding IsInstances}"
                   Command="{Binding GoInstancesCommand}" Content="Instances"/>
           <Button Classes="nav" Classes.active="{Binding IsNewInstance}"
                   Command="{Binding GoNewInstanceCommand}" Content="New instance"/>
-          <Button Classes="nav" Classes.active="{Binding IsSettings}"
-                  Command="{Binding GoSettingsCommand}" Content="Settings"/>
         </StackPanel>
 
       </DockPanel>
