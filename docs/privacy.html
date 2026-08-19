@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Asobu</title>
+<meta name="description" content="Asobu collects nothing. No accounts, no analytics, no servers. Here is exactly what the launcher stores and where.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>">
+</head>
+<body>
+
+<div class="petals" aria-hidden="true">
+  <span class="petal"></span><span class="petal"></span><span class="petal"></span><span class="petal"></span>
+  <span class="petal"></span><span class="petal"></span><span class="petal"></span><span class="petal"></span>
+</div>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="#fff"><path d="M6 4l13 8-13 8z"/></svg>
+      </span>
+      <span class="brand-name">asobu</span>
+    </a>
+    <nav class="nav">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#signin">Sign-in</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="https://github.com/Slavik-85/asobu">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="wrap prose">
+      <h1>Privacy</h1>
+      <p class="lede">
+        Asobu is a desktop application with no backend. It has no user accounts, collects no analytics,
+        and transmits nothing about you to its developer. This page describes exactly what it stores and
+        who it talks to.
+      </p>
+
+      <div class="note">
+        <p><strong>Short version:</strong> we run no servers and receive no data from you at all. Everything the launcher knows stays on your own computer.</p>
+      </div>
+
+      <h2>What we collect</h2>
+      <p>
+        Nothing. Asobu has no telemetry, no crash reporting service, no analytics and no update pings.
+        The developer of Asobu receives no information about you, your machine, or your usage.
+      </p>
+
+      <h2>Microsoft sign-in</h2>
+      <p>
+        To play online you sign in with a Microsoft account. Asobu uses Microsoft's standard OAuth 2.0
+        authorization code flow with PKCE, opened in your own web browser.
+      </p>
+      <ul>
+        <li><strong>Asobu never sees your password.</strong> You type it into Microsoft's own sign-in page. The launcher only ever receives a token afterwards.</li>
+        <li><strong>Tokens are stored by the operating system.</strong> Your refresh token is held in Windows Credential Manager, encrypted with DPAPI. Asobu does not write it to a plain-text file or log.</li>
+        <li><strong>Tokens are only sent to Microsoft and Mojang.</strong> They are exchanged with Xbox Live and Minecraft services to verify that you own Minecraft: Java Edition and to obtain your profile name and UUID, which the game requires to start.</li>
+        <li><strong>Nothing is sent to us.</strong> There is no Asobu server involved at any point in sign-in.</li>
+      </ul>
+      <p>
+        Signing out through Asobu removes the cached token from Windows Credential Manager. You can also
+        revoke Asobu's access at any time from your
+        <a href="https://account.live.com/consent/Manage">Microsoft account privacy settings</a>.
+      </p>
+
+      <h2>Third parties Asobu contacts</h2>
+      <p>Asobu makes network requests only to the services needed to sign in and to download the game:</p>
+      <ul>
+        <li><strong>Microsoft</strong> — sign-in and Xbox Live authentication.</li>
+        <li><strong>Mojang / Minecraft services</strong> — verifying game ownership, and downloading Minecraft, its libraries, assets and the Java runtime.</li>
+        <li><strong>Mod hosts</strong> — where you choose to download a mod, that download comes directly from its host.</li>
+      </ul>
+      <p>
+        Each of those services sees an ordinary download or sign-in request from your computer, exactly as
+        the official Minecraft launcher would produce, and is governed by its own privacy policy.
+      </p>
+
+      <h2>What is stored on your computer</h2>
+      <p>By default Asobu keeps its files in <code>%APPDATA%\Asobu</code>:</p>
+      <ul>
+        <li><strong>Instances</strong> — your worlds, mods, configuration and screenshots.</li>
+        <li><strong>Cache</strong> — Minecraft versions, libraries, assets and Java runtimes, shared between instances.</li>
+        <li><strong>Logs</strong> — the game's own output from each session, so crashes can be diagnosed. These stay on your disk and are never uploaded.</li>
+        <li><strong>accounts.json</strong> — the display name and UUID of accounts you have added, so the launcher can list them. <em>No tokens or passwords are stored in this file.</em></li>
+        <li><strong>settings.json</strong> — your preferences, such as memory allocation and Java choice.</li>
+      </ul>
+      <p>
+        In portable mode this all lives in a <code>data</code> folder next to the executable instead.
+        Deleting the folder removes everything Asobu has stored.
+      </p>
+
+      <h2>Children</h2>
+      <p>
+        Asobu does not knowingly collect information from anyone, of any age, because it collects no
+        information at all. Microsoft account rules, including family and child-account restrictions,
+        are enforced by Microsoft during sign-in.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        If Asobu ever gains optional online features, this page will be updated before they ship, and
+        anything that transmits data will be opt-in. The project is open source, so the behaviour
+        described here can be verified in the code.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions, or a privacy problem to report? Open an issue on
+        <a href="https://github.com/Slavik-85/asobu/issues">GitHub</a>.
+      </p>
+
+      <p style="color:var(--muted);font-size:0.9rem;margin-top:2.5rem">Last updated: 19 August 2026</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <a class="brand" href="index.html">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="#fff"><path d="M6 4l13 8-13 8z"/></svg>
+        </span>
+        <span class="brand-name">asobu</span>
+      </a>
+      <nav class="footer-links">
+        <a href="index.html#features">Features</a>
+        <a href="index.html#signin">Sign-in</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://github.com/Slavik-85/asobu">GitHub</a>
+      </nav>
+    </div>
+    <p class="disclaimer">
+      Asobu is an independent, open-source project. It is not an official Minecraft product and is not
+      approved by or associated with Mojang Studios or Microsoft. Minecraft is a trademark of Mojang
+      Synergies AB.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

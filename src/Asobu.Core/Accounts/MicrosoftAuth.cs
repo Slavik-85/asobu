@@ -136,10 +136,8 @@ public sealed class MicrosoftAuth(HttpClient http, AsobuPaths paths, string clie
         var userHash = xsts.DisplayClaims?.Xui?.FirstOrDefault()?.UserHash
             ?? throw new MicrosoftAuthException("Xbox Live returned no user hash.");
 
-        var minecraft = await PostAsync<MinecraftLoginResponse>(MinecraftLoginUrl, new
-        {
-            identityToken = $"XBL3.0 x={userHash};{xsts.Token}",
-        }, cancellationToken).ConfigureAwait(false);
+        var minecraft = await LoginToMinecraftAsync(userHash, xsts.Token, cancellationToken)
+            .ConfigureAwait(false);
 
         using var profileRequest = new HttpRequestMessage(HttpMethod.Get, MinecraftProfileUrl);
         profileRequest.Headers.Authorization = new("Bearer", minecraft.AccessToken);
@@ -160,6 +158,30 @@ public sealed class MicrosoftAuth(HttpClient http, AsobuPaths paths, string clie
             minecraft.AccessToken,
             "msa",
             xsts.DisplayClaims?.Xui?.FirstOrDefault()?.Xuid);
+    }
+
+    /// <summary>
+    /// Trades the XSTS token for a Minecraft session. Mojang only answers here for client ids
+    /// they have explicitly allow-listed, so a 403 almost always means the Azure app registration
+    /// hasn't been approved yet rather than anything wrong with the sign-in.
+    /// </summary>
+    private async Task<MinecraftLoginResponse> LoginToMinecraftAsync(
+        string userHash, string xstsToken, CancellationToken cancellationToken)
+    {
+        using var response = await http.PostAsJsonAsync(MinecraftLoginUrl, new
+        {
+            identityToken = $"XBL3.0 x={userHash};{xstsToken}",
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.Forbidden)
+            throw new MicrosoftAuthException(
+                "Minecraft refused this application. The Azure client id has to be approved by " +
+                "Mojang before it can sign anyone in — apply at https://aka.ms/mce-reviewappid.");
+
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<MinecraftLoginResponse>(cancellationToken).ConfigureAwait(false)
+            ?? throw new MicrosoftAuthException("Minecraft returned an empty login response.");
     }
 
     private async Task<XboxResponse> PostXstsAsync(string xboxToken, CancellationToken cancellationToken)
