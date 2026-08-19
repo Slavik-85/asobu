@@ -37,19 +37,20 @@
     <div class="wrap prose">
       <h1>Privacy</h1>
       <p class="lede">
-        Asobu is a desktop application with no backend. It has no user accounts, collects no analytics,
-        and transmits nothing about you to its developer. This page describes exactly what it stores and
-        who it talks to.
+        Asobu collects no analytics and has no tracking of any kind. This page describes exactly what
+        the launcher stores, who it talks to, and what the planned online features will and will not
+        involve.
       </p>
 
       <div class="note">
-        <p><strong>Short version:</strong> we run no servers and receive no data from you at all. Everything the launcher knows stays on your own computer.</p>
+        <p><strong>Short version:</strong> as it ships today, Asobu has no backend at all — everything stays on your own computer. Friends and world sharing will need a server, and when they arrive they will be opt-in and will never carry your worlds or game files.</p>
       </div>
 
       <h2>What we collect</h2>
       <p>
         Nothing. Asobu has no telemetry, no crash reporting service, no analytics and no update pings.
-        The developer of Asobu receives no information about you, your machine, or your usage.
+        The developer of Asobu receives no information about you, your machine, or your usage — and that
+        will remain true whether or not you use the online features described below.
       </p>
 
       <h2>Microsoft sign-in</h2>
@@ -69,12 +70,51 @@
         <a href="https://account.live.com/consent/Manage">Microsoft account privacy settings</a>.
       </p>
 
+      <h2>Planned online features</h2>
+      <p>
+        These have not shipped yet. They are documented here in advance so there are no surprises, and
+        this section will be updated to describe the shipped behaviour when they arrive. Both are
+        <strong>opt-in</strong> — the launcher installs and plays Minecraft without them, and without
+        ever contacting an Asobu server.
+      </p>
+
+      <h3 style="margin-top:1.8rem">Friends</h3>
+      <p>
+        A friends list needs an identity, so Asobu will run a small service that knows who you are.
+        Two deliberate choices about how it works:
+      </p>
+      <ul>
+        <li>
+          <strong>Our server never receives your Microsoft or Minecraft tokens.</strong> Identity is
+          proved using the same handshake Minecraft servers use: your launcher tells Mojang it is joining,
+          and our server asks Mojang to confirm it. Mojang tells us your username and UUID — we never
+          see, hold, or ask for a credential.
+        </li>
+        <li>
+          <strong>What it would store:</strong> your Minecraft username and UUID, the friends you add,
+          and whether you are currently online. That is the whole point of a friends list, and it is all
+          of it.
+        </li>
+      </ul>
+
+      <h3 style="margin-top:1.8rem">Opening a world to friends</h3>
+      <p>
+        Asobu will let you open a singleplayer world to friends. Importantly, <strong>your computer is
+        the server</strong> — the world runs on your machine exactly as it does now.
+      </p>
+      <ul>
+        <li><strong>Worlds never touch our infrastructure.</strong> We do not host, store, back up or have any access to your saves.</li>
+        <li><strong>Our server only makes the introduction.</strong> It passes the connection details between the two PCs so they can talk directly, then gets out of the way.</li>
+        <li><strong>Relay fallback.</strong> Some home networks refuse a direct connection. In that case the game traffic can be relayed through our server so the session still works. Relayed traffic is passed through, not inspected or stored.</li>
+      </ul>
+
       <h2>Third parties Asobu contacts</h2>
       <p>Asobu makes network requests only to the services needed to sign in and to download the game:</p>
       <ul>
         <li><strong>Microsoft</strong> — sign-in and Xbox Live authentication.</li>
         <li><strong>Mojang / Minecraft services</strong> — verifying game ownership, and downloading Minecraft, its libraries, assets and the Java runtime.</li>
         <li><strong>Mod hosts</strong> — where you choose to download a mod, that download comes directly from its host.</li>
+        <li><strong>Asobu's own service</strong> — only if you opt into friends or world sharing, as described above. Never otherwise.</li>
       </ul>
       <p>
         Each of those services sees an ordinary download or sign-in request from your computer, exactly as
@@ -104,9 +144,9 @@
 
       <h2>Changes</h2>
       <p>
-        If Asobu ever gains optional online features, this page will be updated before they ship, and
-        anything that transmits data will be opt-in. The project is open source, so the behaviour
-        described here can be verified in the code.
+        This page is updated before a feature ships, not after. Anything that transmits data will be
+        opt-in, and the project is open source, so everything described here can be checked against the
+        code rather than taken on trust.
       </p>
 
       <h2>Contact</h2>
