@@ -46,7 +46,62 @@ public sealed class AsobuPaths(string root)
         if (File.Exists(Path.Combine(exeDir, "portable")))
             return new AsobuPaths(Path.Combine(exeDir, "data"));
 
-        return ResolveIn(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+        if (InstalledDataDir(exeDir) is { } installed)
+            return AdoptInto(installed, Path.Combine(roaming, ".asobu"));
+
+        return ResolveIn(roaming);
+    }
+
+    /// <summary>
+    /// Where an installed copy keeps its data, or null when this is not an installed copy.
+    ///
+    /// An installed build runs from {root}\current\, and an update replaces that whole folder
+    /// while leaving the root around it alone — so data belongs beside it rather than inside
+    /// it. Everything then lives under one folder, which is the point.
+    ///
+    /// The cost of that arrangement is that uninstalling takes the data with it: the installer
+    /// removes the root, and this is inside it. Data in AppData would outlive an uninstall, at
+    /// the price of being a second folder somewhere else.
+    ///
+    /// Update.exe beside the app is how an install is told apart from a build directory. It is
+    /// a required file of the root rather than an incidental one — it is the thing that
+    /// performs updates — so it is there in every real install and in no development build.
+    /// </summary>
+    public static string? InstalledDataDir(string exeDir)
+    {
+        var parent = Directory.GetParent(exeDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (parent is null) return null;
+
+        return File.Exists(Path.Combine(parent.FullName, "Update.exe"))
+            ? Path.Combine(parent.FullName, "data")
+            : null;
+    }
+
+    /// <summary>
+    /// Takes over a data folder left somewhere else by an earlier build, once. Anyone who ran a
+    /// version that kept its data in AppData keeps their instances when they update to one that
+    /// does not.
+    /// </summary>
+    private static AsobuPaths AdoptInto(string root, string previous)
+    {
+        if (!Directory.Exists(root) && Directory.Exists(previous))
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(root)!);
+                Directory.Move(previous, root);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Held open, or across a boundary a rename cannot cross. Keep using it where it
+                // is rather than starting empty and leaving someone hunting for their worlds.
+                return new AsobuPaths(previous);
+            }
+        }
+
+        return new AsobuPaths(root);
     }
 
     /// <summary>
