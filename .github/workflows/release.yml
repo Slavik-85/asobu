@@ -76,6 +76,19 @@ jobs:
           }
           Write-Host "CurseForge key is present in the build."
 
+      # A delta is a patch against the previous release, and vpk builds one only when that
+      # release is sitting in the output folder. A CI runner starts empty, so without this
+      # every release is a full download for everyone — 63 MB to fix a typo. Allowed to
+      # fail: the very first release has nothing to fetch, and a fetch that fails should cost
+      # a delta rather than the release.
+      - name: Fetch the previous release, so a delta can be built against it
+        continue-on-error: true
+        run: >
+          vpk download github
+          --repoUrl ${{ github.server_url }}/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --outputDir releases
+
       - name: Pack
         run: >
           vpk pack
