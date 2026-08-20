@@ -169,10 +169,11 @@ public partial class MainViewModel : ViewModelBase
                 Warm(() => Launcher.Meta.GetManifestAsync()),
 
                 // Explore's opening grid, keyed exactly as it will ask for it — same version,
-                // same loader, same sort, same size — so the answer is already in the cache
-                // rather than merely nearby.
+                // same sort, same size — so the answer is already in the cache rather than
+                // merely nearby. No loader: Explore asks about a version, not an instance, so
+                // keying this by one would prime a query the page never makes.
                 Warm(() => Launcher.Mods.SearchAsync(new ModQuery(
-                    "", first?.MinecraftVersion, first?.Loader, ModSort.Popular, null, ExploreGridLimit))),
+                    "", first?.MinecraftVersion, null, ModSort.Popular, null, ExploreGridLimit))),
 
                 // Friends, but only from the stored session — one request when one exists,
                 // nothing at all otherwise. Returning users show as online to their friends

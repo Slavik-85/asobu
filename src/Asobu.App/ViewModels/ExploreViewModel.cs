@@ -163,7 +163,9 @@ public partial class ExploreViewModel(
     private DispatcherTimer? _rotate;
 
     public ObservableCollection<ModCard> Results { get; } = [];
-    public ObservableCollection<Instance> Instances { get; } = [];
+
+    /// <summary>Minecraft versions to filter by, exactly as Browse offers them.</summary>
+    public ObservableCollection<string> GameVersions { get; } = [];
     public ObservableCollection<CategoryChip> Categories { get; } = [];
 
     /// <summary>
@@ -181,7 +183,16 @@ public partial class ExploreViewModel(
         new("Trending", ModSort.Updated),
     ];
 
-    [ObservableProperty] public partial Instance? Target { get; set; }
+    /// <summary>
+    /// Which Minecraft version the page is about.
+    ///
+    /// Explore is for finding out what exists, which is a question about a version rather than
+    /// about one of your instances — and asking for an instance first meant a new install had
+    /// an empty page and a note telling them to go and make something before they could look
+    /// around. Where a mod ends up is asked when it is added, by the same sheet every other
+    /// page uses.
+    /// </summary>
+    [ObservableProperty] public partial string? GameVersion { get; set; }
     [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial bool IsSearching { get; set; }
 
@@ -210,11 +221,10 @@ public partial class ExploreViewModel(
     /// looking, and goes on saying so until results arrive.
     /// </summary>
     partial void OnIsSearchingChanged(bool value) => OnPropertyChanged(nameof(IsEmpty));
-    public bool HasInstances => Instances.Count > 0;
     public bool IsSearchingText => SearchText.Trim().Length > 0;
 
     /// <summary>Browsing furniture. A text search replaces what it offers.</summary>
-    public bool ShowCategories => !IsSearchingText && HasInstances;
+    public bool ShowCategories => !IsSearchingText;
 
     /// <summary>The banner needs a mod to be about, and there is none until the first round lands.</summary>
     public bool ShowHero => ShowCategories && Feature is not null;
@@ -239,9 +249,9 @@ public partial class ExploreViewModel(
 
     public bool HasSourceNotice => SourceNotice is not null;
 
-    public string TargetLabel => Target is { } instance
-        ? $"for {instance.LoaderName} · Minecraft {instance.MinecraftVersion}"
-        : "Pick an instance to install into";
+    public string TargetLabel => GameVersion is { Length: > 0 } version
+        ? $"Showing mods for Minecraft {version}"
+        : "Showing mods for every version";
 
     private ModCatalogue Catalogue => launcher.Mods;
 
@@ -250,24 +260,52 @@ public partial class ExploreViewModel(
 
     public void Reload()
     {
-        var previous = Target?.Id;
-
-        Instances.Clear();
-        foreach (var instance in launcher.Instances.LoadAll()) Instances.Add(instance);
-
-        Target = Instances.FirstOrDefault(i => i.Id == previous) ?? Instances.FirstOrDefault();
-
+        if (GameVersions.Count == 0) _ = LoadGameVersionsAsync();
         if (Categories.Count == 0) _ = LoadCategoriesAsync();
 
-        OnPropertyChanged(nameof(HasInstances));
+        OnPropertyChanged(nameof(TargetLabel));
         OnPropertyChanged(nameof(ShowCategories));
         OnPropertyChanged(nameof(ShowHero));
         NoticeChanged();
 
-        // Picking the target above usually starts both of these off already; these are the
-        // fallback for the case where it resolved to the same instance and raised nothing.
+        // Choosing a version usually starts both of these off already; these are the fallback
+        // for the case where it resolved to the same version and raised nothing.
         if (Features.Count == 0 && !_loadingHero) RestartHero();
         if (Results.Count == 0) _ = SearchAsync();
+    }
+
+    /// <summary>
+    /// Releases only, with the versions your instances actually run pushed to the front. The
+    /// same rule Browse follows: snapshots would treble the list to offer versions almost
+    /// nothing publishes for.
+    /// </summary>
+    private async Task LoadGameVersionsAsync()
+    {
+        var versions = new List<string>();
+
+        try
+        {
+            var manifest = await launcher.Meta.GetManifestAsync();
+
+            versions.AddRange(manifest.Versions.Where(v => v.IsRelease).Select(v => v.Id));
+        }
+        catch (Exception)
+        {
+            // Offline. The instances still say which versions are worth offering.
+        }
+
+        var instances = launcher.Instances.LoadAll();
+
+        foreach (var instance in instances)
+            if (!versions.Contains(instance.MinecraftVersion, StringComparer.OrdinalIgnoreCase))
+                versions.Insert(0, instance.MinecraftVersion);
+
+        GameVersions.Clear();
+        foreach (var version in versions) GameVersions.Add(version);
+
+        // Whatever the first instance runs, since that is the one most likely to be modded
+        // next — and the newest release for someone who has no instances yet.
+        GameVersion ??= instances.FirstOrDefault()?.MinecraftVersion ?? GameVersions.FirstOrDefault();
     }
 
     // ---- The banner ----
@@ -431,8 +469,8 @@ public partial class ExploreViewModel(
         var listings = await Catalogue.SearchAsync(
             new ModQuery(
                 "",
-                Target?.MinecraftVersion,
-                Target?.Loader,
+                GameVersion,
+                null,
                 shelf.Sort,
                 Categories: null,
                 Limit: limit,
@@ -539,7 +577,7 @@ public partial class ExploreViewModel(
 
     // ---- Filters ----
 
-    partial void OnTargetChanged(Instance? value)
+    partial void OnGameVersionChanged(string? value)
     {
         OnPropertyChanged(nameof(TargetLabel));
         RestartHero();
@@ -586,8 +624,8 @@ public partial class ExploreViewModel(
             var listings = await Catalogue.SearchAsync(
                 new ModQuery(
                     text,
-                    Target?.MinecraftVersion,
-                    Target?.Loader,
+                    GameVersion,
+                    null,
                     text.Length > 0 ? ModSort.Relevance : ModSort.Popular,
                     Picked,
                     GridLimit),
@@ -646,8 +684,8 @@ public partial class ExploreViewModel(
             var listings = await Catalogue.SearchAsync(
                 new ModQuery(
                     text,
-                    Target?.MinecraftVersion,
-                    Target?.Loader,
+                    GameVersion,
+                    null,
                     text.Length > 0 ? ModSort.Relevance : ModSort.Popular,
                     Picked,
                     GridLimit,
