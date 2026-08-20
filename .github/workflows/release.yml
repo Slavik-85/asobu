@@ -62,12 +62,15 @@ jobs:
           -p:Version=${{ steps.version.outputs.value }}
           -o publish
 
+      # Read as bytes and search the raw text. Select-String has no byte mode — its
+      # -Encoding takes a character encoding and rejects "Byte" outright, which fails the
+      # step rather than the check.
       - name: Refuse to ship a release with no CurseForge key
         shell: pwsh
         run: |
-          $found = Select-String -Path publish/Asobu.Core.dll -Pattern 'CurseForgeApiKey' `
-                                 -Encoding Byte -ErrorAction SilentlyContinue
-          if (-not $found) {
+          $bytes = [System.IO.File]::ReadAllBytes("publish/Asobu.Core.dll")
+          $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+          if ($text -notmatch "CurseForgeApiKey") {
             Write-Error "No CurseForge key in this build. Set the CURSEFORGE_API_KEY repository secret."
             exit 1
           }

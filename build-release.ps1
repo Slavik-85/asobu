@@ -34,8 +34,11 @@ if ($LASTEXITCODE -ne 0) { throw "publish failed" }
 
 # The same guard the workflow applies: a release with no key browses only Modrinth, and that is
 # far easier to catch here than in a bug report from someone who already installed it.
+# Read as bytes and search the raw text: Select-String takes a character encoding and
+# rejects "Byte", so asking it to grep a DLL fails the script rather than the check.
 $core = Join-Path $publish "Asobu.Core.dll"
-if (-not (Select-String -Path $core -Pattern "CurseForgeApiKey" -Encoding Byte -ErrorAction SilentlyContinue)) {
+$text = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($core))
+if ($text -notmatch "CurseForgeApiKey") {
     Write-Warning "This build carries no CurseForge API key. Put one in src/Asobu.Core/secrets.props."
 }
 
