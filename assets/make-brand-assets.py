@@ -67,19 +67,32 @@ def build_icon():
 
 
 def build_splash():
-    """The installer's splash: the mark, the name, and a halo that breathes.
+    """The installer's splash: the welcome, held.
 
-    The pulse is a sine over the whole frame count, so the last frame leads back into the first
-    and the loop has no seam — an install takes a few seconds and the image is shown throughout,
-    so anything that restarts visibly would blink at the person watching it.
+    Deliberately the same two lines the launcher opens with, in the same weights and the same
+    pink, so installing and first running Asobu read as one continuous thing rather than two
+    screens that happen to share a colour. The launcher animates those lines in; this holds
+    them, because Velopack shows the image for however long the install takes and loops it —
+    a fade-in would restart again and again in front of whoever is watching.
+
+    What moves is a glow behind the name, breathing on a sine across the whole frame count, so
+    the last frame leads back into the first and the loop has no seam.
     """
-    width, height = 480, 300
-    frames_count = 40
+    width, height = 520, 320
+    frames_count = 44
 
-    name_font = ImageFont.truetype(FONT_SEMIBOLD, 46)
-    sub_font = ImageFont.truetype(FONT_REGULAR, 15)
+    hello_font = ImageFont.truetype(FONT_REGULAR, 21)
+    name_font = ImageFont.truetype(FONT_SEMIBOLD, 62)
+    sub_font = ImageFont.truetype(FONT_REGULAR, 14)
 
-    mark = draw_mark(64, fill=ACCENT_DARK)
+    def centred(draw, text, font, y, fill):
+        box = draw.textbbox((0, 0), text, font=font)
+        draw.text(((width - (box[2] - box[0])) / 2 - box[0], y), text, font=font, fill=fill)
+
+    # The name is drawn once on its own layer, blurred into the glow beneath itself.
+    name_layer = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    centred(ImageDraw.Draw(name_layer), "asobu", name_font, 118, ACCENT_DARK + (255,))
+    halo = name_layer.filter(ImageFilter.GaussianBlur(22))
 
     frames = []
     for index in range(frames_count):
@@ -88,40 +101,21 @@ def build_splash():
 
         frame = Image.new("RGB", (width, height), BG_DARK)
 
-        # The halo: the mark blurred and brightened, drawn under it.
-        glow = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        glow.paste(mark, (width // 2 - 32, 64), mark)
-        glow = glow.filter(ImageFilter.GaussianBlur(18))
-
-        faded = glow.copy()
-        alpha = faded.getchannel("A").point(lambda a: int(a * (0.25 + 0.35 * phase)))
-        faded.putalpha(alpha)
-        frame.paste(faded, (0, 0), faded)
-
-        frame.paste(mark, (width // 2 - 32, 64), mark)
+        glow = halo.copy()
+        glow.putalpha(glow.getchannel("A").point(lambda a: int(a * (0.30 + 0.30 * phase))))
+        frame.paste(glow, (0, 0), glow)
+        frame.paste(name_layer, (0, 0), name_layer)
 
         draw = ImageDraw.Draw(frame)
+        centred(draw, "Welcome to", hello_font, 78, TEXT_MUTED)
+        centred(draw, "Setting things up…", sub_font, 236, TEXT_MUTED)
 
-        name = "asobu"
-        box = draw.textbbox((0, 0), name, font=name_font)
-        draw.text(
-            ((width - (box[2] - box[0])) / 2 - box[0], 152),
-            name, font=name_font, fill=ACCENT_DARK,
-        )
-
-        sub = "Getting things ready…"
-        box = draw.textbbox((0, 0), sub, font=sub_font)
-        draw.text(
-            ((width - (box[2] - box[0])) / 2 - box[0], 218),
-            sub, font=sub_font, fill=TEXT_MUTED,
-        )
-
-        frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=128))
+        frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=96))
 
     out = os.path.join(HERE, "installer-splash.gif")
     frames[0].save(
         out, format="GIF", save_all=True, append_images=frames[1:],
-        duration=60, loop=0, optimize=True,
+        duration=55, loop=0, optimize=True,
     )
     print(f"wrote {out}  ({width}x{height}, {frames_count} frames, seamless)")
 
