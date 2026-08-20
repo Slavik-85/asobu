@@ -108,7 +108,9 @@ def build_splash():
 
         draw = ImageDraw.Draw(frame)
         centred(draw, "Welcome to", hello_font, 78, TEXT_MUTED)
-        centred(draw, "Setting things up…", sub_font, 236, TEXT_MUTED)
+        # Kept well clear of the bottom: Velopack draws a progress bar over this image
+        # while installing and while updating, and it draws it along the lower edge.
+        centred(draw, "Just a moment…", sub_font, 208, TEXT_MUTED)
 
         frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=96))
 

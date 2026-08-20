@@ -187,5 +187,20 @@
 
   <views:TourOverlay DataContext="{Binding Tour}" IsVisible="{Binding IsRunning}"/>
 
+  <!-- ============ Handing over to an update ============ -->
+  <!-- Above everything, including the welcome: this is the last thing the window does before
+       Update.exe takes over. Deliberately the installer's screen again — the same name, the
+       same pink, the same background — so an update looks like the thing that installed
+       Asobu in the first place rather than a crash with a happy ending. -->
+  <Panel Classes="introRoot" Background="{DynamicResource Bg}"
+         Opacity="{Binding Updates.Veil}" IsVisible="{Binding Updates.IsApplying}">
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="2">
+      <TextBlock Text="asobu" Classes="introName" HorizontalAlignment="Center" Opacity="1"/>
+      <TextBlock Text="{Binding Updates.NewVersion, StringFormat='Updating to {0}…'}"
+                 Classes="introHello" FontSize="15" HorizontalAlignment="Center"
+                 Opacity="1" Margin="0,10,0,0"/>
+    </StackPanel>
+  </Panel>
+
   </Panel>
 </Window>

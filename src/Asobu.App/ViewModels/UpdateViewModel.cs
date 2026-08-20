@@ -67,6 +67,16 @@ public partial class UpdateViewModel : ViewModelBase
 
     [ObservableProperty] public partial UpdateStage Stage { get; set; } = UpdateStage.Idle;
 
+    /// <summary>
+    /// Covers the window while the update is handed over, so the launcher leaves on purpose
+    /// rather than vanishing. A plain number the view eases towards, the same way the welcome
+    /// fades — nothing to get stuck in, which matters for something that covers everything.
+    /// </summary>
+    [ObservableProperty] public partial double Veil { get; set; }
+
+    /// <summary>Whether that curtain is up. Kept apart from Veil so the view can unmount it.</summary>
+    [ObservableProperty] public partial bool IsApplying { get; set; }
+
     /// <summary>The version waiting to be installed, once there is one.</summary>
     [ObservableProperty] public partial string? NewVersion { get; set; }
 
@@ -160,14 +170,26 @@ public partial class UpdateViewModel : ViewModelBase
         }
     }
 
+    /// <summary>How long the view takes to bring the curtain up. Keep the two in step.</summary>
+    private const int VeilMilliseconds = 420;
+
     /// <summary>
     /// Applies what has been downloaded and comes back up on the new version. Only ever reached
     /// by someone pressing the button that says so.
+    ///
+    /// The curtain goes up first and is given time to land. Velopack hands off to Update.exe and
+    /// this process ends within moments of asking, so without that beat the window would simply
+    /// disappear mid-click — and the thing it disappears into is an installer that spent its
+    /// whole life showing this same name on this same background.
     /// </summary>
     [RelayCommand]
-    private void Restart()
+    private async Task RestartAsync()
     {
-        if (_manager is not { } manager || _pending is null) return;
+        if (_manager is not { } manager || _pending is null || IsApplying) return;
+
+        IsApplying = true;
+        Veil = 1;
+        await Task.Delay(VeilMilliseconds);
 
         try
         {
@@ -175,6 +197,9 @@ public partial class UpdateViewModel : ViewModelBase
         }
         catch (Exception e)
         {
+            // Still here, so the curtain comes back down and says why.
+            Veil = 0;
+            IsApplying = false;
             Error = Readable(e);
             Stage = UpdateStage.Failed;
         }

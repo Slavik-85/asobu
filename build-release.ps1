@@ -52,6 +52,7 @@ vpk pack `
     --mainExe Asobu.App.exe `
     --icon (Join-Path $PSScriptRoot "assets/asobu.ico") `
     --splashImage (Join-Path $PSScriptRoot "assets/installer-splash.gif") `
+    --splashProgressColor "#FF9EC0" `
     --outputDir $OutputDir
 if ($LASTEXITCODE -ne 0) { throw "pack failed" }
 

@@ -100,6 +100,7 @@ jobs:
           --mainExe Asobu.App.exe
           --icon assets/asobu.ico
           --splashImage assets/installer-splash.gif
+          --splashProgressColor "#FF9EC0"
           --outputDir releases
 
       - name: Publish the release
