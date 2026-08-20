@@ -8,6 +8,7 @@
         x:Class="Asobu.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="Asobu"
+        Icon="/Assets/asobu.ico"
         Width="1120" Height="740" MinWidth="960" MinHeight="640"
         Background="{DynamicResource Bg}">
 

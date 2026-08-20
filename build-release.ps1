@@ -50,6 +50,8 @@ vpk pack `
     --packVersion $Version `
     --packDir $publish `
     --mainExe Asobu.App.exe `
+    --icon (Join-Path $PSScriptRoot "assets/asobu.ico") `
+    --splashImage (Join-Path $PSScriptRoot "assets/installer-splash.gif") `
     --outputDir $OutputDir
 if ($LASTEXITCODE -ne 0) { throw "pack failed" }
 

@@ -85,6 +85,8 @@ jobs:
           --packVersion ${{ steps.version.outputs.value }}
           --packDir publish
           --mainExe Asobu.App.exe
+          --icon assets/asobu.ico
+          --splashImage assets/installer-splash.gif
           --outputDir releases
 
       - name: Publish the release

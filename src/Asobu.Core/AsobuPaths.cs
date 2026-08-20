@@ -46,8 +46,44 @@ public sealed class AsobuPaths(string root)
         if (File.Exists(Path.Combine(exeDir, "portable")))
             return new AsobuPaths(Path.Combine(exeDir, "data"));
 
-        return new AsobuPaths(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Asobu"));
+        return ResolveIn(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+    }
+
+    /// <summary>
+    /// Where the data lives inside a given roaming folder, and the move from the old name if
+    /// one is due.
+    ///
+    /// Takes the folder rather than asking the OS for it so this can be exercised against a
+    /// scratch directory. Environment.GetFolderPath reads the shell's own path and ignores the
+    /// APPDATA variable, so a test that sets that variable tests nothing and runs against the
+    /// real profile — which is how one nearly moved a real install.
+    /// </summary>
+    public static AsobuPaths ResolveIn(string roaming)
+    {
+        var root = Path.Combine(roaming, ".asobu");
+
+        // What earlier builds used. The dot matches the convention every Minecraft launcher
+        // follows — .minecraft sits in the same folder — and hides it from a casual look
+        // through AppData, which is where people go hunting when something is wrong.
+        var legacy = Path.Combine(roaming, "Asobu");
+
+        if (!Directory.Exists(root) && Directory.Exists(legacy))
+        {
+            try
+            {
+                // A rename on the same volume, so instances and worlds are not copied about.
+                Directory.Move(legacy, root);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Something in there is open — a running game holding a world, most likely.
+                // Carry on with the old folder rather than starting empty beside it and
+                // leaving someone to wonder where their instances went.
+                return new AsobuPaths(legacy);
+            }
+        }
+
+        return new AsobuPaths(root);
     }
 
     public void EnsureCreated()

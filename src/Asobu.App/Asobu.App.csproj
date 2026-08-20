@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/asobu.ico</ApplicationIcon>
 
     <!-- What an update compares itself against. The packaging script passes the same number to
          vpk, so the release on GitHub and the build inside it always agree. -->
