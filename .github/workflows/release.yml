@@ -1,0 +1,95 @@
+# Builds an installable, self-updating Asobu and publishes it as a GitHub Release.
+#
+# Runs on a version tag, so cutting a release is `git tag v0.1.1 && git push --tags` and
+# nothing else. Velopack works out the delta against the previous release by downloading it
+# first, which is why the upload step needs the repository rather than just a folder of files.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+  # Buildable by hand as well, for checking the pipeline without cutting a release.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, without the leading v"
+        required: true
+        default: "0.0.1-test"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Velopack reads the previous release to build a delta against it; a shallow clone is
+          # fine for that, but tags are wanted for the version below.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install the Velopack tool
+        run: dotnet tool install -g vpk
+
+      - name: Publish
+        # The CurseForge key reaches the build from a repository secret and never from the
+        # repository itself. The project reads this variable on its own; see Asobu.Core.csproj.
+        # Without the secret set, the build still succeeds and simply ships without CurseForge,
+        # which the build warns about rather than failing on.
+        env:
+          ASOBU_CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: >
+          dotnet publish src/Asobu.App/Asobu.App.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.value }}
+          -o publish
+
+      - name: Refuse to ship a release with no CurseForge key
+        shell: pwsh
+        run: |
+          $found = Select-String -Path publish/Asobu.Core.dll -Pattern 'CurseForgeApiKey' `
+                                 -Encoding Byte -ErrorAction SilentlyContinue
+          if (-not $found) {
+            Write-Error "No CurseForge key in this build. Set the CURSEFORGE_API_KEY repository secret."
+            exit 1
+          }
+          Write-Host "CurseForge key is present in the build."
+
+      - name: Pack
+        run: >
+          vpk pack
+          --packId Asobu
+          --packTitle Asobu
+          --packAuthors "Asobu"
+          --packVersion ${{ steps.version.outputs.value }}
+          --packDir publish
+          --mainExe Asobu.App.exe
+          --outputDir releases
+
+      - name: Publish the release
+        run: >
+          vpk upload github
+          --repoUrl ${{ github.server_url }}/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --outputDir releases
+          --tag v${{ steps.version.outputs.value }}
+          --releaseName "Asobu ${{ steps.version.outputs.value }}"
+          --publish

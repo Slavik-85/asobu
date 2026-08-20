@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Asobu.App.ViewModels"
+        xmlns:views="using:Asobu.App.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1120" d:DesignHeight="720"
@@ -9,6 +10,8 @@
         Title="Asobu"
         Width="1120" Height="740" MinWidth="960" MinHeight="640"
         Background="{DynamicResource Bg}">
+
+  <Panel>
 
   <Grid ColumnDefinitions="232,*">
 
@@ -24,13 +27,43 @@
           <TextBlock Text="asobu" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
 
+        <!-- Only ever visible with an update already downloaded and staged, so pressing it
+             is a restart rather than a wait. Above the account bar, out of the way of the
+             navigation, and absent entirely the rest of the time. -->
+        <Button DockPanel.Dock="Bottom" Classes="updateChip" Margin="0,16,0,0"
+                IsVisible="{Binding Updates.IsReady}" Command="{Binding Updates.RestartCommand}"
+                ToolTip.Tip="Restart Asobu to finish updating">
+          <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center">
+            <Path Data="M12 4 V12 M12 4 L8.5 7.5 M12 4 L15.5 7.5 M5 13 A7 7 0 1 0 19 13"
+                  Stroke="{DynamicResource OnAccent}" StrokeThickness="1.9" StrokeLineCap="Round"
+                  StrokeJoin="Round" Width="15" Height="15" Stretch="Uniform"
+                  VerticalAlignment="Center"/>
+            <TextBlock Text="Restart to update" FontSize="12.5" FontWeight="Medium"
+                       Foreground="{DynamicResource OnAccent}" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
         <Border DockPanel.Dock="Bottom" Classes="accountBar" Margin="0,16,0,0">
           <Grid ColumnDefinitions="*,Auto,Auto">
-            <Button Grid.Column="0" Classes="accountChip" Classes.active="{Binding IsAccounts}"
+            <Button Grid.Column="0" x:Name="AccountChip" Classes="accountChip"
+                    Classes.active="{Binding IsAccounts}"
                     Command="{Binding GoAccountsCommand}">
               <StackPanel Orientation="Horizontal" Spacing="11">
-                <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource AccentSoft}">
-                  <TextBlock Text="&#x1F338;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <!-- Same head as the account tile on the Accounts page, shrunk to a chip.
+                     Nearest-neighbour for the same reason: smoothing an 8x8-ish avatar into a
+                     30px circle turns it into a beige smudge. -->
+                <Border Width="30" Height="30" CornerRadius="15" ClipToBounds="True"
+                        Background="{DynamicResource AccentSoft}">
+                  <Panel>
+                    <!-- FallbackValue pinned rather than left to IsVisible's own default: with
+                         no account selected the path breaks at SelectedCard, and the default
+                         would show both children instead of just the flower. -->
+                    <TextBlock Text="&#x1F338;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               IsVisible="{Binding !AccountsPage.SelectedCard.HasFace, FallbackValue=True}"/>
+                    <Image Source="{Binding AccountsPage.SelectedCard.Face}"
+                           IsVisible="{Binding AccountsPage.SelectedCard.HasFace, FallbackValue=False}"
+                           RenderOptions.BitmapInterpolationMode="None"/>
+                  </Panel>
                 </Border>
                 <StackPanel VerticalAlignment="Center">
                   <TextBlock Text="{Binding AccountLabel}" FontSize="13" FontWeight="Medium"/>
@@ -39,7 +72,8 @@
               </StackPanel>
             </Button>
             <Border Grid.Column="1" Width="1" Margin="2,8" Background="{DynamicResource Border}"/>
-            <Button Grid.Column="2" Classes="gearButton" Classes.active="{Binding IsSettings}"
+            <Button Grid.Column="2" x:Name="SettingsButton" Classes="gearButton"
+                    Classes.active="{Binding IsSettings}"
                     Command="{Binding GoSettingsCommand}"
                     ToolTip.Tip="Settings">
               <!-- Material's settings gear: symmetric about (12,12), so Uniform stretch keeps it
@@ -52,14 +86,105 @@
         </Border>
 
         <StackPanel Spacing="3" VerticalAlignment="Top">
-          <Button Classes="nav" Classes.active="{Binding IsInstancesArea}"
+          <Button x:Name="NavInstances" Classes="nav" Classes.active="{Binding IsInstancesArea}"
                   Command="{Binding GoInstancesCommand}" Content="Instances"/>
+          <Button x:Name="NavExplore" Classes="nav" Classes.active="{Binding IsExplore}"
+                  Command="{Binding GoExploreCommand}" Content="Explore"/>
+          <Button x:Name="NavBrowse" Classes="nav" Classes.active="{Binding IsBrowse}"
+                  Command="{Binding GoBrowseCommand}" Content="Browse"/>
         </StackPanel>
 
       </DockPanel>
     </Border>
 
-    <ContentControl Grid.Column="1" Content="{Binding CurrentPage}"/>
+    <!-- The mod page sits over whichever page opened it rather than replacing it. That is what
+         lets it slide up and back down onto something, and it means the page underneath is never
+         torn down — so coming back lands exactly where it was left, scroll and all. -->
+    <Panel Grid.Column="1">
+      <ContentControl Content="{Binding CurrentPage}"/>
+      <ContentControl Content="{Binding AddModsPage}" IsVisible="{Binding IsAddModsOpen}"/>
+      <ContentControl Content="{Binding ModPage}" IsVisible="{Binding IsModPageOpen}"/>
+
+      <!-- Above the mod page as well as the browsing ones: Add is offered on all three. -->
+      <ContentControl Content="{Binding InstallPicker}"/>
+      <ContentControl Content="{Binding PackInstaller}"/>
+    </Panel>
 
   </Grid>
+
+  <!-- ============ Friends ============ -->
+  <!-- A floating button rather than a sidebar page: friends are a glance away from anywhere,
+       and the drawer leaves the page you were on untouched underneath. Hidden while the drawer
+       is out, since that corner is where the drawer lives. -->
+  <Button x:Name="FriendsButton" Classes="fab" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+          Margin="0,0,22,22" Command="{Binding OpenFriendsCommand}" ToolTip.Tip="Friends">
+    <Button.IsVisible>
+      <MultiBinding Converter="{x:Static BoolConverters.And}">
+        <Binding Path="!IsFriendsOpen"/>
+        <Binding Path="IsChromeVisible"/>
+      </MultiBinding>
+    </Button.IsVisible>
+    <!-- Material's "people": two heads, two shoulders. The drawing occupies x 1-23 and y 5-19,
+         so its box is 22x14 rather than square — sized to that ratio on purpose. A square box
+         would scale to the width and leave all the slack below the glyph, hanging it above
+         centre, because a stretched Path is laid out to its ink and not to the box. -->
+    <Path Data="M16,11 C17.66,11 18.99,9.66 18.99,8 C18.99,6.34 17.66,5 16,5 C14.34,5 13,6.34 13,8 C13,9.66 14.34,11 16,11 Z M8,11 C9.66,11 10.99,9.66 10.99,8 C10.99,6.34 9.66,5 8,5 C6.34,5 5,6.34 5,8 C5,9.66 6.34,11 8,11 Z M8,13 C5.67,13 1,14.17 1,16.5 V19 H15 V16.5 C15,14.17 10.33,13 8,13 Z M16,13 C15.71,13 15.38,13.02 15.03,13.05 C16.19,13.89 17,15.02 17,16.5 V19 H23 V16.5 C23,14.17 18.33,13 16,13 Z"
+          Fill="{DynamicResource OnAccent}" Width="22" Height="14" Stretch="Uniform"/>
+  </Button>
+
+  <!-- The scrim greys out the whole window, sidebar included, and clicking it closes the
+       drawer — same manners as every other sheet in the launcher. -->
+  <Border Classes="modalScrim" Classes.open="{Binding IsFriendsOpen}"
+          Classes.closing="{Binding IsFriendsClosing}" IsVisible="{Binding IsFriendsOpen}">
+    <Button Classes="scrimCatcher" Command="{Binding CloseFriendsCommand}"/>
+  </Border>
+
+  <Border Classes="friendsDrawer" Classes.open="{Binding IsFriendsOpen}"
+          Classes.closing="{Binding IsFriendsClosing}" IsVisible="{Binding IsFriendsOpen}"
+          HorizontalAlignment="Right" Width="380">
+    <Grid RowDefinitions="Auto,*">
+
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="22,18,14,4">
+        <TextBlock Grid.Column="0" Text="Friends" Classes="h2" VerticalAlignment="Center"/>
+        <Button Grid.Column="1" Classes="iconGhost" ToolTip.Tip="Close"
+                Command="{Binding CloseFriendsCommand}">
+          <Path Data="M6 6 L18 18 M18 6 L6 18" StrokeThickness="2" StrokeLineCap="Round"
+                Stroke="{DynamicResource TextMuted}" Width="12" Height="12" Stretch="Uniform"/>
+        </Button>
+      </Grid>
+
+      <views:FriendsView Grid.Row="1" DataContext="{Binding FriendsPage}"/>
+
+    </Grid>
+  </Border>
+
+  <!-- ============ First launch ============ -->
+  <!-- Last of all, so it covers the sidebar and every sheet: this is the whole window on a
+       first run, not something sitting on top of a launcher you are meant to be using. -->
+  <views:IntroView DataContext="{Binding Intro}"
+                   IsVisible="{Binding $parent[Window].((vm:MainViewModel)DataContext).IsIntroOpen}"/>
+
+  <!-- ============ The tour ============ -->
+  <Border Classes="modalScrim" Classes.open="{Binding Tour.IsOffering}"
+          IsVisible="{Binding Tour.IsOffering}">
+    <Border Classes="modalCard" Classes.open="{Binding Tour.IsOffering}" Width="420">
+      <StackPanel Margin="28,26" Spacing="16">
+        <StackPanel Spacing="6">
+          <TextBlock Text="Want the quick tour?" Classes="h2"/>
+          <TextBlock Classes="sub" TextWrapping="Wrap"
+                     Text="Seven stops, about a minute — where your instances live, how to add mods, and where everything else hides. You can leave at any point."/>
+        </StackPanel>
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <Button Grid.Column="1" Classes="ghost" Content="No thanks"
+                  Command="{Binding Tour.DeclineCommand}"/>
+          <Button Grid.Column="2" Classes="primary" Content="Show me"
+                  Command="{Binding Tour.StartCommand}"/>
+        </Grid>
+      </StackPanel>
+    </Border>
+  </Border>
+
+  <views:TourOverlay DataContext="{Binding Tour}" IsVisible="{Binding IsRunning}"/>
+
+  </Panel>
 </Window>

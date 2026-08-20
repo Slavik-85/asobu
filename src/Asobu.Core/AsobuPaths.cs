@@ -19,6 +19,9 @@ public sealed class AsobuPaths(string root)
     public string Java => Path.Combine(Root, "java");
     public string Logs => Path.Combine(Root, "logs");
     public string LogConfigs => Path.Combine(Cache, "log_configs");
+
+    /// <summary>Loader installer jars, kept so reinstalling an instance costs no download.</summary>
+    public string Installers => Path.Combine(Cache, "installers");
     public string SettingsFile => Path.Combine(Root, "settings.json");
     public string AccountsFile => Path.Combine(Root, "accounts.json");
 
@@ -26,8 +29,12 @@ public sealed class AsobuPaths(string root)
     public string VersionJsonFile(string id) => Path.Combine(VersionDir(id), id + ".json");
     public string VersionJarFile(string id) => Path.Combine(VersionDir(id), id + ".jar");
     public string NativesDir(string id) => Path.Combine(VersionDir(id), "natives");
-    public string InstanceDir(string id) => Path.Combine(Instances, id);
-    public string InstanceGameDir(string id) => Path.Combine(InstanceDir(id), "minecraft");
+    /// <summary>
+    /// One instance's folder. Keyed by the folder's own name — which follows the instance's —
+    /// rather than by its id: see <see cref="Asobu.Core.Instances.Instance.Folder"/>.
+    /// </summary>
+    public string InstanceDir(string folder) => Path.Combine(Instances, folder);
+    public string InstanceGameDir(string folder) => Path.Combine(InstanceDir(folder), "minecraft");
 
     /// <summary>
     /// Portable mode: drop a file named "portable" next to the executable and everything

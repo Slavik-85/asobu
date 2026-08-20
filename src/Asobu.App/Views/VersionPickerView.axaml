@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
              xmlns:conv="using:Avalonia.Data.Converters"
              x:Class="Asobu.App.Views.VersionPickerView"
@@ -30,7 +31,7 @@
       </Grid>
     </StackPanel>
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,372">
+    <Grid Grid.Row="1" ColumnDefinitions="*,404">
 
       <Border Classes="card" ClipToBounds="True">
         <Panel>
@@ -45,13 +46,14 @@
           <ListBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:VersionRow">
-                <Grid ColumnDefinitions="*,Auto,Auto">
-                  <TextBlock Grid.Column="0" Text="{Binding Id}" FontSize="14" FontWeight="Medium"
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+                  <Border Grid.Column="0" Classes="versionDot"/>
+                  <TextBlock Grid.Column="1" Text="{Binding Id}" FontSize="14" FontWeight="Medium"
                              VerticalAlignment="Center"/>
-                  <Border Grid.Column="1" Classes="badge">
+                  <Border Grid.Column="2" Classes="badge">
                     <TextBlock Text="{Binding Kind}" FontSize="11.5" Foreground="{DynamicResource TextMuted}"/>
                   </Border>
-                  <TextBlock Grid.Column="2" Text="{Binding Released}" Classes="label"
+                  <TextBlock Grid.Column="3" Text="{Binding Released}" Classes="label"
                              Width="76" TextAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
               </DataTemplate>
@@ -75,7 +77,23 @@
 
           <DockPanel IsVisible="{Binding Detail, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
 
-            <StackPanel DockPanel.Dock="Top" Spacing="10">
+            <!-- Create stays pinned and everything above it scrolls. Docked first on purpose:
+                 a DockPanel gives each docked child its space in declaration order, so a Bottom
+                 declared after a Top that has outgrown the card gets squeezed to nothing. -->
+            <StackPanel DockPanel.Dock="Bottom" Spacing="9" Margin="0,16,0,0">
+              <TextBlock Text="Instance name" Classes="label"/>
+              <!-- Any character at all, up to the limit: what a file system will not take is
+                   dealt with when the folder is named, not by narrowing what people may type. -->
+              <TextBox Text="{Binding InstanceName}" PlaceholderText="My world" MaxLength="32"/>
+              <Button Classes="primary" Content="Create instance" HorizontalAlignment="Stretch"
+                      IsEnabled="{Binding CanCreate}" Command="{Binding CreateCommand}"/>
+            </StackPanel>
+
+            <!-- AllowAutoHide off so the bar keeps its own gutter instead of floating over the
+                 numbers on the right; the padding is the gap between the two. -->
+            <ScrollViewer ctrl:SmoothScroll.Enabled="True" HorizontalScrollBarVisibility="Disabled"
+                          AllowAutoHide="False" Padding="0,0,10,0">
+             <StackPanel Spacing="14">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Text="{Binding Detail.Id}" Classes="h1"/>
                 <Border Classes="badge" VerticalAlignment="Center">
@@ -83,46 +101,71 @@
                              Foreground="{DynamicResource TextMuted}"/>
                 </Border>
               </StackPanel>
-              <TextBlock Text="Vanilla · no mod loader" Classes="sub"/>
-            </StackPanel>
 
-            <StackPanel DockPanel.Dock="Bottom" Spacing="9">
-              <TextBlock Text="Instance name" Classes="label"/>
-              <TextBox Text="{Binding InstanceName}" PlaceholderText="My world"/>
-              <Button Classes="primary" Content="Create instance" HorizontalAlignment="Stretch"
-                      IsEnabled="{Binding CanCreate}" Command="{Binding CreateCommand}"/>
-            </StackPanel>
-
-            <StackPanel Spacing="13" Margin="0,24,0,20">
-              <StackPanel Spacing="3">
-                <TextBlock Text="Total download" Classes="label"/>
-                <TextBlock Text="{Binding Detail.TotalSize}" FontSize="21" FontWeight="SemiBold"
-                           Foreground="{DynamicResource Accent}"/>
+              <StackPanel Spacing="7">
+                <TextBlock Text="Mod loader" Classes="label"/>
+                <WrapPanel>
+                  <RadioButton Classes="chip" GroupName="loader" Content="Vanilla" Margin="0,0,7,7"
+                               IsChecked="{Binding UseVanilla}"/>
+                  <!-- A loader with no build for this version is not shown at all. A row of
+                       greyed-out chips is just a puzzle: the honest answer is that Fabric does
+                       not exist before 1.14 and NeoForge not before 1.20.2. -->
+                  <RadioButton Classes="chip" GroupName="loader" Content="Fabric" Margin="0,0,7,7"
+                               IsChecked="{Binding UseFabric}" IsVisible="{Binding FabricAvailable}"/>
+                  <RadioButton Classes="chip" GroupName="loader" Content="Forge" Margin="0,0,7,7"
+                               IsChecked="{Binding UseForge}" IsVisible="{Binding ForgeAvailable}"/>
+                  <RadioButton Classes="chip" GroupName="loader" Content="NeoForge" Margin="0,0,7,7"
+                               IsChecked="{Binding UseNeoForge}" IsVisible="{Binding NeoForgeAvailable}"/>
+                  <RadioButton Classes="chip" GroupName="loader" Content="Quilt" Margin="0,0,0,7"
+                               IsChecked="{Binding UseQuilt}" IsVisible="{Binding QuiltAvailable}"/>
+                </WrapPanel>
+                <TextBlock Text="{Binding LoaderSummary}" Classes="label"/>
+                <TextBlock Text="Checking what each loader offers…" Classes="label"
+                           IsVisible="{Binding IsCheckingLoaders}"/>
               </StackPanel>
 
-              <Border Height="1" Background="{DynamicResource Border}"/>
+              <!-- Ticked before the instance exists, so the extras arrive with the first download
+                   rather than as separate errands afterwards. -->
+              <!-- Only exists once a loader is chosen; a mod has nothing to load into otherwise. -->
+              <Border Classes="perfCard" IsVisible="{Binding HasLoader}">
+                <StackPanel Spacing="6">
+                  <CheckBox Content="{Binding PerformanceModName}"
+                            IsChecked="{Binding IncludePerformanceMod}"
+                            IsVisible="{Binding CanUsePerformanceMod}"/>
+                  <TextBlock Text="{Binding PerformanceModNote}" Classes="label" TextWrapping="Wrap"/>
+                </StackPanel>
+              </Border>
 
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="9">
+              <Border Classes="totalCard">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Total download" Classes="label"/>
+                  <TextBlock Text="{Binding Detail.TotalSize}" FontSize="23" FontWeight="SemiBold"
+                             Foreground="{DynamicResource Accent}"/>
+                </StackPanel>
+              </Border>
+
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="7">
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Game" Classes="label"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Detail.ClientSize}" Classes="value"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" TextAlignment="Right" Text="{Binding Detail.ClientSize}" Classes="value"/>
 
                 <TextBlock Grid.Row="1" Grid.Column="0" Text="Libraries" Classes="label"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Detail.LibrarySize}" Classes="value"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" TextAlignment="Right" Text="{Binding Detail.LibrarySize}" Classes="value"/>
 
                 <TextBlock Grid.Row="2" Grid.Column="0" Text="Assets" Classes="label"/>
-                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Detail.AssetSize}" Classes="value"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" TextAlignment="Right" Text="{Binding Detail.AssetSize}" Classes="value"/>
 
                 <TextBlock Grid.Row="3" Grid.Column="0" Text="Runtime" Classes="label"/>
-                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Detail.Java}" Classes="value"/>
+                <TextBlock Grid.Row="3" Grid.Column="1" TextAlignment="Right" Text="{Binding Detail.Java}" Classes="value"/>
 
                 <TextBlock Grid.Row="4" Grid.Column="0" Text="Asset index" Classes="label"/>
-                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Detail.AssetIndex}" Classes="value"/>
+                <TextBlock Grid.Row="4" Grid.Column="1" TextAlignment="Right" Text="{Binding Detail.AssetIndex}" Classes="value"/>
 
                 <TextBlock Grid.Row="5" Grid.Column="0" Text="Components" Classes="label"/>
-                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Detail.Libraries}"
-                           Classes="value" TextAlignment="Right"/>
+                <TextBlock Grid.Row="5" Grid.Column="1" TextAlignment="Right" Text="{Binding Detail.Libraries}"
+                           Classes="value" TextWrapping="Wrap"/>
               </Grid>
-            </StackPanel>
+             </StackPanel>
+            </ScrollViewer>
 
           </DockPanel>
         </Panel>

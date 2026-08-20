@@ -38,6 +38,9 @@ public static class VersionResolver
     {
         Id = child.Id,
         InheritsFrom = null,
+
+        // Carried down the chain so the loader keeps pointing at the vanilla jar it inherits.
+        ClientJarVersionId = parent.ClientJarVersionId ?? parent.Id,
         Type = child.Type ?? parent.Type,
         MainClass = child.MainClass ?? parent.MainClass,
         Assets = child.Assets ?? parent.Assets,

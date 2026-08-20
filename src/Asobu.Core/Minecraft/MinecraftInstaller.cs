@@ -21,10 +21,24 @@ public sealed class MinecraftInstaller(HttpClient http, AsobuPaths paths, Mojang
         IProgress<InstallProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        paths.EnsureCreated();
         progress?.Report(new InstallProgress("Reading version metadata", 0));
 
         var version = await meta.GetResolvedVersionAsync(versionId, cancellationToken).ConfigureAwait(false);
+
+        return await InstallAsync(version, progress, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Installs a version that has already been resolved. Split out from the overload above so a
+    /// mod loader can supply its own flattened document — the download half never needs to know
+    /// where the metadata came from.
+    /// </summary>
+    public async Task<VersionJson> InstallAsync(
+        VersionJson version,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        paths.EnsureCreated();
         var platform = RuleContext.Current;
 
         Directory.CreateDirectory(paths.VersionDir(version.Id));
@@ -36,7 +50,7 @@ public sealed class MinecraftInstaller(HttpClient http, AsobuPaths paths, Mojang
         var downloads = new List<DownloadTask>();
 
         if (version.ClientJar is { } client)
-            downloads.Add(new DownloadTask(client.Url, paths.VersionJarFile(version.Id), client.Sha1, client.Size));
+            downloads.Add(new DownloadTask(client.Url, paths.VersionJarFile(version.JarVersionId), client.Sha1, client.Size));
 
         foreach (var library in version.Libraries.Where(l => RuleEvaluator.Allows(l, platform)))
         {
@@ -84,7 +98,7 @@ public sealed class MinecraftInstaller(HttpClient http, AsobuPaths paths, Mojang
             .Where(l => RuleEvaluator.Allows(l, platform))
             .Where(l => l.Natives is null || l.Downloads?.Artifact is not null)
             .Select(LibraryFile),
-        paths.VersionJarFile(version.Id),
+        paths.VersionJarFile(version.JarVersionId),
     ];
 
     private string LibraryFile(Library library) =>

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Asobu.Core;
 using Asobu.Core.Instances;
 using Asobu.Core.Minecraft;
+using Asobu.Core.Mods;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -50,6 +51,9 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     private CancellationTokenSource? _detailRequest;
     private bool _loaded;
 
+    /// <summary>Which Minecraft versions each performance mod publishes for. Fetched once.</summary>
+    private readonly Dictionary<string, IReadOnlyList<string>> _modVersions = [];
+
     public ObservableCollection<VersionRow> Versions { get; } = [];
 
     [ObservableProperty] public partial bool IsLoading { get; set; }
@@ -66,19 +70,160 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     [ObservableProperty] public partial bool IsLoadingDetail { get; set; }
     [ObservableProperty] public partial string InstanceName { get; set; } = "";
 
+    // ---- Mod loader.
+
+    [ObservableProperty] public partial bool UseVanilla { get; set; } = true;
+    [ObservableProperty] public partial bool UseFabric { get; set; }
+    [ObservableProperty] public partial bool UseForge { get; set; }
+    [ObservableProperty] public partial bool UseNeoForge { get; set; }
+    [ObservableProperty] public partial bool UseQuilt { get; set; }
+
+    /// <summary>The build each loader offers for this version, or null when it offers none.</summary>
+    [ObservableProperty] public partial string? FabricVersion { get; set; }
+    [ObservableProperty] public partial string? ForgeVersion { get; set; }
+    [ObservableProperty] public partial string? NeoForgeVersion { get; set; }
+    [ObservableProperty] public partial string? QuiltVersion { get; set; }
+    [ObservableProperty] public partial bool IsCheckingLoaders { get; set; }
+
+    // ---- Optional extras.
+
+    [ObservableProperty] public partial bool IncludePerformanceMod { get; set; }
+    [ObservableProperty] public partial string PerformanceModName { get; set; } = "Sodium";
+    [ObservableProperty] public partial bool CanUsePerformanceMod { get; set; }
+    [ObservableProperty] public partial string PerformanceModNote { get; set; } = "";
+
     public bool HasNoSelection => SelectedVersion is null;
-    public bool CanCreate => Detail is not null && InstanceName.Trim().Length > 0;
+    public bool CanCreate => Detail is not null && InstanceName.Trim().Length > 0 && !IsCheckingLoaders;
+
+    public bool FabricAvailable => FabricVersion is { Length: > 0 };
+    public bool ForgeAvailable => ForgeVersion is { Length: > 0 };
+    public bool NeoForgeAvailable => NeoForgeVersion is { Length: > 0 };
+    public bool QuiltAvailable => QuiltVersion is { Length: > 0 };
+
+    /// <summary>
+    /// Whether any loader is chosen. The extras only exist on top of a loader, so with none
+    /// picked there is nothing to offer and the whole block goes away rather than sitting there
+    /// greyed out explaining itself.
+    /// </summary>
+    public bool HasLoader => Loader != Loaders.Vanilla;
+
+    public string LoaderSummary => Loader switch
+    {
+        Loaders.Fabric => $"Fabric {FabricVersion}",
+        Loaders.Forge => $"Forge {ForgeVersion}",
+        Loaders.NeoForge => $"NeoForge {NeoForgeVersion}",
+        Loaders.Quilt => $"Quilt {QuiltVersion}",
+        _ => "Vanilla · no mod loader",
+    };
 
     partial void OnDetailChanged(VersionDetail? value) => OnPropertyChanged(nameof(CanCreate));
     partial void OnInstanceNameChanged(string value) => OnPropertyChanged(nameof(CanCreate));
+    partial void OnIsCheckingLoadersChanged(bool value) => OnPropertyChanged(nameof(CanCreate));
+
+    partial void OnFabricVersionChanged(string? value) => OnLoaderAvailabilityChanged(nameof(FabricAvailable));
+    partial void OnForgeVersionChanged(string? value) => OnLoaderAvailabilityChanged(nameof(ForgeAvailable));
+    partial void OnNeoForgeVersionChanged(string? value) => OnLoaderAvailabilityChanged(nameof(NeoForgeAvailable));
+    partial void OnQuiltVersionChanged(string? value) => OnLoaderAvailabilityChanged(nameof(QuiltAvailable));
+
+    private void OnLoaderAvailabilityChanged(string property)
+    {
+        OnPropertyChanged(property);
+        OnPropertyChanged(nameof(LoaderSummary));
+
+        // A loader might not exist for the version just clicked; don't leave its chip selected.
+        // Cleared here rather than left to the radio group: these flags are independent in the
+        // view model, and relying on the view to write false back would leave Loader wrong for
+        // however long the group takes to notice.
+        if ((UseFabric && !FabricAvailable) || (UseForge && !ForgeAvailable)
+            || (UseNeoForge && !NeoForgeAvailable) || (UseQuilt && !QuiltAvailable))
+        {
+            UseFabric = false;
+            UseForge = false;
+            UseNeoForge = false;
+            UseQuilt = false;
+            UseVanilla = true;
+        }
+    }
+
+    partial void OnUseVanillaChanged(bool value) => OnLoaderChanged();
+    partial void OnUseFabricChanged(bool value) => OnLoaderChanged();
+    partial void OnUseForgeChanged(bool value) => OnLoaderChanged();
+    partial void OnUseNeoForgeChanged(bool value) => OnLoaderChanged();
+    partial void OnUseQuiltChanged(bool value) => OnLoaderChanged();
+
+    private void OnLoaderChanged()
+    {
+        OnPropertyChanged(nameof(LoaderSummary));
+        OnPropertyChanged(nameof(HasLoader));
+
+        _ = RefreshPerformanceModAsync();
+    }
+
+    private string Loader =>
+        UseFabric && FabricAvailable ? Loaders.Fabric
+        : UseForge && ForgeAvailable ? Loaders.Forge
+        : UseNeoForge && NeoForgeAvailable ? Loaders.NeoForge
+        : UseQuilt && QuiltAvailable ? Loaders.Quilt
+        : Loaders.Vanilla;
+
+    private string? LoaderVersion => Loader switch
+    {
+        Loaders.Fabric => FabricVersion,
+        Loaders.Forge => ForgeVersion,
+        Loaders.NeoForge => NeoForgeVersion,
+        Loaders.Quilt => QuiltVersion,
+        _ => null,
+    };
 
     [RelayCommand]
     private void Create()
     {
         if (SelectedVersion is not { } row || InstanceName.Trim() is not { Length: > 0 } name) return;
 
-        // Downloading happens on Play, so creating an instance stays instant and offline-safe.
-        onCreated(launcher.Instances.Create(name, row.Id));
+        var loader = Loader;
+
+        // Downloading happens on Play, so creating an instance stays instant and offline-safe —
+        // the extras are recorded as wishes and fetched with everything else.
+        onCreated(launcher.Instances.Create(
+            name,
+            row.Id,
+            loader,
+            LoaderVersion,
+            IncludePerformanceMod && CanUsePerformanceMod ? Modrinth.PerformanceModFor(loader) : null));
+    }
+
+    /// <summary>
+    /// A performance mod only makes sense on a loader, and only where the mod actually publishes
+    /// a build. Both are checked rather than guessed at from a minimum version number, so this
+    /// stays right as the mod adds support for new Minecraft releases.
+    /// </summary>
+    private async Task RefreshPerformanceModAsync()
+    {
+        var loader = Loader;
+
+        if (loader == Loaders.Vanilla)
+        {
+            CanUsePerformanceMod = false;
+            IncludePerformanceMod = false;
+            return;
+        }
+
+        var project = Modrinth.PerformanceModFor(loader);
+        PerformanceModName = project == Modrinth.Embeddium ? "Embeddium" : "Sodium";
+
+        if (!_modVersions.TryGetValue(project, out var supported))
+            _modVersions[project] = supported = await launcher.Modrinth.GetGameVersionsAsync(project);
+
+        var version = SelectedVersion?.Id;
+        CanUsePerformanceMod = version is not null && supported.Contains(version, StringComparer.OrdinalIgnoreCase);
+
+        PerformanceModNote = CanUsePerformanceMod
+            ? $"Renders far faster. Installed on first launch."
+            : $"{PerformanceModName} has no build for {version}.";
+
+        // Suggested rather than merely offered: on a modded instance this is what almost everyone
+        // wants, and it costs one click to decline.
+        IncludePerformanceMod = CanUsePerformanceMod;
     }
 
     [RelayCommand]
@@ -134,7 +279,46 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     {
         OnPropertyChanged(nameof(HasNoSelection));
         if (value is not null) InstanceName = value.Id;
+
         _ = LoadDetailAsync(value);
+        _ = LoadLoadersAsync(value);
+    }
+
+    /// <summary>
+    /// Asks all three loaders at once what they have for this version. Each is allowed to answer
+    /// "nothing" — Fabric starts at 1.14, NeoForge at 1.20.2 — and a stale answer for a version
+    /// the user has already clicked away from is dropped.
+    /// </summary>
+    private async Task LoadLoadersAsync(VersionRow? row)
+    {
+        FabricVersion = ForgeVersion = NeoForgeVersion = QuiltVersion = null;
+        if (row is null) return;
+
+        IsCheckingLoaders = true;
+        try
+        {
+            var fabric = launcher.Fabric.GetLatestLoaderAsync(row.Id);
+            var forge = launcher.Loaders.GetForgeVersionAsync(row.Id);
+            var neoForge = launcher.Loaders.GetNeoForgeVersionAsync(row.Id);
+            var quilt = launcher.Quilt.GetLatestLoaderAsync(row.Id);
+
+            // All four at once: asking in turn would make picking a version feel four times
+            // slower than the slowest of them.
+            await Task.WhenAll(fabric, forge, neoForge, quilt);
+
+            if (SelectedVersion?.Id != row.Id) return;
+
+            FabricVersion = fabric.Result;
+            ForgeVersion = forge.Result;
+            NeoForgeVersion = neoForge.Result;
+            QuiltVersion = quilt.Result;
+        }
+        finally
+        {
+            if (SelectedVersion?.Id == row.Id) IsCheckingLoaders = false;
+        }
+
+        await RefreshPerformanceModAsync();
     }
 
     private async Task LoadDetailAsync(VersionRow? row)

@@ -4,7 +4,57 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- What an update compares itself against. The packaging script passes the same number to
+         vpk, so the release on GitHub and the build inside it always agree. -->
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+
+    <!-- Bindings resolved at compile time instead of by reflection on every evaluation. A page
+         of forty mod cards evaluates hundreds of them, and the reflective path costs both the
+         lookup and the allocation each time. Also turns a typo in a binding path into a build
+         error rather than a silently empty label. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+
+    <!-- Profile-guided tiering: the second pass at hot code is compiled from what actually ran.
+         Costs nothing at startup and pays for itself in the scrolling. -->
+    <TieredPGO>true</TieredPGO>
+
+    <!-- Precompiled at publish, so a released build does not JIT its way through the first frame.
+         This is the one that turns "a few seconds" into "it is open" — a Debug run cannot have
+         it, because Debug is built to be stepped through rather than to start quickly. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRunComposite>false</PublishReadyToRunComposite>
+
+    <!-- The window is the first thing that should exist. Nothing here needs a satellite assembly
+         probe or an unhandled-exception policy decided at startup. -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
   </PropertyGroup>
+
+  <!-- Release ships no symbols. Most of a published build was .pdb files — 81 MB of them for
+       Skia alone, native symbols that come along with the NuGet package and that nobody
+       debugging Asobu will ever open. Debug builds keep everything, which is where stepping
+       through actually happens. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
+
+  <!-- The native symbol files SkiaSharp and HarfBuzz ship arrive as runtime assets rather
+       than as reference files, so no build property excludes them: 101 MB of .pdb for two
+       libraries nobody is going to attach a native debugger to. Dropped from the publish
+       list itself, and only in Release — a Debug build keeps everything. -->
+  <Target Name="DropSymbolsFromRelease" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <Folder Include="Models\" />
@@ -21,6 +71,10 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Already underneath Avalonia; named here so its codec can be used directly to walk the
+         frames of an animated GIF, which Avalonia's own Bitmap does not do. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>

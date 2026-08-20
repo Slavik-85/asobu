@@ -1,0 +1,19 @@
+[Unit]
+Description=Asobu API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=asobu
+# Runs in place, out of the build directory. The binary is static and the state is one file,
+# so there is nothing to install: a redeploy is a rebuild here plus a restart. The state path
+# is the same one it uses when started by hand, so nothing is orphaned by adopting systemd.
+WorkingDirectory=/home/asobu/asobu-api
+Environment=ASOBU_STATE=/home/asobu/asobu-api/state.json
+ExecStart=/home/asobu/asobu-api/asobu-api
+Restart=on-failure
+# The service saves state on SIGTERM before exiting.
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

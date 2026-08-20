@@ -73,8 +73,73 @@
                      IsVisible="{Binding IsLoadingContent}"/>
 
           <ScrollViewer IsVisible="{Binding Content, Converter={x:Static conv:ObjectConverters.IsNotNull}}" ctrl:SmoothScroll.Enabled="True">
-            <SelectableTextBlock Text="{Binding Content}" FontFamily="Consolas,monospace" FontSize="12"
-                                  TextWrapping="Wrap" Margin="18" Foreground="{DynamicResource Text}"/>
+            <StackPanel Margin="18">
+
+              <!-- The verdict, above the wall of text it was read out of. Everything here is a
+                   guess from patterns in the report, so it shows its working and offers the one
+                   action that is free to be wrong about: turning a mod off is a rename. -->
+              <Border Classes="verdict" IsVisible="{Binding HasVerdict}" Margin="0,0,0,16">
+                <StackPanel Spacing="12">
+
+                  <StackPanel Spacing="5">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="&#x1F338;" FontSize="15" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding Analysis.Headline}" Classes="h2" VerticalAlignment="Center"
+                                 TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding Analysis.Advice}" Classes="sub" TextWrapping="Wrap"/>
+                  </StackPanel>
+
+                  <ItemsControl ItemsSource="{Binding Suspects}" IsVisible="{Binding HasSuspects}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:CrashSuspectViewModel">
+                        <Border Classes="suspect">
+                          <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                              <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding ConfidenceLabel}" Classes="label"/>
+                              </StackPanel>
+
+                              <Button Grid.Column="1" Classes="ghost" Content="Turn off"
+                                      VerticalAlignment="Center" IsVisible="{Binding CanDisable}"
+                                      Command="{Binding DisableCommand}"/>
+                              <Border Grid.Column="1" Classes="badge" VerticalAlignment="Center"
+                                      IsVisible="{Binding IsDisabled}">
+                                <TextBlock Text="Off" FontSize="11"
+                                           Foreground="{DynamicResource TextMuted}"/>
+                              </Border>
+                            </Grid>
+
+                            <ItemsControl ItemsSource="{Binding Evidence}" IsVisible="{Binding HasEvidence}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                  <TextBlock Text="{Binding}" FontFamily="Consolas,monospace" FontSize="11"
+                                             Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
+                                             Margin="0,0,0,3"/>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="{Binding Notice}" Classes="label"
+                                       Foreground="{DynamicResource Accent}" TextWrapping="Wrap"
+                                       IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <TextBlock Classes="label" TextWrapping="Wrap" IsVisible="{Binding HasSuspects}"
+                             Text="Asobu works this out by reading the report, not by knowing the mods. Treat it as a first place to look."/>
+
+                </StackPanel>
+              </Border>
+
+              <SelectableTextBlock Text="{Binding Content}" FontFamily="Consolas,monospace" FontSize="12"
+                                    TextWrapping="Wrap" Foreground="{DynamicResource Text}"/>
+            </StackPanel>
           </ScrollViewer>
         </Panel>
       </Border>

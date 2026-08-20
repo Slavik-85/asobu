@@ -1,0 +1,229 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.BrowseView"
+             x:DataType="vm:BrowseViewModel"
+             Background="{DynamicResource Bg}">
+  <!-- Its own ground, the way the mod page has one. As a page this was never needed — the
+       window is painted underneath — but opened from an instance this sits over that
+       instance, and a transparent page leaves its hero showing through. On the root
+       rather than the Grid inside it: that one carries a margin, which would leave the
+       page unpainted around its edge. -->
+
+  <Grid RowDefinitions="Auto,*" Margin="30,28,30,28">
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,18">
+      <!-- The way back, and the only mark an instance leaves on this page. Opened from an
+           instance there has to be one, since the sidebar still reads Instances and this is
+           sitting over it. -->
+      <Button Classes="back" Command="{Binding CloseCommand}" HorizontalAlignment="Left"
+              Margin="0,0,0,10" IsVisible="{Binding IsInstanceScoped, FallbackValue=False}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Path Data="M15 4 L7 12 L15 20" StrokeThickness="2"
+                StrokeLineCap="Round" StrokeJoin="Round" Width="10" Height="14" Stretch="Uniform"/>
+          <TextBlock Text="{Binding BackLabel}" FontSize="13.5" FontWeight="Medium"/>
+        </StackPanel>
+      </Button>
+
+      <TextBlock Text="Browse" Classes="h1"/>
+      <TextBlock Classes="sub" Margin="0,5,0,0"
+                 Text="Everything on Modrinth and CurseForge, filtered how you like."/>
+
+      <!-- ================= Toolbar ================= -->
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="10" Margin="0,20,0,0">
+
+        <!-- What you are looking for comes first, because it changes what everything else
+             means: the categories, the loader filter, even which provider can answer. -->
+        <ComboBox Grid.Column="0" Classes="field" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}"
+                  MinWidth="150" VerticalAlignment="Center">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:KindOption">
+              <TextBlock Text="{Binding Label}" FontSize="13.5" FontWeight="Medium"/>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <TextBox Grid.Column="1" Classes="search" PlaceholderText="Search Modrinth and CurseForge"
+                 VerticalAlignment="Center" Text="{Binding SearchText}"/>
+
+        <ComboBox Grid.Column="2" Classes="field" ItemsSource="{Binding Sorts}" SelectedItem="{Binding Sort}"
+                  MinWidth="165" VerticalAlignment="Center">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:SortOption">
+              <TextBlock Text="{Binding Label}" FontSize="13.5" FontWeight="Medium"/>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <Button Grid.Column="3" Classes="ghost field" Command="{Binding ToggleFiltersCommand}"
+                VerticalAlignment="Center" ToolTip.Tip="Show or hide the filters">
+          <StackPanel Orientation="Horizontal" Spacing="7">
+            <Path Data="M3 5 H21 M7 12 H17 M10 19 H14" Stroke="{DynamicResource Text}"
+                  StrokeThickness="2" StrokeLineCap="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"/>
+            <TextBlock Text="Filters" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <!-- Which Minecraft version the whole page is about. It filters every result, and it
+             is also what decides where Add can put things — see TargetLabel. Gone entirely when
+             browsing for an instance: that instance runs one version, and offering to change it
+             would only offer to make the list wrong. -->
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                    IsVisible="{Binding !IsInstanceScoped}">
+          <TextBlock Text="Version" Classes="label" VerticalAlignment="Center"/>
+          <ComboBox Classes="field" ItemsSource="{Binding GameVersions}"
+                    SelectedItem="{Binding GameVersion}" MinWidth="120" MaxDropDownHeight="320"/>
+        </StackPanel>
+      </Grid>
+
+      <TextBlock Text="{Binding TargetLabel}" Classes="label" Margin="0,10,0,0"/>
+    </StackPanel>
+
+    <!-- ================= Results + filters ================= -->
+    <Panel Grid.Row="1">
+
+      <!-- Inset by a margin rather than sized by a grid column: a margin is a value Avalonia
+           can transition, so the rows travel with the drawer instead of snapping to their new
+           width the moment it is mounted. -->
+      <DockPanel Classes="resultsColumn" Classes.shifted="{Binding FiltersOut}" LastChildFill="True">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding CountLabel}" Classes="label"
+                   Margin="0,0,0,10"/>
+
+        <ScrollViewer x:Name="ResultScroll" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                      Padding="0,0,8,0" ScrollChanged="ResultsScrolled">
+          <StackPanel Spacing="10" Margin="0,0,0,20">
+
+            <StackPanel Spacing="6" IsVisible="{Binding IsEmpty}" Margin="0,20,0,0">
+              <TextBlock Text="Nothing found" Classes="h2" Foreground="{DynamicResource TextMuted}"/>
+              <TextBlock Classes="sub" TextWrapping="Wrap"
+                         Text="Try fewer categories, another kind, or a different search."/>
+            </StackPanel>
+
+            <ItemsControl ItemsSource="{Binding Results}">
+              <!-- An ItemsControl stacks its items flush by default, so the rows ran into each
+                   other as one long block. -->
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="10"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ModCard">
+                  <!-- A row rather than a tile: browsing is reading, and a row has somewhere to
+                       put the description a tile has to drop. The whole row opens the mod; the
+                       buttons inside it handle their own presses. -->
+                  <Button Classes="modRow"
+                          Command="{Binding $parent[ItemsControl].((vm:BrowseViewModel)DataContext).OpenPageCommand}"
+                          CommandParameter="{Binding}">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+
+                      <Border Grid.Column="0" Width="62" Height="62" CornerRadius="12"
+                              ClipToBounds="True" Background="{DynamicResource SurfaceAlt}"
+                              VerticalAlignment="Top">
+                        <Panel>
+                          <TextBlock Text="&#x1F4E6;" FontSize="24" IsVisible="{Binding !HasIcon}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}"
+                                 Stretch="UniformToFill"/>
+                        </Panel>
+                      </Border>
+
+                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="{Binding Title}" FontSize="14.5" FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis"/>
+                          <TextBlock Text="{Binding AuthorLabel}" Classes="label"
+                                     IsVisible="{Binding HasAuthor}" VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Summary}" Classes="sub" TextWrapping="Wrap"
+                                   MaxLines="2" TextTrimming="CharacterEllipsis"/>
+
+                        <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,2,0,0">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Path Data="M12 3 V15 M7 11 L12 16 L17 11 M5 20 H19"
+                                  Stroke="{DynamicResource TextMuted}" StrokeThickness="1.8"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding DownloadsLabel}" Classes="label"/>
+                          </StackPanel>
+                          <Border Classes="rowTag">
+                            <TextBlock Text="{Binding ProviderName}" FontSize="10.5" FontWeight="Medium"/>
+                          </Border>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Accent}" IsVisible="{Binding HasNotice}"/>
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center"
+                                  MinWidth="104">
+                        <Button Classes="primary" Content="Add" HorizontalAlignment="Stretch"
+                                IsVisible="{Binding CanInstall}"
+                                Command="{Binding $parent[ItemsControl].((vm:BrowseViewModel)DataContext).InstallCommand}"
+                                CommandParameter="{Binding}"/>
+                        <TextBlock Text="Adding&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                   IsVisible="{Binding IsInstalling}"/>
+                        <Border Classes="badge" HorizontalAlignment="Center" IsVisible="{Binding IsInstalled}">
+                          <TextBlock Text="Added" FontSize="11" Foreground="{DynamicResource Accent}"/>
+                        </Border>
+                        <Button Classes="link" Content="Open page" HorizontalAlignment="Center"
+                                Command="{Binding $parent[ItemsControl].((vm:BrowseViewModel)DataContext).OpenPageCommand}"
+                                CommandParameter="{Binding}"/>
+                      </StackPanel>
+                    </Grid>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Finding more&#x2026;" Classes="label" HorizontalAlignment="Center"
+                       Margin="0,6,0,0" IsVisible="{Binding IsLoadingMore}"/>
+
+            <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Accent}"
+                       IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+
+      <!-- Last in the markup so it draws over the results, pinned to the edge it slides in
+           from — a drawer that arrives from the side it lives on is the only one that reads
+           as one. Stays mounted while .closing so the exit has something to animate. -->
+      <Border Classes="filterPanel" Width="216" HorizontalAlignment="Right"
+              Classes.open="{Binding ShowFilters}"
+              Classes.closing="{Binding IsFiltersClosing}"
+              IsVisible="{Binding ShowFilters}">
+        <DockPanel LastChildFill="True">
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+            <TextBlock Text="Categories" FontSize="13.5" FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Classes="link" Content="Clear" IsVisible="{Binding HasPicked}"
+                    Command="{Binding ClearFiltersCommand}"/>
+          </Grid>
+
+          <TextBlock DockPanel.Dock="Top" Classes="label" TextWrapping="Wrap" Margin="0,0,0,8"
+                     IsVisible="{Binding !HasCategories}"
+                     Text="No categories for this kind."/>
+
+          <!-- Its own scroller: the category list for modpacks runs long, and it should not drag
+               the results column down with it. -->
+          <ScrollViewer ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False">
+            <ItemsControl ItemsSource="{Binding Categories}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CategoryFilter">
+                  <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}"
+                            Margin="0,1" FontWeight="Normal"/>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+    </Panel>
+  </Grid>
+</UserControl>

@@ -484,3 +484,7 @@ $RECYCLE.BIN/
 # Asobu
 launcher-data/
 *.user
+
+# Build-time secrets. The CurseForge API key belongs to whoever owns this launcher and must
+# never be committed; secrets.props.example shows the shape without carrying one.
+secrets.props

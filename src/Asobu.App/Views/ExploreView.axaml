@@ -1,0 +1,264 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:core="using:Asobu.Core.Instances"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.ExploreView"
+             x:DataType="vm:ExploreViewModel">
+
+  <Grid RowDefinitions="Auto,*" Margin="30,28,30,0">
+
+    <!-- ================= Toolbar ================= -->
+    <StackPanel Grid.Row="0" Margin="0,0,0,18">
+      <TextBlock Text="Explore" Classes="h1"/>
+      <TextBlock Classes="sub" Margin="0,5,0,0"
+                 Text="Browse mods and add them straight to an instance."/>
+
+      <Grid ColumnDefinitions="*,Auto" Margin="0,20,0,0" ColumnSpacing="14">
+        <!-- Centred, not stretched: the row is as tall as the instance picker beside it, and a
+             stretched TextBox grows to match it. -->
+        <TextBox Grid.Column="0" Classes="search" PlaceholderText="Search Modrinth and CurseForge"
+                 Width="360" HorizontalAlignment="Left" VerticalAlignment="Center"
+                 Text="{Binding SearchText}"/>
+
+        <!-- The target drives the filters as well as where Add puts things, so it sits in the
+             toolbar rather than being asked for once per download. -->
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Text="For" Classes="label" VerticalAlignment="Center"/>
+          <ComboBox Classes="field" ItemsSource="{Binding Instances}" SelectedItem="{Binding Target}"
+                    MinWidth="170" VerticalAlignment="Center">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="core:Instance">
+                <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"/>
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+      </Grid>
+
+      <!-- Which instance mods land in is shared by both tabs, so it stays on screen for both. -->
+      <TextBlock Text="{Binding TargetLabel}" Classes="label" Margin="0,10,0,0"/>
+
+      <!-- A footnote, not a wall: without a CurseForge key the browser still works, it just has
+           one catalogue instead of two. -->
+      <TextBlock Text="{Binding SourceNotice}" Classes="label" Margin="0,4,0,0"
+                 IsVisible="{Binding HasSourceNotice}" Foreground="{DynamicResource Accent}"/>
+    </StackPanel>
+
+    <Panel Grid.Row="1">
+
+      <StackPanel VerticalAlignment="Center" Spacing="10" Margin="30" IsVisible="{Binding !HasInstances}">
+        <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
+        <TextBlock Text="No instances yet" Classes="h2" HorizontalAlignment="Center"
+                   Foreground="{DynamicResource TextMuted}"/>
+        <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                   Text="Mods need somewhere to go. Make an instance first, then come back."/>
+      </StackPanel>
+
+      <!-- The page scrolls as one column: banner, categories and grid together, so the banner
+           scrolls away instead of pinning a third of the window forever. -->
+      <ScrollViewer x:Name="PageScroll" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                    Padding="0,0,8,0" ScrollChanged="PageScrolled"
+                    IsVisible="{Binding HasInstances}">
+        <StackPanel Spacing="22" Margin="0,0,0,28">
+
+          <!-- ================= Banner ================= -->
+          <!-- A stream of real mods rather than a fixed set of slides: the most popular, the
+               most downloaded, the essentials and what is being worked on, dealt out in turn.
+               Paging forward keeps finding new ones — the next round is fetched before this one
+               runs out — and it moves on its own until the pointer lands on it. -->
+          <!-- FallbackValue matters here: an unresolved IsVisible binding leaves the property
+               at its default, which is visible — so a broken binding would open the banner with
+               nothing in it rather than keeping it shut. -->
+          <Panel x:Name="HeroArea" IsVisible="{Binding ShowHero, FallbackValue=False}">
+            <Border Classes="hero">
+              <Panel>
+                <!-- Named so the code-behind can settle it out of a small zoom as each mod
+                     arrives; the two images move together, hence the wrapper. -->
+                <Panel x:Name="HeroBackdrop">
+                  <Image Source="{Binding Feature.Card.Art}" Stretch="UniformToFill"
+                         IsVisible="{Binding Feature.Card.HasArt}"/>
+                  <!-- Most mods have no gallery at all, so the shelf keeps scenery in reserve. -->
+                  <Image Source="{Binding Feature.Scenery}" Stretch="UniformToFill"
+                         IsVisible="{Binding !Feature.Card.HasArt}"/>
+                </Panel>
+                <Border Background="{DynamicResource HeroScrim}"/>
+
+                <Grid x:Name="HeroContent" ColumnDefinitions="*,Auto" Margin="62,0" ColumnSpacing="24"
+                      VerticalAlignment="Center">
+                  <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="7" MaxWidth="480"
+                              HorizontalAlignment="Left">
+                    <TextBlock Classes="eyebrow" Text="{Binding Feature.Shelf}"/>
+                    <TextBlock Text="{Binding Feature.Card.Title}" FontSize="27" FontWeight="SemiBold"
+                               Foreground="#FFFFFF" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Feature.Card.MetaLine}" FontSize="12.5"
+                               Foreground="#C4FFFFFF" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding Feature.Card.Summary}" FontSize="13" Foreground="#DBFFFFFF"
+                               TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                               Margin="0,2,0,0"/>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,7,0,0">
+                      <Button Classes="primary" Content="Add" IsVisible="{Binding Feature.Card.CanInstall}"
+                              Command="{Binding InstallCommand}" CommandParameter="{Binding Feature.Card}"/>
+                      <Border Classes="heroBadge" IsVisible="{Binding Feature.Card.IsInstalled}">
+                        <TextBlock Text="Added" FontSize="12.5" FontWeight="Medium" Foreground="#FFFFFF"/>
+                      </Border>
+                      <Border Classes="heroBadge" IsVisible="{Binding Feature.Card.IsInstalling}">
+                        <TextBlock Text="Adding&#x2026;" FontSize="12.5" FontWeight="Medium" Foreground="#FFFFFF"/>
+                      </Border>
+                      <Button Classes="heroGhost" Content="Open page"
+                              Command="{Binding OpenPageCommand}" CommandParameter="{Binding Feature.Card}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Feature.Card.Notice}" FontSize="12" Foreground="#C4FFFFFF"
+                               IsVisible="{Binding Feature.Card.HasNotice}" TextWrapping="Wrap"/>
+                  </StackPanel>
+
+                  <!-- The icon is the one crisp thing on the banner: gallery pictures are served
+                       small and get stretched, icons are shown near their own size. -->
+                  <Border Grid.Column="1" Classes="heroPlate" VerticalAlignment="Center"
+                          IsVisible="{Binding Feature.Card.HasIcon}">
+                    <Image Source="{Binding Feature.Card.Icon}" Stretch="Uniform" Margin="10"/>
+                  </Border>
+                </Grid>
+
+                <Button Classes="heroArrow" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Margin="14,0,0,0" Command="{Binding PreviousFeatureCommand}">
+                  <Path Data="M15 4 L7 12 L15 20" StrokeThickness="2" StrokeLineCap="Round"
+                        StrokeJoin="Round" Width="9" Height="13" Stretch="Uniform"/>
+                </Button>
+                <Button Classes="heroArrow" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Margin="0,0,14,0" Command="{Binding NextFeatureCommand}">
+                  <Path Data="M9 4 L17 12 L9 20" StrokeThickness="2" StrokeLineCap="Round"
+                        StrokeJoin="Round" Width="9" Height="13" Stretch="Uniform"/>
+                </Button>
+              </Panel>
+            </Border>
+          </Panel>
+
+          <!-- ================= Categories ================= -->
+          <StackPanel Spacing="10" IsVisible="{Binding ShowCategories}">
+            <TextBlock Text="Popular categories" Classes="h2"/>
+            <ItemsControl ItemsSource="{Binding Categories}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CategoryChip">
+                  <Button Classes="categoryCard" Classes.active="{Binding IsSelected}"
+                          Content="{Binding Label}"
+                          Command="{Binding $parent[ItemsControl].((vm:ExploreViewModel)DataContext).PickCategoryCommand}"
+                          CommandParameter="{Binding}"/>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- ================= Results ================= -->
+          <StackPanel Spacing="12">
+            <TextBlock Text="{Binding ResultsHeading}" Classes="h2"/>
+
+            <TextBlock Text="Searching&#x2026;" Classes="sub" IsVisible="{Binding IsSearching}"/>
+
+            <StackPanel Spacing="6" IsVisible="{Binding IsEmpty}" Margin="0,10,0,0">
+              <TextBlock Text="Nothing here" Classes="h2" Foreground="{DynamicResource TextMuted}"/>
+              <TextBlock Classes="sub" TextWrapping="Wrap"
+                         Text="Try a different search, another category, or the other source."/>
+            </StackPanel>
+
+            <ItemsControl ItemsSource="{Binding Results}">
+              <!-- Fits as many cards as the window has room for and then shares the row out
+                   between them, rather than leaving most of a card's width empty on the right. -->
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <ctrl:FlowGrid MinItemWidth="172" MaxItemWidth="248" Spacing="14"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ModCard">
+                  <!-- The whole tile opens the mod. The Add button and the link inside it handle
+                       their own presses, so they never fall through to this one. -->
+                  <Button Classes="modCard"
+                          Command="{Binding $parent[ItemsControl].((vm:ExploreViewModel)DataContext).OpenPageCommand}"
+                          CommandParameter="{Binding}">
+                    <!-- Every card in a row is the height of the tallest, so the actions dock to
+                         the bottom rather than following a name that happens to run to two lines
+                         and leaving a row of buttons at four different heights. -->
+                    <DockPanel LastChildFill="True">
+
+                      <!-- Square, whatever width the row hands the card. Bounds is the width it
+                           was actually arranged at, so the art follows the grid as it reflows. -->
+                      <Border DockPanel.Dock="Top" CornerRadius="14" ClipToBounds="True"
+                              Height="{Binding $self.Bounds.Width}"
+                              Background="{DynamicResource SurfaceAlt}">
+                        <Panel>
+                          <TextBlock Text="&#x1F4E6;" FontSize="42" IsVisible="{Binding !HasIcon}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" Stretch="UniformToFill"/>
+
+                          <!-- On the art rather than in the text, so a mixed page stays readable
+                               without a row of labels. -->
+                          <Border Classes="sourceTag" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <TextBlock Text="{Binding ProviderName}" FontSize="10" FontWeight="Medium"/>
+                          </Border>
+                        </Panel>
+                      </Border>
+
+                      <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,10,0,0">
+                        <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Accent}" IsVisible="{Binding HasNotice}"/>
+
+                        <Button Classes="primary" Content="Add" HorizontalAlignment="Stretch"
+                                IsVisible="{Binding CanInstall}"
+                                Command="{Binding $parent[ItemsControl].((vm:ExploreViewModel)DataContext).InstallCommand}"
+                                CommandParameter="{Binding}"/>
+                        <TextBlock Text="Adding&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                   IsVisible="{Binding IsInstalling}"/>
+                        <Border Classes="badge" HorizontalAlignment="Center" IsVisible="{Binding IsInstalled}">
+                          <TextBlock Text="Added" FontSize="11" Foreground="{DynamicResource Accent}"/>
+                        </Border>
+
+                        <!-- A link rather than a second full-width button: in a grid, two of those
+                             per tile is most of the card's height spent on chrome. -->
+                        <Button Classes="link" Content="Open page" HorizontalAlignment="Center"
+                                Command="{Binding $parent[ItemsControl].((vm:ExploreViewModel)DataContext).OpenPageCommand}"
+                                CommandParameter="{Binding}"/>
+                      </StackPanel>
+
+                      <StackPanel Spacing="3" Margin="0,10,0,0" VerticalAlignment="Top">
+                        <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding AuthorLabel}" Classes="label"
+                                   IsVisible="{Binding HasAuthor}" TextTrimming="CharacterEllipsis"/>
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                          <Path Data="M12 3 V15 M7 11 L12 16 L17 11 M5 20 H19"
+                                Stroke="{DynamicResource TextMuted}" StrokeThickness="1.8"
+                                StrokeLineCap="Round" StrokeJoin="Round"
+                                Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
+                          <TextBlock Text="{Binding DownloadsLabel}" Classes="label"/>
+                        </StackPanel>
+                      </StackPanel>
+
+                    </DockPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Finding more&#x2026;" Classes="label" HorizontalAlignment="Center"
+                       Margin="0,6,0,0" IsVisible="{Binding IsLoadingMore}"/>
+
+            <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Accent}"
+                       IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+          </StackPanel>
+
+        </StackPanel>
+      </ScrollViewer>
+
+    </Panel>
+  </Grid>
+</UserControl>

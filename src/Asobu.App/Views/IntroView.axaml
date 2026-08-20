@@ -1,0 +1,213 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.IntroView"
+             x:DataType="vm:IntroViewModel">
+
+  <!-- Opaque on purpose: this is the whole window on a first launch, not a sheet over it. -->
+  <Panel Background="{DynamicResource Bg}" Classes="introRoot" Opacity="{Binding Veil}">
+
+    <!-- One centred column. The title is not moved up by a hand-picked offset — the stage
+         under it grows from nothing, and centring carries the title up by exactly half of
+         whatever appears. No number to get wrong, and it stays right if the text reflows. -->
+    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+
+      <StackPanel Spacing="2">
+        <TextBlock Text="Welcome to" Classes="introHello" HorizontalAlignment="Center"
+                   Opacity="{Binding HelloFade}"/>
+        <TextBlock Text="asobu" Classes="introName" HorizontalAlignment="Center"
+                   Opacity="{Binding NameFade}"/>
+      </StackPanel>
+
+      <!-- One height for every act, with the contents centred in it. Both acts then hang the
+           title in the same place, so moving between them never nudges it, and no act can
+           outgrow the box and get clipped. -->
+      <Panel Classes="introStage" Height="{Binding StageHeight}"
+             ClipToBounds="True" Width="760">
+
+        <!-- ============ Signing in ============ -->
+        <StackPanel Classes="introFade" Classes.on="{Binding IsSignIn}"
+                    IsVisible="{Binding IsSignIn}"
+                    VerticalAlignment="Center" Spacing="22">
+
+          <TextBlock Text="Let&#8217;s get you settled in first." Classes="introLead"
+                     HorizontalAlignment="Center"/>
+
+          <Border Classes="card" Padding="28,24" MinHeight="252">
+            <Panel>
+
+              <!-- The two doors, laid out like the new-instance choice, with the way past
+                   them underneath: quiet, and on the centre line so it belongs to neither. -->
+              <Grid RowDefinitions="*,Auto" Classes="introPane"
+                    IsVisible="{Binding IsChoosing}" Classes.on="{Binding IsChoosing}">
+
+              <Grid Grid.Row="0" ColumnDefinitions="*,Auto,*">
+
+                <Grid Grid.Column="0" RowDefinitions="*,Auto" Margin="6,2,20,0">
+                  <StackPanel Spacing="8" VerticalAlignment="Center" Margin="0,0,0,20">
+                    <!-- The same mark the Accounts menu uses for this route. -->
+                    <Border Classes="introBadge">
+                      <Path Data="M3 3 H11 V11 H3 Z M13 3 H21 V11 H13 Z M3 13 H11 V21 H3 Z M13 13 H21 V21 H13 Z"
+                            Fill="{DynamicResource Accent}" Width="20" Height="20" Stretch="Uniform"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Sign in with Microsoft" Classes="h2" TextAlignment="Center"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="270"
+                               Text="Play online, join servers, and bring your friends. Asobu never sees your password."/>
+                  </StackPanel>
+                  <Button Grid.Row="1" Classes="primary" Content="Sign in with Microsoft"
+                          HorizontalAlignment="Center" Command="{Binding ChooseMicrosoftCommand}"/>
+                </Grid>
+
+                <Rectangle Grid.Column="1" Width="1" Margin="0,4" VerticalAlignment="Stretch"
+                           Fill="{DynamicResource Border}"/>
+
+                <Grid Grid.Column="2" RowDefinitions="*,Auto" Margin="20,2,6,0">
+                  <StackPanel Spacing="8" VerticalAlignment="Center" Margin="0,0,0,20">
+                    <Border Classes="introBadge">
+                      <Path Data="M12 12 A4 4 0 1 0 12 4 A4 4 0 1 0 12 12 Z M4 21 A8 8 0 0 1 20 21"
+                            Stroke="{DynamicResource Accent}" StrokeThickness="1.8" StrokeLineCap="Round"
+                            Width="21" Height="21" Stretch="Uniform"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Or play offline" Classes="h2" TextAlignment="Center"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="270"
+                               Text="Singleplayer only — online servers turn offline accounts away. You can add a Microsoft account later."/>
+                  </StackPanel>
+                  <Button Grid.Row="1" Classes="ghost" Content="Play offline"
+                          HorizontalAlignment="Center" Command="{Binding ChooseOfflineCommand}"/>
+                </Grid>
+              </Grid>
+
+                <Button Grid.Row="1" Classes="quiet" Content="Skip for now"
+                        HorizontalAlignment="Center" Margin="0,14,0,0"
+                        ToolTip.Tip="Straight to the launcher. You can add an account any time from Accounts."
+                        Command="{Binding SkipCommand}"/>
+              </Grid>
+
+              <!-- Behind the Microsoft door: the code, and a browser already opened for them. -->
+              <StackPanel Classes="introPane" IsVisible="{Binding IsMicrosoft}"
+                          Classes.on="{Binding IsMicrosoft}" Spacing="14" VerticalAlignment="Center">
+
+                <TextBlock Text="Sign in with Microsoft" Classes="h2" HorizontalAlignment="Center"/>
+
+                <Border Classes="deviceCode" IsVisible="{Binding Accounts.IsAwaitingDeviceCode}">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="label" TextWrapping="Wrap" TextAlignment="Center"
+                               Text="Enter this code on Microsoft&#8217;s page, then come back. This window is waiting."/>
+                    <SelectableTextBlock Text="{Binding Accounts.DeviceUserCode}" FontSize="26"
+                                         FontWeight="SemiBold" FontFamily="Consolas,monospace"
+                                         HorizontalAlignment="Center"
+                                         Foreground="{DynamicResource Accent}"/>
+                    <Button Classes="ghost" Content="Open the page again" HorizontalAlignment="Center"
+                            Command="{Binding Accounts.OpenDevicePageCommand}"/>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Classes="label" HorizontalAlignment="Center" Text="Talking to Microsoft…"
+                           IsVisible="{Binding !Accounts.IsAwaitingDeviceCode}"/>
+
+                <TextBlock Text="{Binding Accounts.Error}" Classes="notice" TextWrapping="Wrap"
+                           TextAlignment="Center" MaxWidth="420" HorizontalAlignment="Center"
+                           IsVisible="{Binding Accounts.Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+                <Button Classes="ghost" Content="Back" HorizontalAlignment="Center"
+                        Command="{Binding BackToChoiceCommand}"/>
+              </StackPanel>
+
+              <!-- Behind the offline door: just a name. -->
+              <StackPanel Classes="introPane" IsVisible="{Binding IsOffline}"
+                          Classes.on="{Binding IsOffline}" Spacing="14" VerticalAlignment="Center">
+
+                <StackPanel Spacing="6">
+                  <TextBlock Text="What should we call you?" Classes="h2" HorizontalAlignment="Center"/>
+                  <TextBlock Classes="sub" HorizontalAlignment="Center" TextAlignment="Center"
+                             Text="3–16 characters: letters, digits and underscores."/>
+                </StackPanel>
+
+                <TextBox Text="{Binding OfflineName}" PlaceholderText="Username" Width="280"
+                         HorizontalAlignment="Center" HorizontalContentAlignment="Center">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding AddOfflineCommand}"/>
+                  </TextBox.KeyBindings>
+                </TextBox>
+
+                <TextBlock Text="{Binding Accounts.Error}" Classes="notice" TextWrapping="Wrap"
+                           TextAlignment="Center" MaxWidth="420" HorizontalAlignment="Center"
+                           IsVisible="{Binding Accounts.Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                  <Button Classes="ghost" Content="Back" Command="{Binding BackToChoiceCommand}"/>
+                  <Button Classes="primary" Content="That&#8217;s me" Command="{Binding AddOfflineCommand}"/>
+                </StackPanel>
+              </StackPanel>
+
+            </Panel>
+          </Border>
+        </StackPanel>
+
+        <!-- ============ What this thing is ============ -->
+        <StackPanel Classes="introFade" Classes.on="{Binding IsAbout}"
+                    IsVisible="{Binding IsAbout}"
+                    VerticalAlignment="Center" Spacing="20">
+
+          <StackPanel Spacing="6">
+            <TextBlock Classes="introLead" HorizontalAlignment="Center"
+                       Text="{Binding Greeting}"/>
+            <TextBlock Classes="sub" HorizontalAlignment="Center" TextAlignment="Center"
+                       Text="Here&#8217;s what Asobu is for, in four lines."/>
+          </StackPanel>
+
+          <Border Classes="card" Padding="26,22">
+            <StackPanel Spacing="14">
+
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14" Classes="introPoint">
+                <TextBlock Grid.Column="0" Text="&#x1F338;" FontSize="21" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="Instances, not installs" FontWeight="SemiBold" FontSize="14"/>
+                  <TextBlock Classes="sub" TextWrapping="Wrap"
+                             Text="Each setup keeps its own version, mods and worlds. Break one and the others never notice."/>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14" Classes="introPoint">
+                <TextBlock Grid.Column="0" Text="&#x1F9E9;" FontSize="21" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="Mods from everywhere, in one place" FontWeight="SemiBold" FontSize="14"/>
+                  <TextBlock Classes="sub" TextWrapping="Wrap"
+                             Text="Modrinth and CurseForge searched together, filtered to what your instance actually runs."/>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14" Classes="introPoint">
+                <TextBlock Grid.Column="0" Text="&#x1FA79;" FontSize="21" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="It tells you what went wrong" FontWeight="SemiBold" FontSize="14"/>
+                  <TextBlock Classes="sub" TextWrapping="Wrap"
+                             Text="When the game crashes, Asobu reads the log, names the mod, and offers the fix instead of showing you a wall of Java."/>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14" Classes="introPoint">
+                <TextBlock Grid.Column="0" Text="&#x1F44B;" FontSize="21" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="Your friends come with you" FontWeight="SemiBold" FontSize="14"/>
+                  <TextBlock Classes="sub" TextWrapping="Wrap"
+                             Text="Sign in with Microsoft and you&#8217;re on the Asobu network — add people by their Minecraft name and see who&#8217;s around."/>
+                </StackPanel>
+              </Grid>
+
+            </StackPanel>
+          </Border>
+
+          <Button Classes="primary" Content="Let&#8217;s go" HorizontalAlignment="Center"
+                  Command="{Binding FinishCommand}"/>
+        </StackPanel>
+
+      </Panel>
+    </StackPanel>
+  </Panel>
+</UserControl>

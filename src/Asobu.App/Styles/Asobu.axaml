@@ -1,16 +1,28 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctrl="using:Asobu.App.Controls">
 
   <Styles.Resources>
     <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
 
         <ResourceDictionary x:Key="Light">
+          <!-- Game log. Read against a dark console panel in both themes, so these are the
+               same in each: an orange that survives on near-black, and a red that is alarming
+               without being unreadable. Info is deliberately plain — most of a log is noise, and
+               colouring all of it would mean colouring none of it. -->
+          <SolidColorBrush x:Key="LogInfo"     Color="#D8D2D6"/>
+          <SolidColorBrush x:Key="LogWarn"     Color="#F0A741"/>
+          <SolidColorBrush x:Key="LogError"    Color="#FF6B6B"/>
+          <SolidColorBrush x:Key="LogChatter"  Color="#7C7076"/>
           <SolidColorBrush x:Key="Bg"          Color="#FDF8FA"/>
           <SolidColorBrush x:Key="Surface"     Color="#FFFFFF"/>
           <SolidColorBrush x:Key="SurfaceAlt"  Color="#F7EFF3"/>
           <SolidColorBrush x:Key="Hover"       Color="#F2E6EC"/>
           <SolidColorBrush x:Key="Border"      Color="#EDDFE6"/>
+          <!-- Inputs rest on this instead of the full Accent: a border tinted enough to read as
+               ours, but well short of shouting. The accent comes back on hover and focus. -->
+          <SolidColorBrush x:Key="InputBorder" Color="#E3C9D5"/>
           <SolidColorBrush x:Key="Text"        Color="#2C2126"/>
           <SolidColorBrush x:Key="TextMuted"   Color="#8B7A82"/>
           <!-- Sakura. Accent is deliberately deeper than blossom pink so white text on it
@@ -36,19 +48,96 @@
                a zero-alpha stop is still a colour, so fading from bare "Transparent" would
                sweep the image through white on its way out. -->
           <SolidColorBrush x:Key="BackdropScrim" Color="#A6FDF8FA"/>
+          <!-- Behind a modal sheet. Heavier than the hero veil above: that one has to keep
+               a picture legible, this one has to put a whole page out of reach. -->
+          <SolidColorBrush x:Key="ModalScrim" Color="#59201017"/>
+          <!-- The tour dims harder than a modal does. A modal only has to put the page out of
+               reach; this has to make one control the only thing worth looking at. -->
+          <SolidColorBrush x:Key="TourScrim" Color="#8C201017"/>
+          <!-- Over the Explore banner. Weighted to the bottom, where the title sits: the top of
+               the picture stays a picture, and the words get the ground they need. -->
+          <LinearGradientBrush x:Key="HeroScrim" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#26140B11" Offset="0"/>
+            <GradientStop Color="#8C140B11" Offset="0.55"/>
+            <GradientStop Color="#E6140B11" Offset="1"/>
+          </LinearGradientBrush>
           <LinearGradientBrush x:Key="BackdropFade" StartPoint="0%,0%" EndPoint="0%,100%">
             <GradientStop Color="#00FDF8FA" Offset="0.35"/>
             <GradientStop Color="#B3FDF8FA" Offset="0.78"/>
             <GradientStop Color="#FFFDF8FA" Offset="1"/>
           </LinearGradientBrush>
+                  <!-- Text input chrome. Fluent wires the focused border and the selection highlight to
+               SystemAccentColor, which on Windows is whatever accent the user picked in their
+               own settings — that is where the stray purple ring came from, not from anything
+               in this palette. Setting BorderBrush on the TextBox itself loses here: Fluent's
+               :focus rule writes onto PART_BorderElement, a more specific target than the
+               control. Repointing the keys it actually reads is what sticks. -->
+          <SolidColorBrush x:Key="TextControlBorderBrush"                       Color="#E3C9D5"/>
+          <SolidColorBrush x:Key="TextControlBorderBrushPointerOver"            Color="#8B7A82"/>
+          <SolidColorBrush x:Key="TextControlBorderBrushFocused"                Color="#C44370"/>
+          <SolidColorBrush x:Key="TextControlBorderBrushDisabled"               Color="#EDDFE6"/>
+          <SolidColorBrush x:Key="TextControlBackground"                        Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="TextControlBackgroundPointerOver"             Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="TextControlBackgroundFocused"                 Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="TextControlBackgroundDisabled"                Color="#F7EFF3"/>
+          <SolidColorBrush x:Key="TextControlForeground"                        Color="#2C2126"/>
+          <SolidColorBrush x:Key="TextControlForegroundPointerOver"             Color="#2C2126"/>
+          <SolidColorBrush x:Key="TextControlForegroundFocused"                 Color="#2C2126"/>
+          <SolidColorBrush x:Key="TextControlForegroundDisabled"                Color="#8B7A82"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForeground"             Color="#8B7A82"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver"  Color="#8B7A82"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused"      Color="#8B7A82"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled"     Color="#8B7A82"/>
+          <!-- Selecting text inside the box lands on the same wash as the chosen dropdown row. -->
+          <SolidColorBrush x:Key="TextControlSelectionHighlightColor"           Color="#FFE6EE"/>
+
+          <!-- The accent ramp itself. Checkboxes, scrollbar thumbs, focus rings and anything
+               else in Fluent that reaches for the system accent picks these up, so the user's
+               Windows colour stops bleeding into a launcher that has its own. -->
+          <Color x:Key="SystemAccentColor">#C44370</Color>
+          <Color x:Key="SystemAccentColorLight1">#D25C85</Color>
+          <Color x:Key="SystemAccentColorLight2">#DE799B</Color>
+          <Color x:Key="SystemAccentColorLight3">#E9A0BA</Color>
+          <Color x:Key="SystemAccentColorDark1">#AE3A63</Color>
+          <Color x:Key="SystemAccentColorDark2">#953154</Color>
+          <Color x:Key="SystemAccentColorDark3">#7A2744</Color>
+
+          <!-- Dropdown chrome. FluentTheme draws the popup and its rows from its own stock
+               palette — a flat sheet with a purple selection block — so the open list looked
+               nothing like the box it came out of. Repointing Fluent's own keys is steadier
+               than reaching into its template: whichever node it paints, it reads these. -->
+          <SolidColorBrush x:Key="ComboBoxBackground"                            Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver"                 Color="#F7EFF3"/>
+          <SolidColorBrush x:Key="ComboBoxBackgroundPressed"                     Color="#F2E6EC"/>
+          <SolidColorBrush x:Key="ComboBoxBackgroundDisabled"                    Color="#F7EFF3"/>
+          <SolidColorBrush x:Key="ComboBoxForeground"                            Color="#2C2126"/>
+          <SolidColorBrush x:Key="ComboBoxForegroundFocused"                     Color="#2C2126"/>
+          <SolidColorBrush x:Key="ComboBoxForegroundFocusedPressed"              Color="#2C2126"/>
+          <SolidColorBrush x:Key="ComboBoxForegroundDisabled"                    Color="#8B7A82"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownBackground"                    Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush"                   Color="#EDDFE6"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForeground"               Color="#8B7A82"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocused"        Color="#C44370"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" Color="#C44370"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundDisabled"       Color="#8B7A82"/>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
+          <!-- Game log. Read against a dark console panel in both themes, so these are the
+               same in each: an orange that survives on near-black, and a red that is alarming
+               without being unreadable. Info is deliberately plain — most of a log is noise, and
+               colouring all of it would mean colouring none of it. -->
+          <SolidColorBrush x:Key="LogInfo"     Color="#D8D2D6"/>
+          <SolidColorBrush x:Key="LogWarn"     Color="#F0A741"/>
+          <SolidColorBrush x:Key="LogError"    Color="#FF6B6B"/>
+          <SolidColorBrush x:Key="LogChatter"  Color="#7C7076"/>
           <SolidColorBrush x:Key="Bg"          Color="#161114"/>
           <SolidColorBrush x:Key="Surface"     Color="#201A1E"/>
           <SolidColorBrush x:Key="SurfaceAlt"  Color="#1B1519"/>
           <SolidColorBrush x:Key="Hover"       Color="#2C2429"/>
           <SolidColorBrush x:Key="Border"      Color="#342B30"/>
+          <!-- See the light theme note. Lifted off Border so an empty field still has an edge. -->
+          <SolidColorBrush x:Key="InputBorder" Color="#4B3A43"/>
           <SolidColorBrush x:Key="Text"        Color="#F4EEF0"/>
           <SolidColorBrush x:Key="TextMuted"   Color="#9C8C93"/>
           <!-- On dark the blossom pink can be light, so accent text reads at 9:1 and
@@ -69,14 +158,153 @@
           <!-- See the light theme note: stops carry the page background's RGB so the image
                fades into the page rather than through a grey haze. -->
           <SolidColorBrush x:Key="BackdropScrim" Color="#8C161114"/>
+          <!-- See the light theme note. -->
+          <SolidColorBrush x:Key="ModalScrim" Color="#A60C080A"/>
+          <!-- See the light theme note. -->
+          <SolidColorBrush x:Key="TourScrim" Color="#CC0C080A"/>
+          <!-- Same in both themes: white words on a photograph, whatever the page around it is. -->
+          <!-- Over the Explore banner. Weighted to the bottom, where the title sits: the top of
+               the picture stays a picture, and the words get the ground they need. -->
+          <LinearGradientBrush x:Key="HeroScrim" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#26140B11" Offset="0"/>
+            <GradientStop Color="#8C140B11" Offset="0.55"/>
+            <GradientStop Color="#E6140B11" Offset="1"/>
+          </LinearGradientBrush>
           <LinearGradientBrush x:Key="BackdropFade" StartPoint="0%,0%" EndPoint="0%,100%">
             <GradientStop Color="#00161114" Offset="0.35"/>
             <GradientStop Color="#B3161114" Offset="0.78"/>
             <GradientStop Color="#FF161114" Offset="1"/>
           </LinearGradientBrush>
+                  <!-- See the light theme note: Fluent's text-input chrome, off the system accent. -->
+          <SolidColorBrush x:Key="TextControlBorderBrush"                       Color="#4B3A43"/>
+          <SolidColorBrush x:Key="TextControlBorderBrushPointerOver"            Color="#9C8C93"/>
+          <SolidColorBrush x:Key="TextControlBorderBrushFocused"                Color="#FF9EC0"/>
+          <SolidColorBrush x:Key="TextControlBorderBrushDisabled"               Color="#342B30"/>
+          <SolidColorBrush x:Key="TextControlBackground"                        Color="#201A1E"/>
+          <SolidColorBrush x:Key="TextControlBackgroundPointerOver"             Color="#201A1E"/>
+          <SolidColorBrush x:Key="TextControlBackgroundFocused"                 Color="#201A1E"/>
+          <SolidColorBrush x:Key="TextControlBackgroundDisabled"                Color="#1B1519"/>
+          <SolidColorBrush x:Key="TextControlForeground"                        Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="TextControlForegroundPointerOver"             Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="TextControlForegroundFocused"                 Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="TextControlForegroundDisabled"                Color="#9C8C93"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForeground"             Color="#9C8C93"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver"  Color="#9C8C93"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused"      Color="#9C8C93"/>
+          <SolidColorBrush x:Key="TextControlPlaceholderForegroundDisabled"     Color="#9C8C93"/>
+          <SolidColorBrush x:Key="TextControlSelectionHighlightColor"           Color="#3B222B"/>
+
+          <!-- See the light theme note. -->
+          <Color x:Key="SystemAccentColor">#FF9EC0</Color>
+          <Color x:Key="SystemAccentColorLight1">#FFB6D0</Color>
+          <Color x:Key="SystemAccentColorLight2">#FFC9DD</Color>
+          <Color x:Key="SystemAccentColorLight3">#FFDCE9</Color>
+          <Color x:Key="SystemAccentColorDark1">#E27FA3</Color>
+          <Color x:Key="SystemAccentColorDark2">#C06588</Color>
+          <Color x:Key="SystemAccentColorDark3">#9C4E6C</Color>
+
+          <!-- See the light theme note: Fluent's stock dropdown palette, repointed at ours. -->
+          <SolidColorBrush x:Key="ComboBoxBackground"                            Color="#201A1E"/>
+          <SolidColorBrush x:Key="ComboBoxBackgroundPointerOver"                 Color="#2C2429"/>
+          <SolidColorBrush x:Key="ComboBoxBackgroundPressed"                     Color="#1B1519"/>
+          <SolidColorBrush x:Key="ComboBoxBackgroundDisabled"                    Color="#1B1519"/>
+          <SolidColorBrush x:Key="ComboBoxForeground"                            Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="ComboBoxForegroundFocused"                     Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="ComboBoxForegroundFocusedPressed"              Color="#F4EEF0"/>
+          <SolidColorBrush x:Key="ComboBoxForegroundDisabled"                    Color="#9C8C93"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownBackground"                    Color="#201A1E"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush"                   Color="#342B30"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForeground"               Color="#9C8C93"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocused"        Color="#FF9EC0"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundFocusedPressed" Color="#FF9EC0"/>
+          <SolidColorBrush x:Key="ComboBoxDropDownGlyphForegroundDisabled"       Color="#9C8C93"/>
         </ResourceDictionary>
 
       </ResourceDictionary.ThemeDictionaries>
+
+      <!-- Popup metrics. The padding is what lets each row sit as a rounded pill inside the
+           sheet instead of butting against its edge; the content margin drops Fluent's extra
+           gap above the first row so the inset reads evenly all the way round. -->
+      <Thickness x:Key="TextControlBorderThemeThickness">1</Thickness>
+      <Thickness x:Key="TextControlBorderThemeThicknessFocused">1.5</Thickness>
+      <Thickness x:Key="ComboBoxDropdownBorderThickness">1</Thickness>
+      <Thickness x:Key="ComboBoxDropdownBorderPadding">5</Thickness>
+      <Thickness x:Key="ComboBoxDropdownContentMargin">0</Thickness>
+
+      <!-- Dropdown rows. Owning the template outright rather than recolouring Fluent's is the
+           same call the library card made: reaching in to change one state kept landing on a
+           node Fluent wasn't actually painting. Selection is the soft accent wash plus a tick
+           rather than a saturated block — the row stays readable and the palette stays sakura. -->
+      <ControlTheme x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
+        <Setter Property="Padding" Value="10,7"/>
+        <Setter Property="FontSize" Value="13.5"/>
+        <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Name="shell"
+                    Margin="0,1"
+                    Padding="{TemplateBinding Padding}"
+                    CornerRadius="9"
+                    Background="{DynamicResource HoverFade}">
+              <Border.Transitions>
+                <Transitions>
+                  <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+                </Transitions>
+              </Border.Transitions>
+              <Grid ColumnDefinitions="*,Auto">
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="Center">
+                  <ContentPresenter.Transitions>
+                    <Transitions>
+                      <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+                    </Transitions>
+                  </ContentPresenter.Transitions>
+                </ContentPresenter>
+                <Path Name="tick" Grid.Column="1"
+                      Width="11" Height="9" Margin="8,0,1,0"
+                      Stretch="Uniform" Opacity="0"
+                      Data="M1,5 L4.2,8.3 L10.6,1.3"
+                      Stroke="{DynamicResource Accent}" StrokeThickness="1.8"
+                      StrokeLineCap="Round" StrokeJoin="Round"
+                      VerticalAlignment="Center">
+                  <Path.Transitions>
+                    <Transitions>
+                      <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+                    </Transitions>
+                  </Path.Transitions>
+                </Path>
+              </Grid>
+            </Border>
+          </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover /template/ Border#shell">
+          <Setter Property="Background" Value="{DynamicResource Hover}"/>
+        </Style>
+        <Style Selector="^:pressed /template/ Border#shell">
+          <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+        </Style>
+        <!-- Declared after the hover rules so the wash survives a pointer passing over the
+             row that is already chosen. -->
+        <Style Selector="^:selected /template/ Border#shell">
+          <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+        </Style>
+        <Style Selector="^:selected /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+        </Style>
+        <Style Selector="^:selected /template/ Path#tick">
+          <Setter Property="Opacity" Value="1"/>
+        </Style>
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+          <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+        </Style>
+      </ControlTheme>
     </ResourceDictionary>
   </Styles.Resources>
 
@@ -305,6 +533,13 @@
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="Padding" Value="6"/>
   </Style>
+  <!-- A ListBox keeps its scroller inside its template, so the behaviour is attached through a
+       style rather than in the view like everywhere else. This covers the version list, the
+       account list and the crash report list in one go. -->
+  <Style Selector="ListBox /template/ ScrollViewer">
+    <Setter Property="ctrl:SmoothScroll.Enabled" Value="True"/>
+  </Style>
+
   <Style Selector="ListBoxItem">
     <Setter Property="Padding" Value="14,11"/>
     <Setter Property="CornerRadius" Value="11"/>
@@ -316,11 +551,32 @@
          hover fade sweeps through pale grey, same as the buttons above. -->
     <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
   </Style>
+  <!-- Painted on the row as well as on its presenter. Fluent tints whichever of the two it
+       feels like for these states, and a stray light fill underneath an unpainted presenter is
+       what read as a white flash on hover. Owning both leaves it nothing to tint. -->
+  <Style Selector="ListBoxItem">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <Style Selector="ListBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
   <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
   </Style>
+
+  <!-- A row deepens toward the selected colour when pressed. The translucent-white press flash
+       belongs to buttons: on a list it reads as the row lighting up for no reason, and it fires
+       on the way into a click you have not finished making yet. -->
+  <Style Selector="ListBoxItem:pressed">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
   <Style Selector="ListBoxItem:pressed /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+
+  <!-- After the hover and press rules, so the chosen row keeps its wash under the pointer. -->
+  <Style Selector="ListBoxItem:selected">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
   </Style>
   <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
@@ -331,16 +587,21 @@
     <Setter Property="CornerRadius" Value="11"/>
     <Setter Property="Padding" Value="12,9"/>
     <Setter Property="FontSize" Value="13.5"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <!-- A box is often stretched taller than its text needs — sitting in a grid row beside a
+         button, say. The default anchors the text and its placeholder to the top, which reads
+         as a typo in the layout, so they are centred here rather than at each call site. Safe
+         for every box in the launcher: none of them accept more than one line. -->
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}"/>
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="SelectionBrush" Value="{DynamicResource AccentSoft}"/>
     <Setter Property="CaretBrush" Value="{DynamicResource Accent}"/>
   </Style>
   <Style Selector="TextBox:pointerover">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource TextMuted}"/>
   </Style>
   <Style Selector="TextBox:focus-within">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
     <Setter Property="BorderThickness" Value="1.5"/>
   </Style>
 
@@ -400,6 +661,17 @@
   </Style>
   <Style Selector="Button.ghost.danger">
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- A ghost standing beside a primary as an equal choice rather than as its quieter
+       alternative: the primary's metrics exactly, so the pair reads as two doors instead of one
+       door and a footnote. Only the fill stays quiet, which is the whole point of a ghost.
+       Declared after the plain .ghost rules so it wins where the two disagree. -->
+  <Style Selector="Button.ghost.twin">
+    <Setter Property="Padding" Value="22,12"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
   </Style>
 
   <!-- Sidebar account bar: one bordered box holding the account chip and the settings gear -->
@@ -467,22 +739,67 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
   </Style>
   <Style Selector="ComboBox">
+    <Setter Property="ctrl:AnimatedDropdown.Enabled" Value="True"/>
     <Setter Property="CornerRadius" Value="11"/>
     <Setter Property="Padding" Value="12,9"/>
     <Setter Property="FontSize" Value="13.5"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}"/>
     <Setter Property="BorderThickness" Value="1"/>
   </Style>
   <Style Selector="ComboBox:pointerover">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource TextMuted}"/>
   </Style>
   <Style Selector="ComboBox:focus">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
     <Setter Property="BorderThickness" Value="1.5"/>
   </Style>
   <Style Selector="ComboBox:dropdownopen">
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
     <Setter Property="BorderThickness" Value="1.5"/>
+  </Style>
+  <!-- The popup sheet itself. Fluent gives it the shared OverlayCornerRadius, which is
+       squarer than every other surface in the app; this rounds it to match the closed box
+       without dragging tooltips and flyouts along with it. -->
+  <Style Selector="ComboBox /template/ Border#PopupBorder">
+    <Setter Property="CornerRadius" Value="13"/>
+  </Style>
+
+  <!-- Slides down out of the box it belongs to. Keyed off :dropdownopen rather than the plain
+       element selector: an Animation fires when its selector starts matching, and the popup's
+       own chrome is already matching long before anyone opens it.
+       There is no matching exit — Avalonia destroys a popup the moment it closes, so nothing
+       survives long enough to animate on the way out. -->
+  <Style Selector="ComboBox:dropdownopen /template/ Border#PopupBorder">
+    <Style.Animations>
+      <Animation Duration="0:0:0.17" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-10"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Slides back up. Declared after the entrance so it wins the frame where both selectors
+       match — see AnimatedDropdown, which reopens the popup so there is something left to
+       animate, since Avalonia otherwise destroys it the moment it closes. -->
+  <Style Selector="ComboBox.closing:dropdownopen /template/ Border#PopupBorder">
+    <Style.Animations>
+      <Animation Duration="0:0:0.15" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-10"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
   </Style>
   <Style Selector="Slider">
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
@@ -549,6 +866,20 @@
     <Setter Property="RenderTransform" Value="none"/>
   </Style>
 
+  <!-- The caption gets out of the way rather than being covered up. Timed to the overlay so the
+       two cross-fade; the play pill fills the row, so the overlap is never actually visible. -->
+  <Style Selector="Button.instanceCard StackPanel#caption">
+    <Setter Property="Opacity" Value="1"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.instanceCard:pointerover StackPanel#caption">
+    <Setter Property="Opacity" Value="0"/>
+  </Style>
+
   <Style Selector="Button.cardPlay">
     <Setter Property="Padding" Value="0,7"/>
     <Setter Property="CornerRadius" Value="10"/>
@@ -567,48 +898,9 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
   </Style>
 
-  <!-- Instance sheet: rises from the bottom when opened. This is an Animation rather than a
-       Transition because the panel is collapsed while closed — a transition needs both a before
-       and an after value on a live element, which never happens here. An Animation instead fires
-       the moment the .open selector starts matching, which is exactly when it becomes visible. -->
-  <Style Selector="Grid.detailSheet.open">
-    <Style.Animations>
-      <Animation Duration="0:0:0.34" Easing="CubicEaseOut" FillMode="Forward">
-        <KeyFrame Cue="0%">
-          <Setter Property="TranslateTransform.Y" Value="460"/>
-          <Setter Property="Opacity" Value="0"/>
-        </KeyFrame>
-        <KeyFrame Cue="60%">
-          <Setter Property="Opacity" Value="1"/>
-        </KeyFrame>
-        <KeyFrame Cue="100%">
-          <Setter Property="TranslateTransform.Y" Value="0"/>
-          <Setter Property="Opacity" Value="1"/>
-        </KeyFrame>
-      </Animation>
-    </Style.Animations>
-  </Style>
-
-  <!-- Slide back down on close. Declared after .open because both classes are present while
-       closing and equally specific styles resolve last-one-wins. EaseIn is the mirror of the
-       entrance's EaseOut, so it accelerates away instead of easing to a halt mid-exit. -->
-  <Style Selector="Grid.detailSheet.closing">
-    <Style.Animations>
-      <Animation Duration="0:0:0.34" Easing="CubicEaseIn" FillMode="Forward">
-        <KeyFrame Cue="0%">
-          <Setter Property="TranslateTransform.Y" Value="0"/>
-          <Setter Property="Opacity" Value="1"/>
-        </KeyFrame>
-        <KeyFrame Cue="45%">
-          <Setter Property="Opacity" Value="1"/>
-        </KeyFrame>
-        <KeyFrame Cue="100%">
-          <Setter Property="TranslateTransform.Y" Value="460"/>
-          <Setter Property="Opacity" Value="0"/>
-        </KeyFrame>
-      </Animation>
-    </Style.Animations>
-  </Style>
+  <!-- The instance sheet rises from below the window and drops back out of it. The slide itself
+       lives in PageSlide, not here: the distance has to be the window's height, and an Animation
+       key frame takes a plain number with no way to bind one. -->
 
   <!-- Big square instance icon at the top of the sheet -->
   <Style Selector="Button.heroIcon">
@@ -735,9 +1027,34 @@
   </Style>
 
   <!-- Search field: a touch rounder than a plain input -->
+  <!-- Height pinned rather than left to padding. Matching the padding was not enough: a
+       ComboBox and a TextBox each add their own template chrome on top of it, and the two do not
+       land on the same number. Toolbar pickers carry ".field" for the same reason, so a row of
+       them lines up whatever Fluent does underneath. -->
   <Style Selector="TextBox.search">
-    <Setter Property="CornerRadius" Value="12"/>
-    <Setter Property="Padding" Value="14,10"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Padding" Value="14,0"/>
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <!-- An input sharing a row with a button. Stretched rather than pinned to 38 like the
+       toolbar's: here the neighbour is a primary button, which is taller, and a box that stops
+       short of it looks like it slipped. Vertical padding goes to zero and the text is centred
+       instead, or it would sit against the top edge of a box taller than itself. -->
+  <Style Selector="TextBox.field">
+    <Setter Property="Padding" Value="14,0"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <Style Selector="ComboBox.field">
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <Style Selector="Button.field">
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
 
   <!-- Large icon button on the instance page -->
@@ -815,6 +1132,1758 @@
   </Style>
   <Style Selector="Button.iconTextButton:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- ================= Instance hero actions and modal sheets ================= -->
+
+  <!-- Pencil and gear flanking Play. Squared off to the same corner radius as Play and tall
+       enough to sit on its baseline, so the three read as one row of controls rather than a big
+       button with two afterthoughts stuck to it. -->
+  <Style Selector="Button.heroAction">
+    <Setter Property="Width" Value="54"/>
+    <Setter Property="Height" Value="54"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.heroAction /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+  <Style Selector="Button.heroAction:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.heroAction:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+  <!-- Resting glyph colour lives here, not as a Fill attribute in the view: an inline value is
+       a LocalValue and would outrank the hover rule below, leaving a dead style behind. -->
+  <Style Selector="Button.heroAction Path">
+    <Setter Property="Fill" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Fill" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.heroAction:pointerover Path">
+    <Setter Property="Fill" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Modal sheet. The scrim fills the page and eats clicks, so nothing behind it is reachable
+       while a sheet is up. Both of these animate off a class rather than IsVisible for the same
+       reason the instance sheet does: an Animation fires when its selector starts matching, and
+       toggling visibility on an element that already matched never restarts one. -->
+  <Style Selector="Border.modalScrim">
+    <Setter Property="Background" Value="{DynamicResource ModalScrim}"/>
+  </Style>
+  <Style Selector="Border.modalScrim.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.18" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Both closing rules are declared after their .open twin on purpose: the sheet still carries
+       .open while it leaves, and two equally specific styles resolve last-one-wins. Timed to
+       finish together with the card below, so the page doesn't reappear under a sheet that is
+       still on its way out. -->
+  <Style Selector="Border.modalScrim.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.24" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="Border.modalCard">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="20"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Margin" Value="24"/>
+  </Style>
+  <Style Selector="Border.modalCard.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.24" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.Y" Value="26"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Slides back down the way it came. EaseIn mirrors the entrance's EaseOut, so it accelerates
+       away instead of easing to a halt mid-exit, and the fade is held back to 55% so the card is
+       visibly moving rather than simply dissolving on the spot. -->
+  <Style Selector="Border.modalCard.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.24" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="55%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.Y" Value="26"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- One file waiting to be downloaded by hand. Quiet enough that a list of six does not
+       shout, with the same rounding as everything else in a sheet. -->
+  <Style Selector="Border.blockedRow">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="14,10"/>
+    <Setter Property="Margin" Value="0,0,6,8"/>
+  </Style>
+
+  <!-- Panes inside the new-instance card. The same class trick as every sheet: .open fires
+       its entrance when the selector starts matching, .closing is declared afterwards so it
+       wins while both are on, and .back flips the slide's direction so backing up reads as
+       backing up. Timed to PaneSlideMilliseconds in InstancesViewModel; keep the two in step. -->
+  <Style Selector="Grid.flowPane.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.22" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="44"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Grid.flowPane.open.back">
+    <Style.Animations>
+      <Animation Duration="0:0:0.22" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="-44"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Grid.flowPane.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.2" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="-44"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <Style Selector="Grid.flowPane.closing.back">
+    <Style.Animations>
+      <Animation Duration="0:0:0.2" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="44"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Banner thumbnails. The selected ring is a Border inside the button rather than the
+       button's own BorderBrush: Fluent's chrome owns that property through a template binding,
+       and a plain Border we place ourselves cannot be argued with. -->
+  <Style Selector="Button.bannerChoice">
+    <Setter Property="Width" Value="126"/>
+    <Setter Property="Height" Value="72"/>
+    <Setter Property="Margin" Value="0,0,10,10"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="13"/>
+  </Style>
+  <Style Selector="Button.bannerChoice /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+  <Style Selector="Button.bannerChoice:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.bannerChoice:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- Crash verdict. Washed in the accent rather than carded like everything else: it is the one
+       block on the page that is Asobu talking rather than the game's own output. -->
+  <Style Selector="Border.verdict">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="Padding" Value="18"/>
+  </Style>
+
+  <Style Selector="Border.suspect">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Padding" Value="14,12"/>
+    <Setter Property="Margin" Value="0,0,0,8"/>
+  </Style>
+
+  <!-- The device sign-in code. Loud on purpose: it is the one thing on the page the user has to
+       carry somewhere else and type in by hand. -->
+  <Style Selector="Border.deviceCode">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="16"/>
+  </Style>
+
+  <!-- Copy button riding alongside the device code. Stroked rather than filled: two outlined
+       sheets read as "copy" at 18px where a solid shape just reads as a blob. -->
+  <Style Selector="Button.copyButton">
+    <Setter Property="Width" Value="34"/>
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.copyButton /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <Style Selector="Button.copyButton:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.copyButton:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+  <Style Selector="Button.copyButton Path">
+    <Setter Property="Stroke" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- ================= Accounts page ================= -->
+
+  <!-- The well the account tiles sit in. Recessed rather than raised: it reads as a container
+       for the tiles instead of competing with them for the same card treatment. -->
+  <Style Selector="Border.accountWell">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="16"/>
+  </Style>
+
+  <Style Selector="Button.accountTile">
+    <Setter Property="Padding" Value="12,14"/>
+    <Setter Property="Margin" Value="5"/>
+    <Setter Property="CornerRadius" Value="16"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+  </Style>
+
+  <!-- The ring lives on the ContentPresenter, not on the Button. FluentTheme's own :pointerover
+       rule writes BorderBrush straight onto the presenter, which outranks anything set on the
+       button itself — that is what made the chosen tile lose its outline the moment the pointer
+       touched it. Owning the same node keeps the rules arguing on equal terms. -->
+  <Style Selector="Button.accountTile /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceFade}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource SurfaceFade}"/>
+    <Setter Property="BorderThickness" Value="1.5"/>
+    <Setter Property="CornerRadius" Value="16"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.accountTile:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}"/>
+  </Style>
+  <Style Selector="Button.accountTile:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- Declared after the hover rules: equally specific styles resolve last-one-wins, so this is
+       what keeps the chosen tile marked while the pointer is over it. Hovering the chosen one
+       shifts the fill and leaves the ring alone, rather than trading one for the other. -->
+  <Style Selector="Button.accountTile.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.accountTile.active:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Add and remove, sitting under the well. -->
+  <Style Selector="Button.accountAction">
+    <Setter Property="Width" Value="54"/>
+    <Setter Property="Height" Value="40"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.accountAction /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.accountAction:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.accountAction:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+  <Style Selector="Button.accountAction Path">
+    <Setter Property="Stroke" Value="{DynamicResource OnAccent}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Stroke" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- The remove button is the soft wash by default and only goes solid once it is asking to be
+       confirmed, so the destructive one is never the loudest thing on the page by accident. -->
+  <Style Selector="Button.accountAction.danger /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Button.accountAction.danger Path">
+    <Setter Property="Stroke" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.accountAction.danger:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.accountAction.danger.confirming /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.accountAction.danger.confirming Path">
+    <Setter Property="Stroke" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
+  <!-- Rows inside the add-account flyout -->
+  <Style Selector="Button.menuItem">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="Padding" Value="11,9"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+  <Style Selector="Button.menuItem /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <Style Selector="Button.menuItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.menuItem:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- Fluent's flyout chrome, repointed at the palette so it matches the dropdown rows. -->
+  <Style Selector="FlyoutPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="6"/>
+  </Style>
+
+  <!-- Dropdown menu we own outright, rather than a Flyout. A popup is destroyed the instant it
+       closes, which is fine for a fade in and impossible for a fade out; this is a plain Border
+       in the page, so it can animate both ways like the modal sheets do. -->
+  <Style Selector="Border.menuScrim">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <!-- Fills the scrim so a click anywhere outside the menu dismisses it. -->
+  <Style Selector="Button.scrimCatcher">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="VerticalAlignment" Value="Stretch"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="CornerRadius" Value="0"/>
+  </Style>
+  <Style Selector="Button.scrimCatcher /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.scrimCatcher:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.scrimCatcher:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+
+  <Style Selector="Border.dropdownMenu">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="6"/>
+  </Style>
+  <!-- The menu always travels out of the button and back into it, so the direction depends on
+       which side it landed on. Code-behind sets .below when it placed the menu underneath.
+       Declaration order carries the whole thing: while closing, the menu still holds .open, and
+       equally specific styles resolve last-one-wins — so every rule below is written after the
+       ones it needs to beat. -->
+
+  <!-- Above the button: rises out of it. The :not guards are what keep this to one animation
+       per state — a bare .open rule goes on matching when .below is set too, and both fire. -->
+  <Style Selector="Border.dropdownMenu.open:not(.below)">
+    <Style.Animations>
+      <Animation Duration="0:0:0.16" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="9"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Below the button: drops out of it instead. -->
+  <Style Selector="Border.dropdownMenu.below.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.16" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-9"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Retracts back down into the button. -->
+  <Style Selector="Border.dropdownMenu.closing:not(.below)">
+    <Style.Animations>
+      <Animation Duration="0:0:0.16" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="9"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Retracts back up into it. -->
+  <Style Selector="Border.dropdownMenu.below.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.16" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-9"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- ================= Library group bands ================= -->
+
+  <Style Selector="Button.groupHeader">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <!-- The row itself never paints. It exists to be clickable across its whole width; the fill
+       belongs to the pill, which is sized to its content and so can never be clipped. -->
+  <Style Selector="Button.groupHeader /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+
+  <Style Selector="Border.groupPill">
+    <Setter Property="Padding" Value="9,6"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.groupHeader:pointerover Border.groupPill">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.groupHeader:pressed Border.groupPill">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- FluentTheme shrinks a pressed button with scale(0.98) about its centre. On a full-width
+       header that pulls the left-aligned pill inward — it reads as the label jumping right on
+       every click. The row is a hit target, not a thing that should move. -->
+  <Style Selector="Button.groupHeader:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+  <Style Selector="Button.groupHeader:pressed /template/ ContentPresenter">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- Resting colours live in styles, not as attributes on the elements: an inline value is a
+       LocalValue and outranks these triggers, which is how a hover rule ends up dead. -->
+  <Style Selector="Button.groupHeader TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.groupHeader:pointerover TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+
+  <!-- One chevron that turns, rather than swapping two glyphs: the rotation is the affordance,
+       and it means collapsed and expanded can never drift out of sync. -->
+  <Style Selector="Path.groupChevron">
+    <Setter Property="Stroke" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="RenderTransform" Value="none"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Stroke" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Path.groupChevron.expanded">
+    <Setter Property="RenderTransform" Value="rotate(90deg)"/>
+  </Style>
+  <Style Selector="Button.groupHeader:pointerover Path.groupChevron">
+    <Setter Property="Stroke" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- The cards folding in and out. An Animation rather than a Transition because the band is
+       unmounted while collapsed — a transition needs a live element with a before and an after,
+       which never happens here. -->
+  <Style Selector="ItemsControl.groupBody.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.18" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-14"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Declared after .open, which the band still carries while it folds away: equally specific
+       styles resolve last-one-wins. EaseIn mirrors the entrance so it accelerates out of sight
+       instead of easing to a halt half-collapsed. -->
+  <Style Selector="ItemsControl.groupBody.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.18" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="-14"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Right-click menus, matched to the account dropdown rather than left on Fluent's own greys. -->
+  <Style Selector="ContextMenu">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="5"/>
+  </Style>
+  <Style Selector="ContextMenu MenuItem">
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="10,7"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <!-- Destructive entry reads as destructive before it is clicked, not after. -->
+  <Style Selector="ContextMenu MenuItem.danger">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- The one filled button that throws something away. -->
+  <Style Selector="Button.primary.danger /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- ================= New instance page ================= -->
+
+  <!-- A small grass-block-ish tile in front of every version, so the list reads as Minecraft
+       versions rather than as a table of strings. -->
+  <Style Selector="Border.versionDot">
+    <Setter Property="Width" Value="22"/>
+    <Setter Property="Height" Value="22"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="ListBoxItem:selected Border.versionDot">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <Style Selector="Border.perfCard">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="14,12"/>
+  </Style>
+
+  <Style Selector="Border.totalCard">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="14,12"/>
+  </Style>
+
+  <!-- Fluent's checkbox uses the system accent for its tick; ours is sakura like everything else. -->
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+
+  <!-- ================= Explore ================= -->
+
+  <!-- A tile per mod, the way CurseForge's own Discover lays them out: art first, then name,
+       author and downloads. The whole tile opens the mod, so it is a button rather than a box
+       with a link in it — which means the chrome lives on the presenter, since Fluent writes its
+       own background and border there and would win over anything set on the control.
+       The outline picks up the accent on hover so the grid stays flat and calm until you point
+       at something. -->
+  <Style Selector="Button.modCard">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="Button.modCard /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="Padding" Value="12"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.modCard:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <!-- Pressed keeps the same fill: Fluent greys it, and a whole tile going grey under the
+       cursor reads as the tile being disabled rather than as a press. -->
+  <Style Selector="Button.modCard:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.modCard:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- Text-only action, for when a second button would outweigh what it does. -->
+  <Style Selector="Button.link">
+    <Setter Property="Padding" Value="6,3"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.link /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.link:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+  <Style Selector="Button.link:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Sits on the artwork, so it needs to hold its own against any colour underneath. -->
+  <Style Selector="Border.sourceTag">
+    <Setter Property="Background" Value="{DynamicResource ModalScrim}"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="Padding" Value="7,3"/>
+    <Setter Property="Margin" Value="7"/>
+  </Style>
+  <Style Selector="Border.sourceTag TextBlock">
+    <Setter Property="Foreground" Value="#FFFFFF"/>
+  </Style>
+
+  <!-- The banner across the top of Explore: one real mod, shown against its own gallery
+       picture. Everything on it is white on a photograph, so the colours here are fixed rather
+       than themed — the page behind it changes, the photograph does not. -->
+  <Style Selector="Border.hero">
+    <Setter Property="CornerRadius" Value="20"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <!-- Fixed, and set here so every slide is the same strip. Left to itself the backdrop
+         measures at its own aspect ratio and the banner changes height with each mod — a
+         1920x1080 screenshot across this width comes out over 450 tall. -->
+    <Setter Property="Height" Value="268"/>
+  </Style>
+
+  <!-- Round, translucent, and pinned to the artwork's edges. Dark rather than themed: it sits on
+       a photograph, which has no theme. -->
+  <!-- Names the shelf the mod on the banner came top of. Quiet on purpose: it explains the
+       banner, it is not the point of it. -->
+  <Style Selector="TextBlock.eyebrow">
+    <Setter Property="FontSize" Value="11.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="#B8FFFFFF"/>
+  </Style>
+
+  <!-- Holds the mod's icon at a size worth looking at, on a plate so a dark logo still reads
+       against a dark screenshot. -->
+  <Style Selector="Border.heroPlate">
+    <Setter Property="Width" Value="118"/>
+    <Setter Property="Height" Value="118"/>
+    <Setter Property="CornerRadius" Value="24"/>
+    <Setter Property="Background" Value="#26FFFFFF"/>
+    <Setter Property="BorderBrush" Value="#33FFFFFF"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+
+  <!-- Secondary action on the banner. The page's own ghost button is muted grey, which on a
+       photograph disappears entirely. -->
+  <Style Selector="Button.heroGhost">
+    <Setter Property="Padding" Value="16,9"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="#FFFFFF"/>
+  </Style>
+  <Style Selector="Button.heroGhost /template/ ContentPresenter">
+    <Setter Property="Background" Value="#26FFFFFF"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.heroGhost:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#40FFFFFF"/>
+  </Style>
+  <Style Selector="Button.heroGhost:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="#59FFFFFF"/>
+  </Style>
+  <Style Selector="Button.heroGhost:pointerover">
+    <Setter Property="Foreground" Value="#FFFFFF"/>
+  </Style>
+
+  <!-- Where the Add button was, once there is nothing left to press. -->
+  <Style Selector="Border.heroBadge">
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="Padding" Value="16,9"/>
+    <Setter Property="Background" Value="#26FFFFFF"/>
+    <Setter Property="BorderBrush" Value="#40FFFFFF"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <Style Selector="Button.heroArrow">
+    <Setter Property="Width" Value="38"/>
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="19"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.heroArrow /template/ ContentPresenter">
+    <Setter Property="Background" Value="#4D000000"/>
+    <Setter Property="CornerRadius" Value="19"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.heroArrow:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#8C000000"/>
+  </Style>
+  <Style Selector="Button.heroArrow:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="#B3000000"/>
+  </Style>
+  <!-- Fluent scales a pressed button about its centre; on a control this small the nudge reads
+       as the arrow slipping out from under the cursor. -->
+  <Style Selector="Button.heroArrow:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+  <Style Selector="Button.heroArrow Path">
+    <Setter Property="Stroke" Value="#FFFFFF"/>
+  </Style>
+
+  <!-- Which shelf of the four is showing. Clickable, so the row doubles as a way to jump. -->
+  <Style Selector="Button.heroDot">
+    <Setter Property="Width" Value="9"/>
+    <Setter Property="Height" Value="9"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="CornerRadius" Value="5"/>
+  </Style>
+  <Style Selector="Button.heroDot /template/ ContentPresenter">
+    <Setter Property="Background" Value="#66FFFFFF"/>
+    <Setter Property="CornerRadius" Value="5"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.heroDot:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#A6FFFFFF"/>
+  </Style>
+  <!-- After the hover rule on purpose: pointing at the dot you are already on must not dim it. -->
+  <Style Selector="Button.heroDot.on /template/ ContentPresenter">
+    <Setter Property="Background" Value="#FFFFFF"/>
+  </Style>
+  <Style Selector="Button.heroDot:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- A soft pill per category. Reads as a shortcut rather than a filter control, which is what
+       it is: one tap swaps the grid, tapping it again puts the shelf back. -->
+  <Style Selector="Button.categoryCard">
+    <Setter Property="Padding" Value="16,9"/>
+    <Setter Property="Margin" Value="0,0,9,9"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.categoryCard /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.categoryCard:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.categoryCard:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <!-- Declared after the hover rules so the chosen chip keeps its fill under the cursor. -->
+  <Style Selector="Button.categoryCard.active /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+  <Style Selector="Button.categoryCard.active">
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
+  <!-- ================= Browse ================= -->
+
+  <!-- The filter column. A panel rather than a floating sheet: it stays put while you work
+       through it, which is the whole point of checkboxes over a dropdown. -->
+  <Style Selector="Border.filterPanel">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="16"/>
+    <Setter Property="Padding" Value="16,14"/>
+  </Style>
+
+  <!-- One result per row: browsing is reading, and a row has somewhere to put the description
+       a tile has to drop. A button for the same reason the tile is one — see above. -->
+  <Style Selector="Button.modRow">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="Button.modRow /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="16"/>
+    <Setter Property="Padding" Value="14"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.modRow:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.modRow:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.modRow:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- Which shop a row came from. Quieter than the tag on a tile, which has artwork to fight. -->
+  <Style Selector="Border.rowTag">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="7,2"/>
+  </Style>
+  <Style Selector="Border.rowTag TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+
+  <!-- ================= Mod page ================= -->
+
+  <!-- The sheet the page proper sits on, lifted off the banner behind it. -->
+  <Style Selector="Border.modSheet">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="22"/>
+    <Setter Property="Padding" Value="26,24"/>
+  </Style>
+
+  <!-- Overlaps the top edge of the sheet, so the mod is stamped on the page rather than listed
+       inside it. The border is the sheet's own colour, which is what reads as an overlap. -->
+  <Style Selector="Border.modIconPlate">
+    <Setter Property="Width" Value="104"/>
+    <Setter Property="Height" Value="104"/>
+    <Setter Property="CornerRadius" Value="22"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderThickness" Value="4"/>
+  </Style>
+
+  <Style Selector="Border.versionRow">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="14,11"/>
+  </Style>
+
+  <!-- The mod page slides the same way the instance sheet does, and for the same reason from
+       the same place: see PageSlide. -->
+
+  <!-- Tab strip on a mod's page. The same soft pill the category chips use, so switching what
+       the page is showing reads as a switch and not as the page's main action. -->
+  <Style Selector="Button.tab">
+    <Setter Property="Padding" Value="14,8"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.tab /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.tab:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.tab:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+  <!-- After the hover rules: pointing at the tab you are on must not dim it. -->
+  <Style Selector="Button.tab.on /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.tab.on">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+
+  <Style Selector="Grid.tableHead">
+    <Setter Property="Margin" Value="14,4,14,6"/>
+  </Style>
+
+  <!-- A column header that sorts. Left-aligned and unpadded so it lines up with the column
+       under it rather than sitting in from it like an ordinary button. -->
+  <Style Selector="Button.sortHead">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Button.sortHead /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.sortHead:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.sortHead:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- R, B or A. Release is the calm one; the other two are meant to give pause. -->
+  <Style Selector="Border.channelBadge">
+    <Setter Property="Width" Value="24"/>
+    <Setter Property="Height" Value="24"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Border.channelBadge TextBlock">
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Border.channelBadge.release">
+    <Setter Property="Background" Value="#2E3FAE8E"/>
+  </Style>
+  <Style Selector="Border.channelBadge.release TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Mint}"/>
+  </Style>
+  <Style Selector="Border.channelBadge.beta">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+  <Style Selector="Border.channelBadge.beta TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Border.channelBadge.alpha">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+  <Style Selector="Border.channelBadge.alpha TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+  </Style>
+
+  <!-- Page numbers under the table. -->
+  <Style Selector="Button.pageStep">
+    <Setter Property="MinWidth" Value="30"/>
+    <Setter Property="Height" Value="30"/>
+    <Setter Property="Padding" Value="6,0"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.pageStep /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+    <Setter Property="CornerRadius" Value="9"/>
+  </Style>
+  <Style Selector="Button.pageStep:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.pageStep:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+  <Style Selector="Button.pageStep.on /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+  <Style Selector="Button.pageStep.on">
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
+  <!-- Filter drawer. Slides in from the right rather than appearing, and slides back out the
+       same way — an Animation rather than a Transition because the panel is unmounted while
+       closed, so there is no before value for a transition to work from. -->
+  <Style Selector="Border.filterPanel.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.26" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="234"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- After .open, because both classes are present while closing and equally specific styles
+       resolve last-one-wins. The same easing as the entrance, not its mirror: the results column
+       is inset by a transition, a transition carries one curve for both directions, and an exit
+       on EaseIn against a margin on EaseOut had the rows reaching the edge while the panel was
+       still sitting there. -->
+  <Style Selector="Border.filterPanel.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.26" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="234"/>
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Fluent draws an unticked box with its own grey, which on this palette reads as a control
+       from another application. Same brush and same hairline as a resting dropdown, so a box and
+       a picker sitting in the same panel are outlined identically. -->
+  <Style Selector="CheckBox /template/ Border#NormalRectangle">
+    <Setter Property="Background" Value="{DynamicResource SurfaceFade}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Width" Value="19"/>
+    <Setter Property="Height" Value="19"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.14" Easing="CubicEaseOut"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.14" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- Only the outline answers the pointer, and it answers the way a dropdown does. Filling the
+       box on hover is what made pointing at one look like pressing it — an empty box that goes
+       solid grey has already said "clicked" before anybody clicked. -->
+  <Style Selector="CheckBox:pointerover /template/ Border#NormalRectangle">
+    <Setter Property="Background" Value="{DynamicResource SurfaceFade}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource TextMuted}"/>
+  </Style>
+
+  <!-- Fluent dims the box on press, which on an empty one is the same flash again. -->
+  <Style Selector="CheckBox:pressed /template/ Border#NormalRectangle">
+    <Setter Property="Background" Value="{DynamicResource SurfaceFade}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <!-- Checked rules after the pointer ones: pointing at a ticked box must not empty it. -->
+  <Style Selector="CheckBox:checked /template/ Border#NormalRectangle">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="CheckBox:checked:pointerover /template/ Border#NormalRectangle">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="CheckBox:checked:pressed /template/ Border#NormalRectangle">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHover}"/>
+  </Style>
+
+  <Style Selector="CheckBox /template/ Path#CheckGlyph">
+    <Setter Property="Fill" Value="{DynamicResource OnAccent}"/>
+    <Setter Property="Stroke" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
+  <!-- Fluent also tints the label and the whole control's own background on hover and press.
+       Neither belongs on a row of filters: the box is the control, the words beside it are a
+       label, and a label that greys as you pass over it reads as going disabled. -->
+  <Style Selector="CheckBox:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="CheckBox:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+
+  <!-- The results give up their width as the drawer takes it, over the same beat. A transition
+       rather than an animation because both ends are real values on a live element — and a
+       margin is transitionable where a grid column width is not, which is why the drawer is an
+       overlay and this is an inset rather than a second column. -->
+  <Style Selector="DockPanel.resultsColumn">
+    <Setter Property="Margin" Value="0"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <ThicknessTransition Property="Margin" Duration="0:0:0.26" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="DockPanel.resultsColumn.shifted">
+    <Setter Property="Margin" Value="0,0,234,0"/>
+  </Style>
+
+  <!-- A row you pick from a list, in the install sheet. The whole row is the target, since a
+       radio the size of a full stop is a thing to aim at rather than press. -->
+  <Style Selector="Button.chooserRow">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="Button.chooserRow /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="12,9"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.14" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.chooserRow:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.chooserRow:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+  <!-- After the hover rule: pointing at the chosen row must not take the fill off it. -->
+  <Style Selector="Button.chooserRow.on /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+
+  <!-- The mark that says which row is chosen. Drawn rather than a RadioButton so it inherits
+       this palette instead of Fluent's, like every other picked thing here. -->
+  <Style Selector="Ellipse.chooserDot">
+    <Setter Property="Width" Value="17"/>
+    <Setter Property="Height" Value="17"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Fill" Value="{DynamicResource SurfaceFade}"/>
+    <Setter Property="Stroke" Value="{DynamicResource InputBorder}"/>
+    <Setter Property="StrokeThickness" Value="1"/>
+  </Style>
+  <Style Selector="Ellipse.chooserDot.on">
+    <Setter Property="Fill" Value="{DynamicResource Accent}"/>
+    <Setter Property="Stroke" Value="{DynamicResource Accent}"/>
+    <Setter Property="StrokeThickness" Value="5"/>
+  </Style>
+
+  <!-- A small square button holding nothing but a glyph, for a sheet's close cross. -->
+  <Style Selector="Button.iconGhost">
+    <Setter Property="Width" Value="32"/>
+    <Setter Property="Height" Value="32"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <!-- HoverFade is Hover at zero alpha, not a faint fill: the button rests with nothing behind
+       it, and the 160ms background transition every button carries then runs purely in alpha.
+       Plain Transparent would look identical at rest and flash dark on the way in, because
+       #00000000 to Hover interpolates through greys rather than fading a single colour up. -->
+  <Style Selector="Button.iconGhost /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+    <Setter Property="CornerRadius" Value="10"/>
+  </Style>
+  <Style Selector="Button.iconGhost:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.iconGhost:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- The one piece of chrome that only exists when there is news. Accent-filled so it
+       reads as an offer rather than as navigation, and it lives in the sidebar rather than
+       over the page because nothing about it is urgent. -->
+  <Style Selector="Button.updateChip">
+    <Setter Property="Padding" Value="12,9"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.updateChip /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="CornerRadius" Value="11"/>
+  </Style>
+  <Style Selector="Button.updateChip:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.updateChip:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+
+  <!-- ============================ Welcome ============================ -->
+
+  <!-- The whole first launch, which is the window rather than a sheet on it.
+
+       Everything here eases towards a value the view model sets, rather than running keyframes
+       off a class. A keyframe animation only fires when its selector starts matching, so
+       replaying one means dropping a class and re-adding it a frame later, and its filled-in
+       value stays applied until something takes it away. This overlay swallows clicks by
+       design: left filled at zero opacity it becomes an invisible sheet over a launcher that
+       looks, to the person clicking it, exactly like a freeze. A transition has nowhere to get
+       stuck — it goes from wherever it is to wherever it is put, however often that happens. -->
+  <Style Selector="Panel.introRoot">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.55" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- "Welcome to", then the name a beat later. Which beat is the view model's business. -->
+  <Style Selector="TextBlock.introHello">
+    <Setter Property="FontSize" Value="21"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.55" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="TextBlock.introName">
+    <Setter Property="FontSize" Value="62"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.55" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- The stage below the title. It opens from nothing, and because the column is centred, the
+       title rides up by exactly half of what appears. -->
+  <Style Selector="Panel.introStage">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Height" Duration="0:0:0.62" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <!-- The mark at the top of each door, which also gives the column something to stand on. -->
+  <Style Selector="Border.introBadge">
+    <Setter Property="Width" Value="46"/>
+    <Setter Property="Height" Value="46"/>
+    <Setter Property="CornerRadius" Value="23"/>
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="Margin" Value="0,0,0,4"/>
+  </Style>
+
+  <!-- Contents of an act, arriving just behind the stage that makes room for them. -->
+  <Style Selector="StackPanel.introFade">
+    <Setter Property="Opacity" Value="0"/>
+  </Style>
+  <Style Selector="StackPanel.introFade.on">
+    <Style.Animations>
+      <Animation Duration="0:0:0.5" Delay="0:0:0.2" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="14"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="TextBlock.introLead">
+    <Setter Property="FontSize" Value="17"/>
+    <Setter Property="FontWeight" Value="Medium"/>
+  </Style>
+
+  <!-- Swapping between the doors and what is behind one. -->
+  <Style Selector="Grid.introPane, StackPanel.introPane">
+    <Setter Property="Opacity" Value="0"/>
+  </Style>
+  <Style Selector="Grid.introPane.on, StackPanel.introPane.on">
+    <Style.Animations>
+      <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="TranslateTransform.Y" Value="10"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="TranslateTransform.Y" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Quieter than a ghost: no fill at rest and muted text, for the way past something
+       rather than a choice within it. HoverFade is Hover at zero alpha, so the fill comes up
+       in pure alpha instead of interpolating through greys. -->
+  <Style Selector="Button.quiet">
+    <Setter Property="Padding" Value="12,7"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.quiet /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource HoverFade}"/>
+  </Style>
+  <Style Selector="Button.quiet:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+  <Style Selector="Button.quiet:pointerover">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+  </Style>
+  <Style Selector="Button.quiet:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Pressed}"/>
+  </Style>
+
+  <!-- ============================ Tour ============================ -->
+
+  <Style Selector="Border.tourCard">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="16"/>
+    <Setter Property="Opacity" Value="0"/>
+    <!-- Slides to its new spot rather than teleporting, in step with the light moving under it. -->
+    <Setter Property="Transitions">
+      <Transitions>
+        <ThicknessTransition Property="Margin" Duration="0:0:0.28" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.tourCard.on">
+    <Style.Animations>
+      <Animation Duration="0:0:0.3" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="ScaleTransform.ScaleX" Value="0.97"/>
+          <Setter Property="ScaleTransform.ScaleY" Value="0.97"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="ScaleTransform.ScaleX" Value="1"/>
+          <Setter Property="ScaleTransform.ScaleY" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- ============================ Friends ============================ -->
+
+  <!-- The floating friends button. Round, accent, bottom-right, over everything — the one
+       piece of chrome that follows you to every page. -->
+  <Style Selector="Button.fab">
+    <Setter Property="Width" Value="52"/>
+    <Setter Property="Height" Value="52"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="26"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.fab /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="CornerRadius" Value="26"/>
+  </Style>
+  <Style Selector="Button.fab:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.fab:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+
+  <!-- The drawer the button opens: full height, pinned right, sliding in over the scrim.
+       Same open/closing choreography as the modal sheets, sideways instead of up. -->
+  <Style Selector="Border.friendsDrawer">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1,0,0,0"/>
+    <Setter Property="CornerRadius" Value="20,0,0,20"/>
+  </Style>
+  <Style Selector="Border.friendsDrawer.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.26" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="400"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <!-- Declared after .open on purpose: the drawer still carries .open while it leaves, and two
+       equally specific styles resolve last-one-wins. -->
+  <Style Selector="Border.friendsDrawer.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.24" Easing="CubicEaseIn" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="0"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="400"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <Style Selector="Border.friendRow">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="12,9"/>
+    <Setter Property="Margin" Value="0,0,0,6"/>
+  </Style>
+
+  <Style Selector="Border.friendFace">
+    <Setter Property="Width" Value="38"/>
+    <Setter Property="Height" Value="38"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+  </Style>
+
+  <!-- The presence badge on an avatar's corner. Grey at rest, mint when they're around; the
+       ring in the page background colour is what makes it read as a badge rather than a stray
+       pixel of the skin. -->
+  <Style Selector="Ellipse.presenceDot">
+    <Setter Property="Width" Value="11"/>
+    <Setter Property="Height" Value="11"/>
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="VerticalAlignment" Value="Bottom"/>
+    <Setter Property="Margin" Value="0,0,-2,-2"/>
+    <Setter Property="StrokeThickness" Value="2"/>
+    <Setter Property="Stroke" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="Fill" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <Style Selector="Ellipse.presenceDot.on">
+    <Setter Property="Fill" Value="{DynamicResource Mint}"/>
+  </Style>
+
+  <Style Selector="TextBlock.label.online">
+    <Setter Property="Foreground" Value="{DynamicResource Mint}"/>
+  </Style>
+
+  <!-- Outcome text under the add box: complaints in accent, good news in mint. -->
+  <Style Selector="TextBlock.notice">
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="TextBlock.notice.good">
+    <Setter Property="Foreground" Value="{DynamicResource Mint}"/>
+  </Style>
+
+  <!-- An instance the mod has no build for. Still readable, plainly not a choice. A Border
+       rather than a Button because it is not one — a disabled button still invites a press, and
+       there is nothing here to press. -->
+  <Style Selector="Border.chooserRow">
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="12,9"/>
+  </Style>
+  <Style Selector="Border.chooserRow.dimmed">
+    <Setter Property="Opacity" Value="0.45"/>
+  </Style>
+
+  <!-- The question mark beside a greyed row, whose whole job is to carry a tooltip. -->
+  <Style Selector="Border.hintMark">
+    <Setter Property="Width" Value="20"/>
+    <Setter Property="Height" Value="20"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+  <Style Selector="Border.hintMark TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- A gallery thumbnail that opens. Chrome on the presenter, as ever, so Fluent's own
+       background does not sit over the picture. -->
+  <Style Selector="Button.shotTile">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+  <Style Selector="Button.shotTile /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.shotTile:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.shotTile:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+  <Style Selector="Button.shotTile:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- The full-size viewer. Nearly black rather than the modal scrim: this one is a place to
+       look at a photograph, and the page behind it is not meant to be legible through it. -->
+  <Style Selector="Panel.viewer">
+    <Setter Property="Background" Value="#E8000000"/>
+  </Style>
+  <Style Selector="Panel.viewer.open">
+    <Style.Animations>
+      <Animation Duration="0:0:0.2" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="0"/>
+          <Setter Property="ScaleTransform.ScaleX" Value="1.03"/>
+          <Setter Property="ScaleTransform.ScaleY" Value="1.03"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="1"/>
+          <Setter Property="ScaleTransform.ScaleX" Value="1"/>
+          <Setter Property="ScaleTransform.ScaleY" Value="1"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+  <!-- After .open: both classes are present while closing, and equal specificity resolves
+       last-one-wins. -->
+  <Style Selector="Panel.viewer.closing">
+    <Style.Animations>
+      <Animation Duration="0:0:0.2" Easing="CubicEaseOut" FillMode="Forward">
+        <KeyFrame Cue="0%">
+          <Setter Property="Opacity" Value="1"/>
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Opacity" Value="0"/>
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- Fills the viewer behind the picture, so clicking anywhere off it closes. -->
+  <Style Selector="Button.viewerScrim">
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="0"/>
+  </Style>
+  <Style Selector="Button.viewerScrim /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.viewerScrim:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Button.viewerScrim:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+
+  <!-- Round controls over a photograph. Sakura rather than the translucent white they started
+       as: a grey disc on a black field belongs to no palette in particular, and these do the
+       same job as Download and Install, so they may as well look like them. -->
+  <Style Selector="Button.viewerIcon">
+    <Setter Property="Width" Value="42"/>
+    <Setter Property="Height" Value="42"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="21"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.viewerIcon /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="CornerRadius" Value="21"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.viewerIcon:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.viewerIcon:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <Style Selector="Button.viewerIcon:pressed">
+    <Setter Property="RenderTransform" Value="none"/>
+  </Style>
+  <Style Selector="Button.viewerIcon Path">
+    <Setter Property="Stroke" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
+  <!-- ================= Descriptions ================= -->
+
+  <!-- Set like prose rather than like a label: a description is the one place on a mod's page
+       that is meant to be read rather than scanned. -->
+  <Style Selector="TextBlock.proseBody">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="LineHeight" Value="20"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    <Setter Property="Margin" Value="0,0,0,10"/>
+  </Style>
+
+  <Style Selector="TextBlock.proseHeading">
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="Margin" Value="0,16,0,7"/>
+  </Style>
+
+  <!-- A rule down the side rather than a box: it is an aside, not a panel. -->
+  <Style Selector="Border.proseQuote">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="3,0,0,0"/>
+    <Setter Property="Padding" Value="12,2,0,0"/>
+    <Setter Property="Margin" Value="0,2,0,10"/>
+  </Style>
+
+  <!-- Scrolls sideways on its own: a wrapped command line is a command line nobody can copy. -->
+  <Style Selector="Border.proseCode">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Padding" Value="13,10"/>
+    <Setter Property="Margin" Value="0,2,0,12"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+  </Style>
+  <Style Selector="Border.proseCode TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
   </Style>
 
 </Styles>

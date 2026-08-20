@@ -15,6 +15,18 @@ public sealed class VersionJson
     /// <summary>Set by mod loaders. Null for vanilla.</summary>
     public string? InheritsFrom { get; init; }
 
+    /// <summary>
+    /// Which version's client jar this actually runs against. A loader inherits the vanilla jar
+    /// rather than shipping one, so after flattening this still points at the vanilla id —
+    /// without it the launcher fetches a second 23 MB copy under the loader's name.
+    /// </summary>
+    [JsonIgnore]
+    public string? ClientJarVersionId { get; init; }
+
+    /// <summary>The id whose folder holds the client jar: the vanilla root, or this version.</summary>
+    [JsonIgnore]
+    public string JarVersionId => ClientJarVersionId ?? Id;
+
     public string? Type { get; init; }
     public string? MainClass { get; init; }
 
@@ -161,6 +173,45 @@ internal sealed class ConditionalArgumentConverter : JsonConverter<ConditionalAr
         return new ConditionalArgument { Rules = rules, Values = values };
     }
 
-    public override void Write(Utf8JsonWriter writer, ConditionalArgument value, JsonSerializerOptions options) =>
-        throw new NotSupportedException("Version JSON is read-only; Asobu never writes it back.");
+    /// <summary>
+    /// Writes the shape back out the way Mojang wrote it: a bare string when there is nothing to
+    /// gate, an object otherwise. This used to throw, on the assumption that version JSON was only
+    /// ever read — but the installer caches the resolved document to
+    /// <c>versions/&lt;id&gt;/&lt;id&gt;.json</c>, so every 1.13-or-later version failed to launch
+    /// the moment it reached that write. Pre-1.13 versions were unaffected because they carry a
+    /// flat minecraftArguments string and no conditional arguments at all.
+    /// </summary>
+    public override void Write(Utf8JsonWriter writer, ConditionalArgument value, JsonSerializerOptions options)
+    {
+        if (value.Rules is null or { Count: 0 } && value.Values.Count == 1)
+        {
+            writer.WriteStringValue(value.Values[0]);
+            return;
+        }
+
+        writer.WriteStartObject();
+
+        if (value.Rules is { Count: > 0 } rules)
+        {
+            // Lowercase literals rather than the naming policy: these are Mojang's own key names,
+            // not names derived from our property names.
+            writer.WritePropertyName("rules");
+            JsonSerializer.Serialize(writer, rules, options);
+        }
+
+        writer.WritePropertyName("value");
+
+        if (value.Values.Count == 1)
+        {
+            writer.WriteStringValue(value.Values[0]);
+        }
+        else
+        {
+            writer.WriteStartArray();
+            foreach (var single in value.Values) writer.WriteStringValue(single);
+            writer.WriteEndArray();
+        }
+
+        writer.WriteEndObject();
+    }
 }

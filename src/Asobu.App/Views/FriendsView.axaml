@@ -1,0 +1,183 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             x:Class="Asobu.App.Views.FriendsView"
+             x:DataType="vm:FriendsViewModel">
+
+  <!-- The inside of the friends drawer. The header and close button belong to the drawer
+       itself, over in MainWindow; this is everything under them. -->
+  <Panel Margin="22,6,22,18">
+
+    <!-- ============ No Microsoft account ============ -->
+    <StackPanel VerticalAlignment="Center" Spacing="10" IsVisible="{Binding NeedsMicrosoft}">
+      <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
+      <TextBlock Text="Friends needs a Microsoft account" Classes="h2" HorizontalAlignment="Center"
+                 TextWrapping="Wrap" TextAlignment="Center"
+                 Foreground="{DynamicResource TextMuted}"/>
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                 Text="Your Minecraft identity is your identity here — no extra account, nothing else to make. Sign in and you're on the network."/>
+      <Button Classes="primary" Content="Go to Accounts" HorizontalAlignment="Center" Margin="0,8,0,0"
+              Command="{Binding GoAccountsCommand}"/>
+    </StackPanel>
+
+    <!-- ============ Connection trouble ============ -->
+    <!-- ConnectionError is only ever set by a connection attempt and cleared on account change,
+         so its presence alone decides this state. -->
+    <StackPanel VerticalAlignment="Center" Spacing="10"
+                IsVisible="{Binding ConnectionError, Converter={x:Static conv:ObjectConverters.IsNotNull}}">
+      <TextBlock Text="&#x1F327;" FontSize="34" HorizontalAlignment="Center"/>
+      <TextBlock Text="{Binding ConnectionError}" Classes="sub" TextAlignment="Center" TextWrapping="Wrap"/>
+      <Button Classes="ghost" Content="Try again" HorizontalAlignment="Center" Margin="0,8,0,0"
+              Command="{Binding RetryCommand}"/>
+    </StackPanel>
+
+    <TextBlock Classes="sub" Text="Joining the network…" HorizontalAlignment="Center"
+               VerticalAlignment="Center" IsVisible="{Binding IsConnecting}"/>
+
+    <!-- ============ The list itself ============ -->
+    <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsConnected}">
+
+      <!-- Add by name. Enter works because it's the only button in a one-line form. -->
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBox Grid.Column="0" Text="{Binding NewFriendName}"
+                 PlaceholderText="Minecraft username">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding AddFriendCommand}"/>
+          </TextBox.KeyBindings>
+        </TextBox>
+        <Button Grid.Column="1" Classes="primary" Content="Add" Command="{Binding AddFriendCommand}"/>
+      </Grid>
+
+      <TextBlock Grid.Row="1" Text="{Binding Notice}" Classes="notice" TextWrapping="Wrap" Margin="2,8,2,0"
+                 Classes.good="{Binding NoticeIsGood}"
+                 IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+      <!-- Empty network -->
+      <StackPanel Grid.Row="2" VerticalAlignment="Center" Spacing="8" Margin="10"
+                  IsVisible="{Binding IsEmpty}">
+        <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
+        <TextBlock Text="No friends yet" Classes="h2" HorizontalAlignment="Center"
+                   Foreground="{DynamicResource TextMuted}"/>
+        <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                   Text="Anyone who has signed in to Asobu with Microsoft can be added — just their Minecraft username, up there."/>
+      </StackPanel>
+
+      <ScrollViewer Grid.Row="2" ctrl:SmoothScroll.Enabled="True" Margin="0,16,0,0"
+                    IsVisible="{Binding !IsEmpty}">
+        <StackPanel Spacing="18">
+
+          <!-- ===== Incoming requests ===== -->
+          <StackPanel Spacing="6" IsVisible="{Binding HasIncoming}">
+            <TextBlock Text="Wants to be friends" Classes="label"/>
+            <ItemsControl ItemsSource="{Binding Incoming}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FriendRow">
+                  <Border Classes="friendRow">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                      <Border Grid.Column="0" Classes="friendFace">
+                        <Panel>
+                          <TextBlock Text="&#x1F338;" FontSize="15" IsVisible="{Binding !HasFace}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          <Image Source="{Binding Face}" IsVisible="{Binding HasFace}"
+                                 RenderOptions.BitmapInterpolationMode="None"/>
+                        </Panel>
+                      </Border>
+                      <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="SemiBold"
+                                 VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                      <Button Grid.Column="2" Classes="primary" Content="Accept" Padding="14,7"
+                              Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).AcceptCommand}"
+                              CommandParameter="{Binding}"/>
+                      <Button Grid.Column="3" Classes="iconGhost" ToolTip.Tip="Decline"
+                              Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).RemoveCommand}"
+                              CommandParameter="{Binding}">
+                        <Path Data="M6 6 L18 18 M18 6 L6 18" StrokeThickness="2" StrokeLineCap="Round"
+                              Width="12" Height="12" Stretch="Uniform"/>
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- ===== Friends ===== -->
+          <StackPanel Spacing="6" IsVisible="{Binding HasFriends}">
+            <TextBlock Text="{Binding FriendsHeading}" Classes="label"/>
+            <ItemsControl ItemsSource="{Binding Friends}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FriendRow">
+                  <Border Classes="friendRow">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                      <Panel Grid.Column="0">
+                        <Border Classes="friendFace">
+                          <Panel>
+                            <TextBlock Text="&#x1F338;" FontSize="15" IsVisible="{Binding !HasFace}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image Source="{Binding Face}" IsVisible="{Binding HasFace}"
+                                   RenderOptions.BitmapInterpolationMode="None"/>
+                          </Panel>
+                        </Border>
+                        <!-- The dot rides the avatar's corner; the ring makes it read as a
+                             badge rather than a stray pixel of the picture. -->
+                        <Ellipse Classes="presenceDot" Classes.on="{Binding Online}"/>
+                      </Panel>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding PresenceLabel}" Classes="label"
+                                   Classes.online="{Binding Online}"/>
+                      </StackPanel>
+                      <Button Grid.Column="2" Classes="iconGhost" ToolTip.Tip="Remove friend"
+                              Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).RemoveCommand}"
+                              CommandParameter="{Binding}">
+                        <Path Data="M6 6 L18 18 M18 6 L6 18" StrokeThickness="2" StrokeLineCap="Round"
+                              Width="12" Height="12" Stretch="Uniform"/>
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+          <!-- ===== Outgoing requests ===== -->
+          <StackPanel Spacing="6" IsVisible="{Binding HasOutgoing}">
+            <TextBlock Text="Waiting on them" Classes="label"/>
+            <ItemsControl ItemsSource="{Binding Outgoing}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FriendRow">
+                  <Border Classes="friendRow">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                      <Border Grid.Column="0" Classes="friendFace" Opacity="0.65">
+                        <Panel>
+                          <TextBlock Text="&#x1F338;" FontSize="15" IsVisible="{Binding !HasFace}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          <Image Source="{Binding Face}" IsVisible="{Binding HasFace}"
+                                 RenderOptions.BitmapInterpolationMode="None"/>
+                        </Panel>
+                      </Border>
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="Request sent" Classes="label"/>
+                      </StackPanel>
+                      <Button Grid.Column="2" Classes="iconGhost" ToolTip.Tip="Cancel request"
+                              Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).RemoveCommand}"
+                              CommandParameter="{Binding}">
+                        <Path Data="M6 6 L18 18 M18 6 L6 18" StrokeThickness="2" StrokeLineCap="Round"
+                              Width="12" Height="12" Stretch="Uniform"/>
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+
+        </StackPanel>
+      </ScrollViewer>
+
+    </Grid>
+
+  </Panel>
+</UserControl>

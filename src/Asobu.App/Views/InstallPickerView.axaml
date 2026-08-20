@@ -1,0 +1,167 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             x:Class="Asobu.App.Views.InstallPickerView"
+             x:DataType="vm:InstallPickerViewModel">
+
+  <Border Classes="modalScrim" Classes.open="{Binding IsOpen}"
+          Classes.closing="{Binding IsClosing}" IsVisible="{Binding IsOpen}">
+    <Border Classes="modalCard" Classes.open="{Binding IsOpen}"
+            Classes.closing="{Binding IsClosing}" Width="500" MaxHeight="620">
+      <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- ================= Heading ================= -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="26,22,20,0">
+          <TextBlock Text="{Binding Title}" Classes="h2" TextWrapping="Wrap"
+                     VerticalAlignment="Center"/>
+          <Button Grid.Column="1" Classes="iconGhost" Command="{Binding CloseCommand}"
+                  VerticalAlignment="Top" ToolTip.Tip="Close">
+            <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+                  StrokeThickness="1.8" StrokeLineCap="Round"
+                  Width="13" Height="13" Stretch="Uniform"/>
+          </Button>
+        </Grid>
+
+        <!-- ================= The list ================= -->
+        <DockPanel Grid.Row="1" Margin="26,18,26,0" LastChildFill="True">
+          <TextBox DockPanel.Dock="Top" Classes="search" Margin="0,0,0,14"
+                   PlaceholderText="Search instances" Text="{Binding SearchText}"
+                   IsVisible="{Binding !HasNone}"/>
+
+          <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,10,0,0"
+                      IsVisible="{Binding HasNone}">
+            <TextBlock Text="No instances yet" Classes="h2"
+                       Foreground="{DynamicResource TextMuted}"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Mods need somewhere to go. Make one below and it will be waiting here."/>
+          </StackPanel>
+
+          <TextBlock DockPanel.Dock="Top" Classes="label" Margin="0,4,0,0"
+                     IsVisible="{Binding HasNoMatches}"
+                     Text="No instance by that name."/>
+
+          <TextBlock DockPanel.Dock="Top" Classes="label" Margin="0,4,0,8"
+                     IsVisible="{Binding IsChecking}"
+                     Text="Checking which instances can take it&#x2026;"/>
+
+          <ScrollViewer ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False">
+            <StackPanel Spacing="2">
+
+              <ItemsControl ItemsSource="{Binding Instances}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="2"/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:InstanceChoice">
+                    <!-- The whole row picks, not a radio button you have to hit exactly. -->
+                    <Button Classes="chooserRow" Classes.on="{Binding IsChosen}"
+                            Command="{Binding $parent[ItemsControl].((vm:InstallPickerViewModel)DataContext).PickCommand}"
+                            CommandParameter="{Binding}">
+                      <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12">
+                        <Ellipse Grid.Column="0" Classes="chooserDot" Classes.on="{Binding IsChosen}"/>
+                        <Border Grid.Column="1" Width="38" Height="38" CornerRadius="10"
+                                ClipToBounds="True" Background="{DynamicResource SurfaceAlt}">
+                          <Panel>
+                            <TextBlock Text="{Binding IconEmoji}" FontSize="19"
+                                       IsVisible="{Binding !HasCustomIcon}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Image IsVisible="{Binding HasCustomIcon}" Stretch="UniformToFill"
+                                   Source="{Binding IconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+                          </Panel>
+                        </Border>
+                        <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"
+                                     TextTrimming="CharacterEllipsis"/>
+                          <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="{Binding LoaderName}" Classes="label"/>
+                            <TextBlock Text="{Binding MinecraftVersion}" Classes="label"/>
+                          </StackPanel>
+                        </StackPanel>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <!-- Kept on the list rather than hidden: an instance missing entirely reads as a
+                   bug, where a greyed one with a reason reads as an answer. -->
+              <StackPanel Spacing="2" Margin="0,12,0,0" IsVisible="{Binding HasIncompatible}">
+                <TextBlock Text="Incompatible instances" Classes="label" Margin="12,0,0,4"
+                           FontWeight="SemiBold"/>
+
+                <ItemsControl ItemsSource="{Binding Incompatible}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Spacing="2"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:InstanceChoice">
+                      <Border Classes="chooserRow dimmed">
+                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12">
+                          <Ellipse Grid.Column="0" Classes="chooserDot"/>
+                          <Border Grid.Column="1" Width="38" Height="38" CornerRadius="10"
+                                  ClipToBounds="True" Background="{DynamicResource SurfaceAlt}">
+                            <Panel>
+                              <TextBlock Text="{Binding IconEmoji}" FontSize="19"
+                                         IsVisible="{Binding !HasCustomIcon}"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                              <Image IsVisible="{Binding HasCustomIcon}" Stretch="UniformToFill"
+                                     Source="{Binding IconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+                            </Panel>
+                          </Border>
+                          <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                              <TextBlock Text="{Binding LoaderName}" Classes="label"/>
+                              <TextBlock Text="{Binding MinecraftVersion}" Classes="label"/>
+                            </StackPanel>
+                          </StackPanel>
+                          <!-- A greyed row that will not explain itself is a puzzle. -->
+                          <Border Grid.Column="3" Classes="hintMark" VerticalAlignment="Center"
+                                  ToolTip.Tip="{Binding Reason}">
+                            <TextBlock Text="?" FontSize="11.5" FontWeight="SemiBold"/>
+                          </Border>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </DockPanel>
+
+        <!-- ================= Actions ================= -->
+        <StackPanel Grid.Row="2" Spacing="12" Margin="26,18,26,22">
+          <Border Height="1" Background="{DynamicResource Border}"/>
+
+          <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                     Foreground="{DynamicResource Accent}" IsVisible="{Binding HasNotice}"/>
+
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" Classes="link" Command="{Binding NewInstanceCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <Path Data="M12 5 V19 M5 12 H19" Stroke="{DynamicResource TextMuted}"
+                      StrokeThickness="1.9" StrokeLineCap="Round"
+                      Width="12" Height="12" Stretch="Uniform" VerticalAlignment="Center"/>
+                <TextBlock Text="New instance" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Adding&#x2026;" Classes="label" VerticalAlignment="Center"
+                         IsVisible="{Binding IsInstalling}"/>
+              <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}"
+                      IsEnabled="{Binding CanInstall}"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Border>
+</UserControl>

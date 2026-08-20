@@ -22,7 +22,7 @@ public static class CrashReports
     {
         var entries = new List<CrashReportEntry>();
 
-        var crashDir = Path.Combine(paths.InstanceGameDir(instance.Id), "crash-reports");
+        var crashDir = Path.Combine(paths.InstanceGameDir(instance.Folder), "crash-reports");
         if (Directory.Exists(crashDir))
             foreach (var file in Directory.EnumerateFiles(crashDir, "*.txt"))
                 entries.Add(new CrashReportEntry(file, Path.GetFileName(file), File.GetLastWriteTimeUtc(file), "Crash report"));

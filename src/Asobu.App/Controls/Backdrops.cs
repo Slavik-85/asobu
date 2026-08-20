@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using Asobu.Core;
+using Asobu.Core.Instances;
 using Avalonia.Media.Imaging;
-using Avalonia.Platform;
 
 namespace Asobu.App.Controls;
 
@@ -22,42 +24,50 @@ public static class Backdrops
         "prettypicture6.png",
     ];
 
-    // Decoding a 4K screenshot costs real memory, so each one is decoded at most once and shared.
-    private static readonly Dictionary<string, Bitmap?> Cache = new(StringComparer.Ordinal);
+    /// <summary>The bundled scenery, for the banner picker to show as thumbnails.</summary>
+    public static IReadOnlyList<string> BuiltIn => Files;
 
-    public static Bitmap? ForInstance(string? instanceId)
+    /// <summary>
+    /// The picture behind an instance's hero: whichever one it was given, falling back to the
+    /// id-picked scenery for instances that were never customised.
+    /// </summary>
+    public static Bitmap? For(Instance? instance, AsobuPaths paths)
+    {
+        if (instance is null) return null;
+
+        if (instance.Banner is { Length: > 0 } banner)
+        {
+            if (banner.StartsWith(Instance.BuiltInBannerPrefix, StringComparison.Ordinal))
+                return LoadBuiltIn(banner[Instance.BuiltInBannerPrefix.Length..]);
+
+            if (banner.StartsWith(Instance.CustomBannerPrefix, StringComparison.Ordinal))
+                return ImageCache.FromFile(Path.Combine(
+                    paths.InstanceDir(instance.Folder), banner[Instance.CustomBannerPrefix.Length..]));
+        }
+
+        return ForInstance(instance.Id);
+    }
+
+    public static Bitmap? ForInstance(string? instanceId) => Any(instanceId);
+
+    /// <summary>
+    /// Some picture, for anything that has none of its own. Picked from the key rather than at
+    /// random so the same thing keeps the same scenery — and so two mods in a row on the
+    /// Explore banner do not land on the same one.
+    /// </summary>
+    public static Bitmap? Any(string? key)
     {
         if (Files.Length == 0) return null;
 
-        var index = instanceId is { Length: > 0 }
-            ? (int)(Stable(instanceId) % (uint)Files.Length)
+        var index = key is { Length: > 0 }
+            ? (int)(Stable(key) % (uint)Files.Length)
             : Random.Shared.Next(Files.Length);
 
-        return Load(Files[index]);
+        return LoadBuiltIn(Files[index]);
     }
 
-    private static Bitmap? Load(string file)
-    {
-        lock (Cache)
-        {
-            if (Cache.TryGetValue(file, out var cached)) return cached;
-
-            Bitmap? bitmap = null;
-            try
-            {
-                var uri = new Uri($"avares://Asobu.App/Assets/Backdrops/{file}");
-                using var stream = AssetLoader.Open(uri);
-                bitmap = new Bitmap(stream);
-            }
-            catch (Exception)
-            {
-                // A missing or undecodable file just means no backdrop; the page still works.
-            }
-
-            Cache[file] = bitmap;
-            return bitmap;
-        }
-    }
+    public static Bitmap? LoadBuiltIn(string file) =>
+        ImageCache.FromResource($"avares://Asobu.App/Assets/Backdrops/{file}");
 
     /// <summary>
     /// FNV-1a. Deliberately not string.GetHashCode, which is randomised per process and would

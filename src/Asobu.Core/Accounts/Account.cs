@@ -12,11 +12,28 @@ public enum AccountKind
     Microsoft,
 }
 
+/// <summary>How a Microsoft account signs in, and therefore how it refreshes later.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<AuthMethod>))]
+public enum AuthMethod
+{
+    /// <summary>Device code against login.live.com with the bundled Minecraft client id.</summary>
+    DeviceCode,
+
+    /// <summary>Our own Azure app registration, browser redirect, MSAL's token cache.</summary>
+    Registered,
+}
+
 public sealed class Account
 {
     public required string Uuid { get; set; }
     public required string Username { get; set; }
     public AccountKind Kind { get; set; }
+
+    /// <summary>
+    /// Recorded per account rather than read from settings at refresh time: someone who signed in
+    /// one way keeps working after the launcher's default is switched to the other.
+    /// </summary>
+    public AuthMethod Method { get; set; }
 
     /// <summary>MSAL's account identifier, used to refresh silently. Never a token.</summary>
     public string? HomeAccountId { get; set; }

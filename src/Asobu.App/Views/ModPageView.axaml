@@ -1,0 +1,347 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             xmlns:mods="using:Asobu.Core.Mods"
+             x:Class="Asobu.App.Views.ModPageView"
+             x:DataType="vm:ModPageViewModel">
+
+  <!-- Opaque on purpose: it covers the page it slid up over, and stops clicks reaching it. -->
+  <Panel ctrl:PageSlide.IsOpen="{Binding IsOpen}" ctrl:PageSlide.IsClosing="{Binding IsClosing}"
+         Background="{DynamicResource Bg}">
+    <ScrollViewer ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False">
+      <Panel>
+
+      <!-- ================= Banner ================= -->
+      <!-- Pinned to the top and behind everything, veiled and then faded into the page at its
+           bottom edge, the way an instance's scenery is: the card below appears to rise out of
+           it rather than sit on top of it. -->
+      <Panel VerticalAlignment="Top" Height="300" ClipToBounds="True">
+        <Image Source="{Binding Banner}" Stretch="UniformToFill" IsVisible="{Binding HasBanner}"/>
+        <Border Background="{DynamicResource BackdropScrim}" IsVisible="{Binding HasBanner}"/>
+        <Border Background="{DynamicResource BackdropFade}"/>
+      </Panel>
+
+      <StackPanel Margin="30,20,30,30" Spacing="0">
+
+        <Button Classes="link" Content="&#x2190;  Back" HorizontalAlignment="Left"
+                Command="{Binding GoBackCommand}" Margin="0,0,0,62"/>
+
+        <!-- ================= Card ================= -->
+        <Border Classes="modSheet">
+          <StackPanel Spacing="20">
+
+            <!-- The icon is a column of this row rather than a block above it. Its negative top
+                 margin lifts it out over the banner, so only the bottom third sits inside the
+                 sheet — and because it is in the row, the name sits beside it instead of being
+                 pushed clear of a shape that is mostly somewhere else. -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="20">
+              <Border Grid.Column="0" Classes="modIconPlate" VerticalAlignment="Top"
+                      Margin="0,-46,0,0">
+                <Panel>
+                  <TextBlock Text="&#x1F4E6;" FontSize="42" IsVisible="{Binding !HasIcon}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" Stretch="UniformToFill"/>
+                </Panel>
+              </Border>
+
+              <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}" Classes="h1" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding MetaLine}" Classes="label"/>
+                <TextBlock Text="{Binding Card.Notice}" Classes="label" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Accent}"
+                           IsVisible="{Binding Card.HasNotice}"/>
+              </StackPanel>
+
+              <StackPanel Grid.Column="2" Spacing="5" VerticalAlignment="Center" MinWidth="150">
+                <Button Classes="primary" Content="Download" HorizontalAlignment="Stretch"
+                        IsVisible="{Binding Card.CanInstall}"
+                        Command="{Binding DownloadCommand}"/>
+                <TextBlock Text="Adding&#x2026;" Classes="label" HorizontalAlignment="Center"
+                           IsVisible="{Binding Card.IsInstalling}"/>
+                <Border Classes="badge" HorizontalAlignment="Center"
+                        IsVisible="{Binding Card.IsInstalled}">
+                  <TextBlock Text="Added" FontSize="11" Foreground="{DynamicResource Accent}"/>
+                </Border>
+
+              </StackPanel>
+            </Grid>
+
+            <!-- ================= Tabs ================= -->
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Button Classes="tab" Classes.on="{Binding IsOverviewTab}" Content="Overview"
+                      Command="{Binding ShowOverviewCommand}"/>
+              <Button Classes="tab" Classes.on="{Binding IsVersionsTab}" Content="Versions"
+                      Command="{Binding ShowVersionsCommand}"/>
+            </StackPanel>
+
+            <!-- ================= Versions ================= -->
+            <StackPanel Spacing="12" IsVisible="{Binding IsVersionsTab}">
+
+              <TextBlock Text="{Binding VersionScopeLabel}" Classes="label"
+                         Foreground="{DynamicResource Accent}"
+                         IsVisible="{Binding IsInstanceScoped, FallbackValue=False}"/>
+
+              <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Text="{Binding CountLabel}" Classes="label" VerticalAlignment="Center"/>
+
+                <!-- Page strip. Arrows either side of a window of numbers, the way both sites
+                     do it — a mod with three hundred builds would otherwise need fifteen. -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"
+                            HorizontalAlignment="Right" IsVisible="{Binding HasPages}">
+                  <Button Classes="pageStep" Content="&#x2039;" Command="{Binding PreviousPageCommand}"
+                          IsEnabled="{Binding CanGoBackAPage}"/>
+                  <ItemsControl ItemsSource="{Binding Pages}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="4"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:PageNumber">
+                        <Button Classes="pageStep" Classes.on="{Binding IsCurrent}"
+                                Content="{Binding Number}"
+                                Command="{Binding $parent[ItemsControl].((vm:ModPageViewModel)DataContext).GoToPageCommand}"
+                                CommandParameter="{Binding}"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Button Classes="pageStep" Content="&#x203A;" Command="{Binding NextPageCommand}"
+                          IsEnabled="{Binding CanGoForwardAPage}"/>
+                </StackPanel>
+              </Grid>
+
+              <TextBlock Text="Looking them up&#x2026;" Classes="label"
+                         IsVisible="{Binding IsLoadingVersions}"/>
+
+              <TextBlock Classes="label" TextWrapping="Wrap" IsVisible="{Binding !HasVersions}"
+                         Text="No published builds came back for this one."/>
+
+              <StackPanel Spacing="2" IsVisible="{Binding HasVersions}">
+
+                <!-- Header row. The three the table can be ordered by are buttons; the rest are
+                     labels, because pretending Name sorts when it does not is worse than a
+                     column that plainly does not. -->
+                <Grid Classes="tableHead" ColumnDefinitions="64,*,140,Auto,110,116" ColumnSpacing="12">
+                  <Button Grid.Column="0" Classes="sortHead" Command="{Binding SortByCommand}"
+                          CommandParameter="type">
+                    <TextBlock><Run Text="Type"/><Run Text="{Binding ChannelArrow}"/></TextBlock>
+                  </Button>
+                  <TextBlock Grid.Column="1" Text="Name" Classes="label" VerticalAlignment="Center"/>
+                  <Button Grid.Column="2" Classes="sortHead" Command="{Binding SortByCommand}"
+                          CommandParameter="date">
+                    <TextBlock><Run Text="Released"/><Run Text="{Binding ReleasedArrow}"/></TextBlock>
+                  </Button>
+                  <TextBlock Grid.Column="3" Text="Loader" Classes="label" VerticalAlignment="Center"
+                             Width="150" IsVisible="{Binding ShowsLoader}"/>
+                  <Button Grid.Column="4" Classes="sortHead" Command="{Binding SortByCommand}"
+                          CommandParameter="game">
+                    <TextBlock><Run Text="Game"/><Run Text="{Binding GameVersionArrow}"/></TextBlock>
+                  </Button>
+                  <TextBlock Grid.Column="5" Text="Action" Classes="label" VerticalAlignment="Center"
+                             HorizontalAlignment="Center"/>
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Versions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ModVersionRow">
+                      <Border Classes="versionRow">
+                        <Grid ColumnDefinitions="64,*,140,Auto,110,116" ColumnSpacing="12">
+
+                          <!-- R, B or A, in the colour each one has earned. -->
+                          <Border Grid.Column="0" Classes="channelBadge"
+                                  Classes.release="{Binding IsRelease}"
+                                  Classes.beta="{Binding IsBeta}"
+                                  Classes.alpha="{Binding IsAlpha}"
+                                  ToolTip.Tip="{Binding ChannelLabel}">
+                            <TextBlock Text="{Binding ChannelInitial}" FontSize="11.5"
+                                       FontWeight="SemiBold"/>
+                          </Border>
+
+                          <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Accent}"
+                                       IsVisible="{Binding HasNotice}"/>
+                          </StackPanel>
+
+                          <StackPanel Grid.Column="2" Spacing="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding PublishedLabel}" Classes="label"/>
+                            <TextBlock Text="{Binding SizeLabel}" Classes="label"/>
+                          </StackPanel>
+
+                          <TextBlock Grid.Column="3" Text="{Binding LoaderLabel}" Classes="label"
+                                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                     Width="150"
+                                     IsVisible="{Binding $parent[ItemsControl].((vm:ModPageViewModel)DataContext).ShowsLoader}"/>
+
+                          <TextBlock Grid.Column="4" Text="{Binding GameVersionLabel}" Classes="label"
+                                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                          <StackPanel Grid.Column="5" VerticalAlignment="Center">
+                            <Button Classes="primary" Content="Install" HorizontalAlignment="Stretch"
+                                    IsVisible="{Binding CanDownload}"
+                                    Command="{Binding $parent[ItemsControl].((vm:ModPageViewModel)DataContext).DownloadVersionCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <TextBlock Text="Adding&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                       IsVisible="{Binding IsInstalling}"/>
+                            <TextBlock Text="Added" Classes="label" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource Accent}"
+                                       IsVisible="{Binding IsInstalled}"/>
+                          </StackPanel>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </StackPanel>
+
+            <!-- ================= Description and gallery ================= -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24" IsVisible="{Binding IsOverviewTab}">
+              <StackPanel Grid.Column="0" Spacing="10">
+                <TextBlock Text="Description" Classes="h2"/>
+
+                <TextBlock Text="Reading the page&#x2026;" Classes="label"
+                           IsVisible="{Binding IsLoading}"/>
+
+                <!-- One template per kind of block. Avalonia picks by the item's own type, so
+                     the parser's shapes and the layout stay in step without a converter. -->
+                <ItemsControl ItemsSource="{Binding Description}" IsVisible="{Binding HasDescription}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Spacing="0"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+
+                  <ItemsControl.DataTemplates>
+                    <DataTemplate DataType="mods:ProseHeading">
+                      <!-- Size comes off the block rather than a converter per level: the parser
+                           already knows how deep the heading was. -->
+                      <TextBlock Classes="proseHeading" FontSize="{Binding Size}"
+                                 ctrl:ProseText.LinkBrush="{DynamicResource Accent}"
+                                 ctrl:ProseText.Spans="{Binding Spans}" TextWrapping="Wrap"/>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="mods:ProseParagraph">
+                      <TextBlock Classes="proseBody" ctrl:ProseText.Spans="{Binding Spans}"
+                                 ctrl:ProseText.LinkBrush="{DynamicResource Accent}"
+                                 TextWrapping="Wrap"/>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="mods:ProseItem">
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Marker}" Classes="proseBody"
+                                   VerticalAlignment="Top"/>
+                        <TextBlock Grid.Column="1" Classes="proseBody" TextWrapping="Wrap"
+                                   ctrl:ProseText.Spans="{Binding Spans}"
+                                   ctrl:ProseText.LinkBrush="{DynamicResource Accent}"/>
+                      </Grid>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="mods:ProseQuote">
+                      <Border Classes="proseQuote">
+                        <TextBlock Classes="proseBody" TextWrapping="Wrap"
+                                   ctrl:ProseText.Spans="{Binding Spans}"
+                                   ctrl:ProseText.LinkBrush="{DynamicResource Accent}"/>
+                      </Border>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="mods:ProseCode">
+                      <Border Classes="proseCode">
+                        <TextBlock Text="{Binding Text}" FontFamily="Consolas, Menlo, monospace"
+                                   FontSize="12.5" TextWrapping="NoWrap"/>
+                      </Border>
+                    </DataTemplate>
+
+                    <DataTemplate DataType="mods:ProseRule">
+                      <Border Height="1" Margin="0,14" Background="{DynamicResource Border}"/>
+                    </DataTemplate>
+                  </ItemsControl.DataTemplates>
+                </ItemsControl>
+
+                <TextBlock Classes="label" TextWrapping="Wrap"
+                           IsVisible="{Binding !HasDescription}"
+                           Text="This one has no description beyond its summary."/>
+
+                <Button Classes="link" Content="Open on the web" HorizontalAlignment="Left"
+                        Command="{Binding OpenOnlineCommand}" Margin="0,6,0,0"/>
+              </StackPanel>
+
+              <ItemsControl Grid.Column="1" ItemsSource="{Binding Gallery}" Width="320"
+                            IsVisible="{Binding HasGallery}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="12"/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GalleryShot">
+                    <StackPanel Spacing="5" IsVisible="{Binding HasPicture}">
+                      <!-- A screenshot shrunk into a 320px column is a thumbnail whether it was
+                           meant as one or not, so it opens. -->
+                      <Button Classes="shotTile"
+                              Command="{Binding $parent[ItemsControl].((vm:ModPageViewModel)DataContext).OpenViewerCommand}"
+                              CommandParameter="{Binding}">
+                        <ctrl:AnimatedImage Source="{Binding Picture}" Frames="{Binding Frames}"
+                                            Stretch="Uniform"/>
+                      </Button>
+                      <TextBlock Text="{Binding Title}" Classes="label" TextWrapping="Wrap"
+                                 IsVisible="{Binding HasTitle}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Grid>
+
+          </StackPanel>
+        </Border>
+      </StackPanel>
+      </Panel>
+    </ScrollViewer>
+
+    <!-- ================= Full-size viewer ================= -->
+    <!-- Outside the scroller so it covers the page rather than scrolling with it. -->
+    <Panel Classes="viewer" Classes.open="{Binding IsViewerOpen}"
+           Classes.closing="{Binding IsViewerClosing}" IsVisible="{Binding IsViewerOpen}">
+
+      <!-- The backdrop closes it, which is what everyone tries first. -->
+      <Button Classes="viewerScrim" Command="{Binding CloseViewerCommand}"/>
+
+      <Grid RowDefinitions="Auto,*,Auto" Margin="24,18,24,22">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,*">
+          <TextBlock Grid.Column="1" Text="{Binding ViewerCounter}" FontSize="13.5"
+                     FontWeight="Medium" Foreground="#D8FFFFFF" VerticalAlignment="Center"/>
+          <Button Grid.Column="2" Classes="viewerIcon" HorizontalAlignment="Right"
+                  Command="{Binding CloseViewerCommand}" ToolTip.Tip="Close">
+            <Path Data="M6 6 L18 18 M18 6 L6 18" StrokeThickness="1.7" StrokeLineCap="Round"
+                  Width="15" Height="15" Stretch="Uniform"/>
+          </Button>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,14" ColumnSpacing="14">
+          <Button Grid.Column="0" Classes="viewerIcon" VerticalAlignment="Center"
+                  IsVisible="{Binding HasManyShots}" Command="{Binding PreviousShotCommand}">
+            <Path Data="M15 4 L7 12 L15 20" StrokeThickness="1.9" StrokeLineCap="Round"
+                  StrokeJoin="Round" Width="11" Height="16" Stretch="Uniform"/>
+          </Button>
+
+          <ctrl:AnimatedImage Grid.Column="1" Source="{Binding ViewerShot.Best}"
+                              Frames="{Binding ViewerShot.BestFrames}" Stretch="Uniform"/>
+
+          <Button Grid.Column="2" Classes="viewerIcon" VerticalAlignment="Center"
+                  IsVisible="{Binding HasManyShots}" Command="{Binding NextShotCommand}">
+            <Path Data="M9 4 L17 12 L9 20" StrokeThickness="1.9" StrokeLineCap="Round"
+                  StrokeJoin="Round" Width="11" Height="16" Stretch="Uniform"/>
+          </Button>
+        </Grid>
+
+        <TextBlock Grid.Row="2" Text="{Binding ViewerShot.Title}" FontSize="13.5"
+                   Foreground="#D8FFFFFF" HorizontalAlignment="Center" TextWrapping="Wrap"
+                   TextAlignment="Center" IsVisible="{Binding ViewerShot.HasTitle}"/>
+      </Grid>
+    </Panel>
+  </Panel>
+</UserControl>

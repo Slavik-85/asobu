@@ -1,93 +1,222 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
-             xmlns:core="using:Asobu.Core.Accounts"
              xmlns:conv="using:Avalonia.Data.Converters"
              x:Class="Asobu.App.Views.AccountsView"
              x:DataType="vm:AccountsViewModel">
 
-  <Grid RowDefinitions="Auto,*" Margin="30,28,30,28">
+  <Panel x:Name="PageRoot">
 
-    <StackPanel Grid.Row="0" Margin="0,0,0,18">
-      <TextBlock Text="Accounts" Classes="h1"/>
-      <TextBlock Classes="sub" Margin="0,5,0,0"
-                 Text="Sign in with Microsoft to play online. Offline accounts work for singleplayer."/>
-    </StackPanel>
+    <Grid RowDefinitions="Auto,*" Margin="30,28,30,28">
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,372">
+      <StackPanel Grid.Row="0" Margin="0,0,0,18">
+        <TextBlock Text="Accounts" Classes="h1"/>
+        <TextBlock Classes="sub" Margin="0,5,0,0"
+                   Text="The selected account is the one Play uses. Sign in with Microsoft to play online."/>
+      </StackPanel>
 
-      <Border Classes="card" ClipToBounds="True">
-        <Panel>
-          <StackPanel VerticalAlignment="Center" Spacing="8" IsVisible="{Binding IsEmpty}" Margin="30">
-            <TextBlock Text="No accounts yet" Classes="h2" HorizontalAlignment="Center"
-                       Foreground="{DynamicResource TextMuted}"/>
-            <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                       Text="Add one on the right. The selected account is the one Play uses."/>
+      <!-- The whole page is one panel: a well holding the account tiles, with the two actions
+           sitting under it rather than off in a sidebar. -->
+      <Border Grid.Row="1" Classes="card" Padding="26" MaxWidth="880" MaxHeight="560"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Grid RowDefinitions="*,Auto">
+
+          <Border Grid.Row="0" Classes="accountWell" MinHeight="300" MinWidth="620">
+            <Panel>
+              <StackPanel VerticalAlignment="Center" Spacing="8" IsVisible="{Binding IsEmpty}" Margin="30">
+                <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
+                <TextBlock Text="No accounts yet" Classes="h2" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextMuted}"/>
+                <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                           Text="Add one below. Offline accounts play singleplayer; Microsoft accounts play anywhere."/>
+              </StackPanel>
+
+              <ScrollViewer IsVisible="{Binding !IsEmpty}" ctrl:SmoothScroll.Enabled="True" Padding="18">
+                <ItemsControl ItemsSource="{Binding Cards}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel HorizontalAlignment="Center"/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AccountCard">
+                      <Button Classes="accountTile" Classes.active="{Binding IsActive}"
+                              Command="{Binding $parent[ItemsControl].((vm:AccountsViewModel)DataContext).SelectCardCommand}"
+                              CommandParameter="{Binding}">
+                        <StackPanel Spacing="9" Width="118">
+
+                          <!-- Nearest-neighbour: the avatar is a handful of pixels blown up, and
+                               smoothing it turns a face into a beige smudge. -->
+                          <Border Width="86" Height="86" CornerRadius="14" ClipToBounds="True"
+                                  HorizontalAlignment="Center" Background="{DynamicResource SurfaceAlt}">
+                            <Panel>
+                              <TextBlock Text="&#x1F338;" FontSize="30" IsVisible="{Binding !HasFace}"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                              <Image Source="{Binding Face}" IsVisible="{Binding HasFace}"
+                                     RenderOptions.BitmapInterpolationMode="None"/>
+                            </Panel>
+                          </Border>
+
+                          <StackPanel Spacing="2">
+                            <TextBlock Text="{Binding Username}" FontSize="13.5" FontWeight="SemiBold"
+                                       TextAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding KindLabel}" Classes="label" TextAlignment="Center"/>
+                          </StackPanel>
+
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Panel>
+          </Border>
+
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="0,20,0,0"
+                      HorizontalAlignment="Center">
+
+            <Button x:Name="AddAccountButton" Classes="accountAction" ToolTip.Tip="Add an account"
+                    IsEnabled="{Binding !IsSigningIn}" Command="{Binding ToggleAddMenuCommand}"
+                    Click="AddAccountButton_Click">
+              <Path Data="M12 5 V19 M5 12 H19" StrokeThickness="2.2" StrokeLineCap="Round"
+                    Width="17" Height="17" Stretch="Uniform"/>
+            </Button>
+
+            <!-- Deliberately not the same filled accent as Add: the two sit side by side and one
+                 of them throws an account away. -->
+            <Button Classes="accountAction danger" Command="{Binding RemoveCommand}"
+                    IsVisible="{Binding HasSelection}" ToolTip.Tip="{Binding RemoveLabel}"
+                    Classes.confirming="{Binding ConfirmingRemove}">
+              <Path Data="M4 7 H20 M10 4 H14 M9 7 V19 M15 7 V19 M6 7 L7 20 H17 L18 7"
+                    StrokeThickness="1.9" StrokeLineCap="Round" StrokeJoin="Round"
+                    Width="17" Height="17" Stretch="Uniform"/>
+            </Button>
+
           </StackPanel>
 
-          <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding Active}"
-                   IsVisible="{Binding !IsEmpty}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="core:Account">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                  <Border Grid.Column="0" Width="34" Height="34" CornerRadius="17"
-                          Background="{DynamicResource AccentSoft}" Margin="0,0,13,0">
-                    <TextBlock Text="&#x1F338;" FontSize="14"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Username}" FontSize="14" FontWeight="Medium"/>
-                    <TextBlock Text="{Binding Uuid}" Classes="label"/>
-                  </StackPanel>
-                  <Border Grid.Column="2" Classes="badge">
-                    <TextBlock Text="{Binding Kind}" FontSize="11.5"
-                               Foreground="{DynamicResource TextMuted}"/>
-                  </Border>
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </Panel>
+        </Grid>
       </Border>
+    </Grid>
 
-      <Border Grid.Column="1" Classes="card" Margin="18,0,0,0" Padding="24">
-        <StackPanel Spacing="16">
+    <!-- ============ Add menu ============ -->
+    <!-- An invisible scrim behind it, so clicking anywhere else dismisses the menu the way a
+         real dropdown would. Transparent still takes hit tests. -->
+    <Border Classes="menuScrim" IsVisible="{Binding IsAddMenuOpen}">
+      <Button Classes="scrimCatcher" Command="{Binding CloseAddMenuCommand}"/>
+    </Border>
 
-          <StackPanel Spacing="9">
-            <TextBlock Text="Microsoft" Classes="h2"/>
-            <TextBlock Classes="sub" TextWrapping="Wrap"
-                       Text="Opens your browser. Asobu never sees your password — the sign-in happens with Microsoft directly."/>
-            <Button Classes="primary" Content="Sign in with Microsoft" HorizontalAlignment="Stretch"
-                    IsEnabled="{Binding !IsSigningIn}" Command="{Binding SignInMicrosoftCommand}"/>
-            <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="10" Padding="12"
-                    IsVisible="{Binding !IsMicrosoftConfigured}">
-              <TextBlock Classes="sub" TextWrapping="Wrap" FontSize="12.5"
-                         Text="Needs an Azure client id that Mojang has approved for this launcher. Paste one in Settings."/>
-            </Border>
+    <!-- Placement is set from code-behind against the button's actual position, since a popup
+         is no longer doing it for us. Starts off-screen so the very first frame can't flash in
+         the wrong place before the measurement lands. -->
+    <Border x:Name="AddAccountMenu" Classes="dropdownMenu" Width="188"
+            Classes.open="{Binding IsAddMenuOpen}" Classes.closing="{Binding IsAddMenuClosing}"
+            IsVisible="{Binding IsAddMenuOpen}"
+            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-400,-400,0,0">
+      <StackPanel Spacing="4">
+        <Button Classes="menuItem" Command="{Binding SignInMicrosoftCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Path Data="M3 3 H11 V11 H3 Z M13 3 H21 V11 H13 Z M3 13 H11 V21 H3 Z M13 13 H21 V21 H13 Z"
+                  Fill="{DynamicResource Accent}" Width="14" Height="14" Stretch="Uniform"
+                  VerticalAlignment="Center"/>
+            <TextBlock Text="Microsoft" VerticalAlignment="Center"/>
           </StackPanel>
+        </Button>
+        <Button Classes="menuItem" Command="{Binding StartOfflineCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Path Data="M12 12 A4 4 0 1 0 12 4 A4 4 0 1 0 12 12 Z M4 21 A8 8 0 0 1 20 21"
+                  Stroke="{DynamicResource Accent}" StrokeThickness="1.8" StrokeLineCap="Round"
+                  Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"/>
+            <TextBlock Text="Offline" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+      </StackPanel>
+    </Border>
 
-          <Border Height="1" Background="{DynamicResource Border}"/>
-
-          <StackPanel Spacing="9">
-            <TextBlock Text="Offline" Classes="h2"/>
+    <!-- ============ Offline name ============ -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsOfflineOpen}" IsVisible="{Binding IsOfflineOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsOfflineOpen}" Width="400">
+        <StackPanel Margin="26,24" Spacing="14">
+          <StackPanel Spacing="3">
+            <TextBlock Text="Offline account" Classes="h2"/>
             <TextBlock Classes="sub" TextWrapping="Wrap"
                        Text="Singleplayer only. Online servers reject offline accounts."/>
-            <TextBox Text="{Binding NewUsername}" PlaceholderText="Username"/>
-            <Button Classes="ghost" Content="Add offline account" HorizontalAlignment="Stretch"
-                    Command="{Binding AddOfflineCommand}"/>
           </StackPanel>
 
-          <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+          <TextBox Text="{Binding NewUsername}" PlaceholderText="Username"/>
+
+          <TextBlock Text="{Binding Error}" Classes="label" TextWrapping="Wrap"
                      Foreground="{DynamicResource Accent}"
                      IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 
-          <Button Classes="ghost danger" Content="Remove selected" HorizontalAlignment="Stretch"
-                  IsVisible="{Binding !IsEmpty}"
-                  Command="{Binding RemoveCommand}" CommandParameter="{Binding Active}"/>
-
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <Button Grid.Column="1" Classes="ghost" Content="Cancel" Command="{Binding CancelOfflineCommand}"/>
+            <Button Grid.Column="2" Classes="primary" Content="Add" Command="{Binding AddOfflineCommand}"/>
+          </Grid>
         </StackPanel>
       </Border>
+    </Border>
 
-    </Grid>
-  </Grid>
+    <!-- ============ Microsoft device code ============ -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsSigningIn}" IsVisible="{Binding IsSigningIn}">
+      <Border Classes="modalCard" Classes.open="{Binding IsSigningIn}" Width="420">
+        <StackPanel Margin="26,24" Spacing="14">
+          <StackPanel Spacing="3">
+            <TextBlock Text="Sign in with Microsoft" Classes="h2"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Asobu never sees your password. The sign-in happens with Microsoft, in your own browser."/>
+          </StackPanel>
+
+          <Border Classes="deviceCode" IsVisible="{Binding IsAwaitingDeviceCode}">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="label" TextWrapping="Wrap"
+                         Text="Enter this code on Microsoft's page, then come back. This window is waiting."/>
+
+              <!-- Code centred in the panel with the copy button pinned to the right edge, so the
+                   thing being read stays optically centred rather than shoved off-axis. -->
+              <Panel>
+                <SelectableTextBlock Text="{Binding DeviceUserCode}" FontSize="26" FontWeight="SemiBold"
+                                      FontFamily="Consolas,monospace" VerticalAlignment="Center"
+                                      HorizontalAlignment="Center" Foreground="{DynamicResource Accent}"/>
+                <Button Classes="copyButton" ToolTip.Tip="Copy the code" Click="CopyCode_Click"
+                        HorizontalAlignment="Right" VerticalAlignment="Center">
+                  <Canvas Width="18" Height="18">
+                    <Path Data="M6 6 H14.5 A1.5 1.5 0 0 1 16 7.5 V16 A1.5 1.5 0 0 1 14.5 17.5 H6 A1.5 1.5 0 0 1 4.5 16 V7.5 A1.5 1.5 0 0 1 6 6 Z"
+                          StrokeThickness="1.5" StrokeJoin="Round"/>
+                    <Path Data="M2 12 A1.5 1.5 0 0 1 0.5 10.5 V2 A1.5 1.5 0 0 1 2 0.5 H10.5 A1.5 1.5 0 0 1 12 2"
+                          StrokeThickness="1.5" StrokeLineCap="Round" StrokeJoin="Round"/>
+                  </Canvas>
+                </Button>
+              </Panel>
+
+              <TextBlock Text="{Binding CopyNotice}" Classes="label" HorizontalAlignment="Center"
+                         TextWrapping="Wrap" TextAlignment="Center"
+                         IsVisible="{Binding CopyNotice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+              <Button Classes="ghost" Content="Open page" HorizontalAlignment="Stretch"
+                      Command="{Binding OpenDevicePageCommand}"/>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="label" HorizontalAlignment="Center" Text="Waiting for you to finish…"
+                     IsVisible="{Binding !IsAwaitingDeviceCode}"/>
+
+          <Border Background="{DynamicResource SurfaceAlt}" CornerRadius="10" Padding="12"
+                  IsVisible="{Binding NeedsClientId}">
+            <TextBlock Classes="sub" TextWrapping="Wrap" FontSize="12.5"
+                       Text="Sign-in is set to use your own Azure app, and no client id is set. Paste one in Settings, or switch back to device code."/>
+          </Border>
+
+          <Button Classes="ghost" Content="Cancel" HorizontalAlignment="Stretch"
+                  Command="{Binding CancelSignInCommand}"/>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap" MaxWidth="520"
+               TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+               Margin="0,0,0,18" Foreground="{DynamicResource Accent}"
+               IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+  </Panel>
 </UserControl>

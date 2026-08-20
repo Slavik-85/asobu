@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             x:Class="Asobu.App.Views.TourOverlay"
+             x:DataType="vm:TourViewModel">
+
+  <!-- Transparent rather than no background: that is what makes the overlay swallow clicks, so
+       the tour cannot be half-driven by pressing the very buttons it is describing. -->
+  <Panel Background="Transparent" x:Name="Root">
+
+    <ctrl:Spotlight x:Name="Light" Scrim="{DynamicResource TourScrim}"/>
+
+    <!-- Placed from code-behind against the highlighted control, so it starts off-screen and
+         cannot flash in the wrong place before the first measurement lands. -->
+    <Border x:Name="Card" Classes="tourCard" Width="330"
+            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="-600,-600,0,0">
+      <StackPanel Spacing="12" Margin="20,18">
+
+        <StackPanel Spacing="5">
+          <TextBlock Text="{Binding Current.Title}" Classes="h2" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding Current.Body}" Classes="sub" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+          <TextBlock Grid.Column="0" Text="{Binding StepLabel}" Classes="label"
+                     VerticalAlignment="Center"/>
+          <Button Grid.Column="1" Classes="ghost" Content="Skip" HorizontalAlignment="Right"
+                  Command="{Binding EndCommand}"/>
+          <Button Grid.Column="2" Classes="primary" Content="{Binding NextLabel}"
+                  Command="{Binding NextCommand}"/>
+        </Grid>
+
+      </StackPanel>
+    </Border>
+
+  </Panel>
+</UserControl>

@@ -35,7 +35,7 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         string javaExecutable)
     {
         var platform = RuleContext.Current;
-        var gameDirectory = paths.InstanceGameDir(instance.Id);
+        var gameDirectory = paths.InstanceGameDir(instance.Folder);
         Directory.CreateDirectory(gameDirectory);
 
         var classpath = string.Join(Path.PathSeparator, installer.BuildClasspath(version, platform));

@@ -6,8 +6,52 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!--
+    The CurseForge API key for this build. Their catalogue refuses unauthenticated requests, and
+    CurseForge issue a key per application to that application's owner, so it cannot be committed
+    here or shared between launchers. Prism handles it the same way: their official builds carry
+    their key, and a source build without one simply has CurseForge switched off.
+
+    Supply it as an MSBuild property or an environment variable:
+
+        dotnet build -p:CurseForgeApiKey=YOUR_KEY
+        set ASOBU_CURSEFORGE_API_KEY=YOUR_KEY
+
+    Deliberately not a file in the repo, so it cannot be committed by accident.
+  -->
+  <!-- Set it once in secrets.props instead of on every build. Gitignored; see secrets.props.example. -->
+  <Import Project="$(MSBuildThisFileDirectory)secrets.props" Condition="Exists('$(MSBuildThisFileDirectory)secrets.props')" />
+
+  <PropertyGroup>
+    <CurseForgeApiKey Condition="'$(CurseForgeApiKey)' == ''">$(ASOBU_CURSEFORGE_API_KEY)</CurseForgeApiKey>
+
+    <!-- An untouched template is not a key. Without this the app would report CurseForge as
+         working and then 403 on every search. -->
+    <CurseForgeApiKey Condition="'$(CurseForgeApiKey)' == 'PUT_YOUR_KEY_HERE'"></CurseForgeApiKey>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(CurseForgeApiKey)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CurseForgeApiKey</_Parameter1>
+      <_Parameter2>$(CurseForgeApiKey)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!--
+    A release is meant to carry the key, so say something when one doesn't. Without this the
+    only symptom is CurseForge quietly missing from a build that is already on its way out the
+    door, since the launcher treats "no key" as "that source is switched off" rather than as an
+    error. A warning rather than an error: building Release from source without a key is a
+    perfectly reasonable thing to do, and shouldn't fail.
+  -->
+  <Target Name="WarnWhenReleaseHasNoCurseForgeKey" BeforeTargets="Build"
+          Condition="'$(Configuration)' == 'Release' And '$(CurseForgeApiKey)' == ''">
+    <Warning Text="This Release build carries no CurseForge API key, so CurseForge will be switched off in it and only Modrinth will work. Put one in src/Asobu.Core/secrets.props before publishing a release. Expected, and ignorable, when building from source." />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Identity.Client" Version="4.87.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.87.0" />
   </ItemGroup>
 

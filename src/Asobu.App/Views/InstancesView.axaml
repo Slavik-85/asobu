@@ -15,8 +15,8 @@
       <StackPanel Grid.Row="0" Margin="0,0,0,18">
         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
           <TextBlock Grid.Column="0" Text="Library" Classes="h1" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Classes="primary" Content="New instance" IsVisible="{Binding !IsEmpty}"
-                  Command="{Binding NewInstanceCommand}"/>
+          <Button Grid.Column="1" x:Name="NewInstanceButton" Classes="primary" Content="New instance"
+                  IsVisible="{Binding !IsEmpty}" Command="{Binding NewInstanceCommand}"/>
         </Grid>
 
         <!-- Toolbar -->
@@ -43,43 +43,102 @@
              a Panel child declared first it must stay below the overlay messages below, or it
              would sit on top in z-order and swallow their clicks despite looking empty. -->
         <ScrollViewer IsVisible="{Binding !IsEmpty}" ctrl:SmoothScroll.Enabled="True">
-          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,24">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <WrapPanel/>
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
+          <ItemsControl ItemsSource="{Binding InstanceGroups}" Margin="0,0,0,24">
+           <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:InstanceGroup">
+             <StackPanel Margin="0,0,0,10">
+
+              <!-- The whole row is the hit target, which is how Prism behaves and is far easier
+                   to hit than a 9px arrow — but the hover fill lives on the pill around the label
+                   rather than on the row. A full-width highlight ran to the container edge and
+                   got sliced off square there; a pill cannot be clipped by anything. -->
+              <Button Classes="groupHeader"
+                      Command="{Binding $parent[UserControl].((vm:InstancesViewModel)DataContext).ToggleGroupCommand}"
+                      CommandParameter="{Binding}">
+                <Button.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Delete group" Tag="{Binding}" IsEnabled="{Binding CanDelete}"
+                              Click="DeleteGroup_Click"/>
+                  </ContextMenu>
+                </Button.ContextMenu>
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                  <Border Grid.Column="0" Classes="groupPill">
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                      <Path Classes="groupChevron" Classes.expanded="{Binding IsExpanded}"
+                            Data="M9 5 L16 12 L9 19" StrokeThickness="2"
+                            StrokeLineCap="Round" StrokeJoin="Round"
+                            Width="9" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                 VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Border>
+                  <Border Grid.Column="1" Height="1" VerticalAlignment="Center"
+                          Background="{DynamicResource Border}"/>
+                </Grid>
+              </Button>
+
+              <!-- ClipToBounds so the cards slide behind the header rather than over the band
+                   above them on the way out. -->
+              <Panel ClipToBounds="True">
+               <ItemsControl ItemsSource="{Binding Items}" Classes="groupBody"
+                             Classes.open="{Binding IsExpanded}" Classes.closing="{Binding IsCollapsing}"
+                             IsVisible="{Binding IsExpanded}" Margin="0,12,0,0">
+               <ItemsControl.ItemsPanel>
+                 <ItemsPanelTemplate>
+                   <WrapPanel/>
+                 </ItemsPanelTemplate>
+               </ItemsControl.ItemsPanel>
+               <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="core:Instance">
                 <Button Classes="instanceCard" Tag="{Binding}" Click="InstanceCard_Click">
+                  <Button.ContextMenu>
+                    <ContextMenu>
+                      <!-- One item for both, since the label says which it will do. -->
+                      <MenuItem Header="{Binding PinLabel}" Tag="{Binding}" Click="CardPin_Click"/>
+                      <MenuItem Header="Edit" Tag="{Binding}" Click="CardEdit_Click"/>
+                      <MenuItem Header="Settings" Tag="{Binding}" Click="CardSettings_Click"/>
+                      <MenuItem Header="Duplicate" Tag="{Binding}" Click="CardDuplicate_Click"/>
+                      <MenuItem Header="Export" Tag="{Binding}" Click="CardExport_Click"/>
+                      <Separator/>
+                      <MenuItem Header="Delete" Classes="danger" Tag="{Binding}" Click="CardDelete_Click"/>
+                    </ContextMenu>
+                  </Button.ContextMenu>
                   <!-- Caption row is fixed so the play overlay can park exactly one row-height
                        below, and ClipToBounds hides it there. Sized to just fit the two lines —
                        any taller and the surplus shows as dead space under the version. -->
                   <Grid Width="150" RowDefinitions="150,11,40" ClipToBounds="True">
-                    <Border Grid.Row="0" Height="150" CornerRadius="14"
+                    <Border Grid.Row="0" Height="150" CornerRadius="14" ClipToBounds="True"
                             Background="{DynamicResource AccentSoft}">
-                      <TextBlock Text="{Binding Icon}" FontSize="56"
-                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      <Panel>
+                        <TextBlock Text="{Binding IconEmoji}" FontSize="56" IsVisible="{Binding !HasCustomIcon}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Image IsVisible="{Binding HasCustomIcon}" Stretch="UniformToFill"
+                               Source="{Binding IconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+                      </Panel>
                     </Border>
 
                     <!-- Row 1 is a plain gap. Kept as its own row rather than padding the
                          caption so the caption row height stays equal to the overlay's slide
                          distance below. -->
 
-                    <StackPanel Grid.Row="2" VerticalAlignment="Center" Margin="3,0">
+                    <StackPanel Grid.Row="2" Name="caption" VerticalAlignment="Center" Margin="3,0">
                       <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold"
                                  TextTrimming="CharacterEllipsis"/>
-                      <TextBlock Text="{Binding MinecraftVersion, StringFormat='Vanilla {0}'}"
-                                 FontSize="11.5" Foreground="{DynamicResource TextMuted}"
-                                 Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock FontSize="11.5" Foreground="{DynamicResource TextMuted}"
+                                 Margin="0,3,0,0" TextTrimming="CharacterEllipsis">
+                        <Run Text="{Binding LoaderName, Mode=OneWay}"/><Run Text=" "/><Run Text="{Binding MinecraftVersion, Mode=OneWay}"/>
+                      </TextBlock>
                     </StackPanel>
 
-                    <!-- Slides up over the caption on hover. Painted with the card's *hover*
-                         fill, not Surface: it is only ever visible while the card is hovered, so
-                         anything else reads as a mismatched panel sitting behind the button. -->
-                    <Border Grid.Row="2" Name="playOverlay" Background="{DynamicResource Hover}">
+                    <!-- Slides up over the caption on hover, and deliberately carries no fill of
+                         its own. It used to be painted with the card's hover colour to hide the
+                         caption, which meant it had to be kept in step with every state the card
+                         can be in — and it wasn't, so pressing the card left this panel as a dark
+                         square inside a lightened one. The caption fades out instead, so the play
+                         button sits directly on the card and there is nothing left to mismatch. -->
+                    <Border Grid.Row="2" Name="playOverlay">
                       <Button Classes="cardPlay" Tag="{Binding}" Click="CardPlay_Click"
-                              IsEnabled="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).CanQuickPlay}"
+                              IsEnabled="{Binding $parent[UserControl].((vm:InstancesViewModel)DataContext).CanQuickPlay}"
                               HorizontalAlignment="Stretch" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
                           <Path Data="M 0,0 L 9,5.5 L 0,11 Z" Fill="{DynamicResource OnAccent}"
@@ -92,7 +151,13 @@
                   </Grid>
                 </Button>
               </DataTemplate>
-            </ItemsControl.ItemTemplate>
+               </ItemsControl.ItemTemplate>
+               </ItemsControl>
+              </Panel>
+
+             </StackPanel>
+            </DataTemplate>
+           </ItemsControl.ItemTemplate>
           </ItemsControl>
         </ScrollViewer>
 
@@ -106,7 +171,8 @@
           <TextBlock Text="No instances yet" Classes="h1" HorizontalAlignment="Center" Margin="0,6,0,0"/>
           <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
                      Text="Make one from any Minecraft version. Asobu fetches the game, the libraries and the right Java for you."/>
-          <Button Classes="primary" Content="New instance" HorizontalAlignment="Center" Margin="0,10,0,0"
+          <Button x:Name="NewInstanceEmptyButton" Classes="primary" Content="New instance"
+                  HorizontalAlignment="Center" Margin="0,10,0,0"
                   Command="{Binding NewInstanceCommand}"/>
         </StackPanel>
 
@@ -128,8 +194,13 @@
               <ProgressBar Value="{Binding Progress}" Maximum="1" Height="5" CornerRadius="3"
                            IsVisible="{Binding IsBusy}"/>
             </StackPanel>
-            <Button Grid.Column="1" Classes="ghost danger" Content="Stop" VerticalAlignment="Center"
-                    IsVisible="{Binding IsRunning}" Command="{Binding KillCommand}"/>
+            <!-- The same two the instance page offers while the game is up, in the same
+                 order, so the pair reads the same wherever it is met. -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                        VerticalAlignment="Center" IsVisible="{Binding IsRunning}">
+              <Button Classes="ghost" Content="Logs" Command="{Binding ViewLogsCommand}"/>
+              <Button Classes="ghost danger" Content="Kill" Command="{Binding KillCommand}"/>
+            </StackPanel>
           </Grid>
         </Border>
 
@@ -147,8 +218,8 @@
     <!-- Single cell rather than a header row plus a content row: the scroll content has to
          start at the very top so the backdrop reaches the top edge, with the back button
          floating over it. Declared after the ScrollViewer so it stays above it in z-order. -->
-    <Grid Classes="detailSheet" Classes.open="{Binding IsDetailOpen}"
-          Classes.closing="{Binding IsDetailClosing}"
+    <Grid ctrl:PageSlide.IsOpen="{Binding IsDetailOpen}"
+          ctrl:PageSlide.IsClosing="{Binding IsDetailClosing}"
           IsVisible="{Binding IsDetailOpen}"
           Background="{DynamicResource Bg}">
 
@@ -174,75 +245,68 @@
             <StackPanel VerticalAlignment="Center" MaxWidth="760" HorizontalAlignment="Center"
                         Margin="30,0">
 
-          <!-- Hero: icon, name, Play -->
-          <Panel HorizontalAlignment="Center">
-            <Button Name="IconButton" Classes="heroIcon" Command="{Binding ToggleIconPickerCommand}">
-              <TextBlock Text="{Binding Selected.Icon}" FontSize="62"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Button>
-            <Popup IsOpen="{Binding IsIconPickerOpen}" PlacementTarget="{Binding #IconButton}"
-                   Placement="BottomEdgeAlignedLeft" IsLightDismissEnabled="True">
-              <Border Classes="card" Padding="10">
-                <ItemsControl ItemsSource="{Binding IconChoices}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <WrapPanel Width="184"/>
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                      <Button Classes="iconChoice" Content="{Binding}" Tag="{Binding}"
-                              Click="IconChoice_Click"/>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Border>
-            </Popup>
-          </Panel>
+          <!-- Hero: icon, name, actions. The icon doubles as the edit button — one obvious
+               way in beats an icon picker here and a rename pencil there. -->
+          <Button Classes="heroIcon" HorizontalAlignment="Center" Command="{Binding OpenEditCommand}"
+                  ToolTip.Tip="Edit this instance">
+            <!-- ClipToBounds on a Border of its own, not on the button: the button's corner
+                 radius belongs to its chrome, and a picture stretched inside would square off
+                 the corners it is supposed to sit within. -->
+            <Border CornerRadius="26" ClipToBounds="True" Width="132" Height="132">
+              <Panel>
+                <TextBlock Text="{Binding Selected.IconEmoji}" FontSize="62"
+                           IsVisible="{Binding !Selected.HasCustomIcon}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Image IsVisible="{Binding Selected.HasCustomIcon}" Stretch="UniformToFill"
+                       Source="{Binding Selected.IconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+              </Panel>
+            </Border>
+          </Button>
 
-          <StackPanel IsVisible="{Binding !IsRenaming}" Orientation="Horizontal" Spacing="6"
-                      HorizontalAlignment="Center" Margin="0,16,0,0">
-            <TextBlock Text="{Binding Selected.Name}" Classes="h1" VerticalAlignment="Center"/>
-            <Button Classes="iconTextButton" Command="{Binding StartRenameCommand}"
-                    ToolTip.Tip="Rename" VerticalAlignment="Center">
-              <Path Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"
-                    Fill="{DynamicResource TextMuted}" Stretch="Uniform" Width="15" Height="15"/>
-            </Button>
-          </StackPanel>
+          <TextBlock Text="{Binding Selected.Name}" Classes="h1" Margin="0,16,0,0"
+                     HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
 
-          <StackPanel IsVisible="{Binding IsRenaming}" Orientation="Horizontal" Spacing="6"
-                      HorizontalAlignment="Center" Margin="0,16,0,0">
-            <TextBox Text="{Binding RenameText}" FontSize="15" Width="260"/>
-            <Button Classes="iconTextButton" Command="{Binding ConfirmRenameCommand}" ToolTip.Tip="Save">
-              <Path Data="M4 12 L9 17 L20 6" Stroke="{DynamicResource Accent}" StrokeThickness="2.4"
-                    StrokeLineCap="Round" StrokeJoin="Round" Width="14" Height="14" Stretch="Uniform"/>
+          <TextBlock Classes="sub" HorizontalAlignment="Center" Margin="0,4,0,0">
+            <Run Text="{Binding Selected.LoaderLabel, Mode=OneWay}"/><Run Text="  ·  Minecraft "/><Run Text="{Binding Selected.MinecraftVersion, Mode=OneWay}"/>
+          </TextBlock>
+
+          <!-- Edit left, settings right, Play exactly where it has always been. -->
+          <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center"
+                      Margin="0,18,0,0">
+            <Button Classes="heroAction" Command="{Binding OpenEditCommand}"
+                    ToolTip.Tip="Name, icon and banner">
+              <Path Data="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z" Stretch="Uniform" Width="19" Height="19"/>
             </Button>
-            <Button Classes="iconTextButton" Command="{Binding CancelRenameCommand}" ToolTip.Tip="Cancel">
-              <Path Data="M5 5 L19 19 M19 5 L5 19" Stroke="{DynamicResource TextMuted}" StrokeThickness="2.2"
-                    StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform"/>
+
+            <!-- The button says what the instance is doing, so nothing else has to. -->
+            <Button Classes="primary play" Content="{Binding PlayLabel}"
+                    IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
+
+            <Button Classes="heroAction" Command="{Binding OpenInstanceSettingsCommand}"
+                    ToolTip.Tip="Memory, Java, arguments and logs">
+              <Path Data="F0 M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z" Stretch="Uniform" Width="21" Height="21"/>
             </Button>
           </StackPanel>
 
-          <TextBlock Text="{Binding Selected.MinecraftVersion, StringFormat='Vanilla  ·  Minecraft {0}'}"
-                     Classes="sub" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-
-          <Button Classes="primary play" Content="Play" HorizontalAlignment="Center" Margin="0,18,0,0"
-                  IsEnabled="{Binding CanPlay}" Command="{Binding PlayCommand}"/>
-          <TextBlock Text="{Binding AccountLabel}" Classes="label" HorizontalAlignment="Center"
-                     Margin="0,7,0,0"/>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,8,0,0">
+            <TextBlock Text="{Binding AccountLabel}" Classes="label"/>
+            <TextBlock Text="·" Classes="label"/>
+            <TextBlock Text="{Binding SettingsSummary}" Classes="label"/>
+          </StackPanel>
 
           <StackPanel Spacing="7" Margin="0,14,0,0" MaxWidth="420" IsVisible="{Binding IsBusy}">
             <TextBlock Text="{Binding Status}" Classes="label" HorizontalAlignment="Center"/>
             <ProgressBar Value="{Binding Progress}" Maximum="1" Height="6" CornerRadius="3"/>
           </StackPanel>
 
-          <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center"
+          <!-- What there is to do while the game is up: end it, or read what it is saying.
+               Under the badge rather than beside it, so Play and these read as one column. -->
+          <StackPanel Spacing="10" HorizontalAlignment="Center"
                       Margin="0,14,0,0" IsVisible="{Binding IsRunning}">
-            <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="14,10">
-              <TextBlock Text="Minecraft is running" FontSize="13" FontWeight="Medium"
-                         Foreground="{DynamicResource Accent}"/>
-            </Border>
-            <Button Classes="ghost danger" Content="Stop" Command="{Binding KillCommand}"/>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+              <Button Classes="ghost danger" Content="Kill instance" Command="{Binding KillCommand}"/>
+              <Button Classes="ghost" Content="Logs" Command="{Binding ViewLogsCommand}"/>
+            </StackPanel>
           </StackPanel>
 
           <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap" MaxWidth="520"
@@ -268,6 +332,41 @@
           <Border Classes="card" Margin="0,26,0,0" ClipToBounds="True">
             <StackPanel>
 
+              <!-- The folder's own controls, above the table rather than below it. They belong
+                   with the count, and the count belongs where the eye lands first — under the
+                   table it sat in dead space at the bottom of a list nobody scrolls back up.
+                   Add mods is here for the same reason: it is what this card is for. -->
+              <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="18,14,18,4">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10"
+                            VerticalAlignment="Center">
+                  <!-- What the table is showing. The count follows it rather than leading, since
+                       the kind is the thing being chosen and the number only describes it. -->
+                  <ComboBox Classes="field" ItemsSource="{Binding ContentKinds}"
+                            SelectedItem="{Binding ContentKind}" MinWidth="150"
+                            VerticalAlignment="Center">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:KindOption">
+                        <TextBlock Text="{Binding Label}" FontSize="13.5" FontWeight="Medium"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+
+                  <TextBlock Classes="label" Text="{Binding ContentCountLabel}"
+                             VerticalAlignment="Center" IsVisible="{Binding !HasNoMods}"/>
+                  <TextBlock Classes="label" Text="checking for updates&#x2026;"
+                             VerticalAlignment="Center" IsVisible="{Binding IsCheckingUpdates}"/>
+                </StackPanel>
+
+                <Button Grid.Column="1" Classes="ghost" Content="Update all" Margin="0,0,8,0"
+                        IsVisible="{Binding HasUpdates}" Command="{Binding UpdateAllModsCommand}"/>
+                <Button Grid.Column="2" Classes="ghost" Content="Open folder" Margin="0,0,8,0"
+                        IsVisible="{Binding !HasNoMods}" Command="{Binding OpenModsFolderCommand}"/>
+                <Button Grid.Column="3" Classes="ghost" Content="Rescan" Margin="0,0,8,0"
+                        IsVisible="{Binding !HasNoMods}" Command="{Binding RefreshModsCommand}"/>
+                <Button Grid.Column="4" Classes="primary" Content="{Binding AddContentLabel}"
+                        Command="{Binding OpenAddContentCommand}"/>
+              </Grid>
+
               <!-- Header and rows share one column spec so content and dividers line up exactly.
                    Name and Creator are fixed-width and sit right next to each other, separated by
                    an actual vertical rule running the full height of the row; the flexible column
@@ -277,17 +376,28 @@
                    kills the dead space: a left-aligned short word in a data-width column always
                    strands itself against the previous divider. Header and rows share this exact
                    spec so the rules line up straight down the table. -->
-              <Grid ColumnDefinitions="70,1,2*,1,2*,1,*,1,*" Classes="modHeader">
-                <TextBlock Grid.Column="0" Text="Icon" TextAlignment="Center"/>
-                <Border Grid.Column="1" Classes="modDivider"/>
-                <TextBlock Grid.Column="2" Text="Name" TextAlignment="Center"/>
-                <Border Grid.Column="3" Classes="modDivider"/>
-                <TextBlock Grid.Column="4" Text="Creator" TextAlignment="Center"/>
-                <Border Grid.Column="5" Classes="modDivider"/>
-                <TextBlock Grid.Column="6" Text="Size" TextAlignment="Center"/>
-                <Border Grid.Column="7" Classes="modDivider"/>
-                <TextBlock Grid.Column="8" Text="Toggle" TextAlignment="Center"/>
-              </Grid>
+              <!-- The update button sits beside a row rather than in it, so the header gets a
+                   plain spacer of the same width: no label, no rule, nothing that would read as
+                   a column. It only exists at all while something in the folder is behind. -->
+              <DockPanel>
+                <Panel DockPanel.Dock="Right" Width="116" IsVisible="{Binding HasUpdates}"/>
+
+                <!-- The class stays on the Grid: its styles are written as Grid.modHeader, and
+                     the label rules as a direct-child selector under it. Wearing it on the
+                     wrapper matched neither, which stripped the header back to bare text. -->
+                <Grid ColumnDefinitions="70,1,2*,1,2*,1,*,1,*" Classes="modHeader">
+                  <TextBlock Grid.Column="0" Text="Icon" TextAlignment="Center"/>
+                  <Border Grid.Column="1" Classes="modDivider"/>
+                  <TextBlock Grid.Column="2" Text="Name" TextAlignment="Center"/>
+                  <Border Grid.Column="3" Classes="modDivider"/>
+                  <TextBlock Grid.Column="4" Text="Creator" TextAlignment="Center"/>
+                  <Border Grid.Column="5" Classes="modDivider"/>
+                  <TextBlock Grid.Column="6" Text="Size" TextAlignment="Center"/>
+                  <Border Grid.Column="7" Classes="modDivider"/>
+                  <TextBlock Grid.Column="8" Text="Toggle" TextAlignment="Center"
+                             IsVisible="{Binding CanToggleContent, FallbackValue=True}"/>
+                </Grid>
+              </DockPanel>
 
               <Border Height="1" Background="{DynamicResource Border}" Margin="18,0"/>
 
@@ -295,18 +405,39 @@
                          IsVisible="{Binding IsLoadingMods}"/>
 
               <StackPanel Spacing="6" Margin="20,24,20,26" IsVisible="{Binding HasNoMods}">
-                <TextBlock Text="No mods installed" Classes="h2" HorizontalAlignment="Center"
+                <TextBlock Text="{Binding EmptyTitle}" Classes="h2" HorizontalAlignment="Center"
                            Foreground="{DynamicResource TextMuted}"/>
                 <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                           Text="Drop jars into the mods folder and they show up here. Browsing and one-click installs arrive with loader support."/>
-                <Button Classes="ghost" Content="Open mods folder" HorizontalAlignment="Center"
-                        Margin="0,8,0,0" Command="{Binding OpenModsFolderCommand}"/>
+                           Text="{Binding EmptyDetail}"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
+                            Margin="0,8,0,0">
+                  <Button Classes="primary" Content="{Binding AddContentLabel}"
+                          Command="{Binding OpenAddContentCommand}"/>
+                  <Button Classes="ghost" Content="{Binding OpenFolderLabel}"
+                          Command="{Binding OpenModsFolderCommand}"/>
+                </StackPanel>
               </StackPanel>
 
               <ItemsControl ItemsSource="{Binding Mods}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:ModRowViewModel">
                     <Border Classes="modRowShell">
+                      <DockPanel>
+                        <!-- Outside the grid entirely: the same width the header leaves free, so
+                             the columns are exactly what they were before any of this. -->
+                        <Panel DockPanel.Dock="Right" Width="116"
+                               IsVisible="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).HasUpdates}">
+                          <Button Classes="primary" Content="Update" HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" IsVisible="{Binding HasUpdate}"
+                                  ToolTip.Tip="{Binding UpdateLabel}"
+                                  Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).UpdateModCommand}"
+                                  CommandParameter="{Binding}"/>
+                          <TextBlock Text="Updating&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                     VerticalAlignment="Center" IsVisible="{Binding IsUpdating}"/>
+                          <TextBlock Text="Updated" Classes="label" HorizontalAlignment="Center"
+                                     VerticalAlignment="Center" Foreground="{DynamicResource Accent}"
+                                     IsVisible="{Binding IsUpdated}"/>
+                        </Panel>
                       <Grid ColumnDefinitions="70,1,2*,1,2*,1,*,1,*" Classes="modRow">
                         <Border Grid.Column="0" Width="34" Height="34" CornerRadius="10"
                                 HorizontalAlignment="Center" Background="{DynamicResource SurfaceAlt}"
@@ -331,72 +462,15 @@
                                    VerticalAlignment="Center" TextAlignment="Center"/>
                         <Border Grid.Column="7" Classes="modDivider"/>
                         <ToggleSwitch Grid.Column="8" IsChecked="{Binding IsEnabled}"
+                                      IsVisible="{Binding CanToggle}"
                                       HorizontalAlignment="Center"
                                       OnContent="" OffContent="" VerticalAlignment="Center"/>
                       </Grid>
+                      </DockPanel>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-
-              <Grid ColumnDefinitions="*,Auto,Auto" Margin="18,10,18,16" IsVisible="{Binding !HasNoMods}">
-                <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Center"
-                           Text="{Binding Mods.Count, StringFormat='{}{0} mods'}"/>
-                <Button Grid.Column="1" Classes="ghost" Content="Open folder" Margin="0,0,8,0"
-                        Command="{Binding OpenModsFolderCommand}"/>
-                <Button Grid.Column="2" Classes="ghost" Content="Rescan"
-                        Command="{Binding RefreshModsCommand}"/>
-              </Grid>
-
-            </StackPanel>
-          </Border>
-
-          <!-- Details and settings. Hidden pending a nicer treatment — note this also parks
-               delete/export/import/duplicate/crash-reports, which have no other entry point. -->
-          <Border Classes="card" Padding="24" Margin="0,18,0,0" IsVisible="False">
-            <StackPanel Spacing="18">
-
-              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Playtime" Classes="label"/>
-                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Disk usage" Classes="label"/>
-                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiskUsageLabel}" Classes="value"/>
-
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Created" Classes="label"/>
-                <TextBlock Grid.Row="2" Grid.Column="1"
-                           Text="{Binding Selected.Created, StringFormat='{}{0:yyyy-MM-dd}'}" Classes="value"/>
-              </Grid>
-
-              <Border Height="1" Background="{DynamicResource Border}"/>
-
-              <StackPanel Spacing="6">
-                <TextBlock Text="Group" Classes="label"/>
-                <TextBox Text="{Binding GroupText, UpdateSourceTrigger=LostFocus}"
-                         PlaceholderText="Ungrouped" MaxWidth="320" HorizontalAlignment="Left"/>
-              </StackPanel>
-
-              <StackPanel Spacing="6">
-                <TextBlock Text="Environment variables" Classes="label"/>
-                <TextBox Text="{Binding EnvironmentVariablesText, UpdateSourceTrigger=LostFocus}"
-                         AcceptsReturn="True" MinHeight="80" FontFamily="Consolas,monospace"
-                         FontSize="12.5" PlaceholderText="KEY=value, one per line"/>
-              </StackPanel>
-
-              <Border Height="1" Background="{DynamicResource Border}"/>
-
-              <WrapPanel>
-                <Button Classes="ghost" Content="Open folder" Margin="0,0,8,8"
-                        Command="{Binding OpenFolderCommand}"/>
-                <Button Classes="ghost" Content="Crash reports" Margin="0,0,8,8"
-                        Command="{Binding ViewCrashReportsCommand}"/>
-                <Button Classes="ghost" Content="Duplicate" Margin="0,0,8,8"
-                        Command="{Binding CloneCommand}"/>
-                <Button Classes="ghost" Content="Export" Margin="0,0,8,8" Click="ExportButton_Click"/>
-                <Button Classes="ghost" Content="Import" Margin="0,0,8,8" Click="ImportButton_Click"/>
-                <Button Classes="ghost danger" Content="{Binding DeleteLabel}" Margin="0,0,0,8"
-                        Command="{Binding DeleteCommand}"/>
-              </WrapPanel>
 
             </StackPanel>
           </Border>
@@ -414,7 +488,908 @@
           <TextBlock Text="Instances" FontSize="13.5" FontWeight="Medium"/>
         </StackPanel>
       </Button>
+
+      <!-- ============ Edit sheet: name, icon, banner ============ -->
+      <!-- Declared last in the sheet so the scrim covers the back link too: a modal that left
+           an escape hatch floating on top of it would just be a panel. -->
+
+      <!-- ============ Per-instance settings ============ -->
+
     </Grid>
+
+    <!-- ============ Rename and artwork ============ -->
+    <!-- Out here with the other sheets: the context menu can ask to edit a card without the
+         instance page ever being opened. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsEditOpen}"
+            Classes.closing="{Binding IsEditClosing}" IsVisible="{Binding IsEditOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsEditOpen}"
+              Classes.closing="{Binding IsEditClosing}" Width="560" MaxHeight="620">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="3">
+            <TextBlock Text="Edit instance" Classes="h2"/>
+            <TextBlock Classes="sub" Text="Only how it looks in the launcher. Nothing here touches the game files."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" Margin="0,18,0,0" ctrl:SmoothScroll.Enabled="True">
+            <StackPanel Margin="26,0,26,4" Spacing="20">
+
+              <StackPanel Spacing="7">
+                <TextBlock Text="Name" Classes="label"/>
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                  <Border Grid.Column="0" Width="52" Height="52" CornerRadius="14"
+                          ClipToBounds="True" Background="{DynamicResource AccentSoft}">
+                    <Panel>
+                      <TextBlock Text="{Binding EditIcon}" FontSize="26" IsVisible="{Binding !EditIconIsImage}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      <Image IsVisible="{Binding EditIconIsImage}" Stretch="UniformToFill"
+                             Source="{Binding EditIconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+                    </Panel>
+                  </Border>
+                  <TextBox Grid.Column="1" Text="{Binding EditName}" VerticalAlignment="Center"
+                           MaxLength="32"
+                           PlaceholderText="Instance name"/>
+                </Grid>
+              </StackPanel>
+
+              <StackPanel Spacing="7">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="Icon" Classes="label" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Classes="ghost" Content="Choose a picture…"
+                          Click="PickIcon_Click"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding IconChoices}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <Button Classes="iconChoice" Content="{Binding}" CommandParameter="{Binding}"
+                              Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).SelectEditIconCommand}"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
+              <StackPanel Spacing="7">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="Banner" Classes="label" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Classes="ghost" Content="Choose a picture…"
+                          Click="PickBanner_Click"/>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding BannerChoices}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BannerChoice">
+                      <Button Classes="bannerChoice" CommandParameter="{Binding}"
+                              Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).SelectEditBannerCommand}">
+                        <Border CornerRadius="12" ClipToBounds="True">
+                          <Panel>
+                            <Image Source="{Binding Preview}" Stretch="UniformToFill"
+                                   IsVisible="{Binding HasPreview}"/>
+                            <TextBlock Text="{Binding Label}" Classes="label" TextAlignment="Center"
+                                       IsVisible="{Binding !HasPreview}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <!-- Selection ring is ours, not the button's BorderBrush: Fluent's
+                                 chrome owns that through a template binding. -->
+                            <Border BorderBrush="{DynamicResource Accent}" BorderThickness="2.5"
+                                    CornerRadius="12" IsVisible="{Binding IsSelected}"/>
+                            <Border Width="20" Height="20" CornerRadius="10" Margin="0,0,6,6"
+                                    Background="{DynamicResource Accent}" IsVisible="{Binding IsSelected}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                              <Path Data="M4 12 L9 17 L20 6" Stroke="{DynamicResource OnAccent}"
+                                    StrokeThickness="2.6" StrokeLineCap="Round" StrokeJoin="Round"
+                                    Width="10" Height="10" Stretch="Uniform"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                          </Panel>
+                        </Border>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Classes="label" TextWrapping="Wrap"
+                           Text="Your own picture is copied into the instance, so exporting it takes the banner along."/>
+              </StackPanel>
+
+            </StackPanel>
+          </ScrollViewer>
+
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" Margin="26,18,26,24" ColumnSpacing="8">
+            <Button Grid.Column="1" Classes="ghost" Content="Cancel" Command="{Binding CancelEditCommand}"/>
+            <Button Grid.Column="2" Classes="primary" Content="Save" Command="{Binding SaveEditCommand}"/>
+          </Grid>
+
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- ============ Instance settings ============ -->
+    <!-- Outside the instance sheet, for the same reason the delete confirmation is: the
+         context menu can ask for a card's settings without that sheet ever being open, and a
+         modal that only exists inside a page cannot be shown over the library. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsInstanceSettingsOpen}"
+            Classes.closing="{Binding IsInstanceSettingsClosing}"
+            IsVisible="{Binding IsInstanceSettingsOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsInstanceSettingsOpen}"
+              Classes.closing="{Binding IsInstanceSettingsClosing}"
+              Width="600" MaxHeight="660">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="3">
+            <TextBlock Text="Instance settings" Classes="h2"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="These apply to this instance only, and save as you change them. Anything left on the launcher default keeps following it."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" Margin="0,18,0,0" ctrl:SmoothScroll.Enabled="True">
+            <StackPanel Margin="26,0,26,4" Spacing="20">
+
+              <!-- Memory -->
+              <StackPanel Spacing="12">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="Memory" Classes="value"/>
+                    <TextBlock Classes="label" Text="Give this instance its own RAM limits."/>
+                  </StackPanel>
+                  <ToggleSwitch Grid.Column="1" IsChecked="{Binding OverridesMemory}"
+                                OnContent="" OffContent="" VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- What it gets when the toggle is off, and why. Worth spelling out: the
+                     figure moves as mods are added, so a fixed number here would go stale. -->
+                <TextBlock Text="{Binding InheritedMemoryLabel}" Classes="label" TextWrapping="Wrap"
+                           IsVisible="{Binding !OverridesMemory}"/>
+
+                <Grid ColumnDefinitions="88,*,86" RowDefinitions="Auto,Auto" RowSpacing="10"
+                      IsEnabled="{Binding OverridesMemory}">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Maximum" Classes="label" VerticalAlignment="Center"/>
+                  <Slider Grid.Row="0" Grid.Column="1" Minimum="512" Maximum="{Binding MaximumMemoryMb}"
+                          TickFrequency="512" IsSnapToTickEnabled="True" Value="{Binding InstanceMaxMemoryMb}"/>
+                  <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding InstanceMaxMemoryLabel}"
+                             Classes="value" TextAlignment="Right" VerticalAlignment="Center"/>
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Minimum" Classes="label" VerticalAlignment="Center"/>
+                  <Slider Grid.Row="1" Grid.Column="1" Minimum="512" Maximum="{Binding MaximumMemoryMb}"
+                          TickFrequency="512" IsSnapToTickEnabled="True" Value="{Binding InstanceMinMemoryMb}"/>
+                  <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding InstanceMinMemoryLabel}"
+                             Classes="value" TextAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- Java -->
+              <StackPanel Spacing="10">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Java runtime" Classes="value"/>
+                  <TextBlock Classes="label" Text="Leave this alone unless a pack needs a specific runtime."/>
+                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <ComboBox Grid.Column="0" ItemsSource="{Binding JavaOptions}"
+                            SelectedItem="{Binding InstanceJava}" HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:JavaOption">
+                        <StackPanel Margin="0,3">
+                          <TextBlock Text="{Binding Label}" FontSize="13.5" FontWeight="Medium"/>
+                          <TextBlock Text="{Binding Detail}" Classes="label"/>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Grid.Column="1" Classes="ghost" Content="Rescan"
+                          Command="{Binding RefreshJavaOptionsCommand}"/>
+                </Grid>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- JVM arguments -->
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="JVM arguments" Classes="value"/>
+                    <TextBlock Classes="label" Text="Own arguments instead of the launcher's."/>
+                  </StackPanel>
+                  <ToggleSwitch Grid.Column="1" IsChecked="{Binding OverridesJvmArguments}"
+                                OnContent="" OffContent="" VerticalAlignment="Center"/>
+                </Grid>
+                <TextBox Text="{Binding InstanceJvmArguments}" IsEnabled="{Binding OverridesJvmArguments}"
+                         FontFamily="Consolas,monospace" FontSize="12.5"
+                         PlaceholderText="-XX:+UseG1GC"/>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- Mod loader. Only the loaders that exist for this instance's Minecraft version
+                   are offered, and changing it asks about the mods rather than rewriting the
+                   folder underneath them. -->
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Mod loader" Classes="value"/>
+                    <TextBlock Classes="label" TextWrapping="Wrap"
+                               Text="Applied when you press Done, which then offers to move the installed mods across."/>
+                  </StackPanel>
+                  <ComboBox Grid.Column="1" Classes="field" MinWidth="150" VerticalAlignment="Center"
+                            ItemsSource="{Binding LoaderChoices}" SelectedItem="{Binding SelectedLoader}"
+                            IsEnabled="{Binding !IsCheckingLoaderChange}"/>
+                </Grid>
+                <TextBlock Classes="label" Text="Working&#x2026;" IsVisible="{Binding IsCheckingLoaderChange}"/>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- Group and environment -->
+              <StackPanel Spacing="7">
+                <TextBlock Text="Group" Classes="value"/>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding !IsNewGroupOpen}">
+                  <ComboBox Grid.Column="0" ItemsSource="{Binding AssignableGroups}"
+                            SelectedItem="{Binding SelectedGroup}" HorizontalAlignment="Stretch"/>
+                  <Button Grid.Column="1" Classes="ghost" Content="New group"
+                          Command="{Binding StartNewGroupCommand}"/>
+                </Grid>
+
+                <!-- Naming a new group happens in place rather than in a second sheet: this one
+                     is already a modal, and stacking a scrim on a scrim to ask for one word
+                     reads as a mistake. -->
+                <StackPanel Spacing="6" IsVisible="{Binding IsNewGroupOpen}">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <TextBox Grid.Column="0" Text="{Binding NewGroupName}" PlaceholderText="Group name"/>
+                    <Button Grid.Column="1" Classes="ghost" Content="Cancel"
+                            Command="{Binding CancelNewGroupCommand}"/>
+                    <Button Grid.Column="2" Classes="primary" Content="Create"
+                            IsEnabled="{Binding CanCreateGroup, FallbackValue=False}"
+                            Command="{Binding CreateGroupCommand}"/>
+                  </Grid>
+
+                  <!-- Only ever present for a name the launcher reserves, so it says which. -->
+                  <TextBlock Text="{Binding NewGroupProblem}" Classes="sub" TextWrapping="Wrap"
+                             Foreground="{DynamicResource Accent}"
+                             IsVisible="{Binding HasNewGroupProblem, FallbackValue=False}"/>
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel Spacing="7">
+                <TextBlock Text="Environment variables" Classes="value"/>
+                <TextBox Text="{Binding EnvironmentVariablesText, UpdateSourceTrigger=LostFocus}"
+                         AcceptsReturn="True" MinHeight="76" FontFamily="Consolas,monospace"
+                         FontSize="12.5" PlaceholderText="KEY=value, one per line"/>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- Logs -->
+              <StackPanel Spacing="10">
+                <StackPanel Spacing="2">
+                  <TextBlock Text="Logs" Classes="value"/>
+                  <TextBlock Classes="label" TextWrapping="Wrap"
+                             Text="Every session's output is kept, alongside any crash report the game wrote."/>
+                </StackPanel>
+                <WrapPanel>
+                  <Button Classes="ghost" Content="Logs and crash reports" Margin="0,0,8,8"
+                          Command="{Binding ViewCrashReportsCommand}"/>
+                  <Button Classes="ghost" Content="Open logs folder" Margin="0,0,8,8"
+                          Command="{Binding OpenLogsFolderCommand}"/>
+                  <Button Classes="ghost" Content="Open instance folder" Margin="0,0,0,8"
+                          Command="{Binding OpenFolderCommand}"/>
+                </WrapPanel>
+              </StackPanel>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- Stats -->
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Playtime" Classes="label"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Selected.PlaytimeLabel}" Classes="value"/>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Disk usage" Classes="label"/>
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DiskUsageLabel}" Classes="value"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Created" Classes="label"/>
+                <TextBlock Grid.Row="2" Grid.Column="1"
+                           Text="{Binding Selected.Created, StringFormat='{}{0:yyyy-MM-dd}'}" Classes="value"/>
+              </Grid>
+
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <!-- Manage -->
+              <WrapPanel>
+                <Button Classes="ghost" Content="Duplicate" Margin="0,0,8,8"
+                        Command="{Binding CloneCommand}"/>
+                <Button Classes="ghost" Content="Export" Margin="0,0,8,8" Click="ExportButton_Click"/>
+                <Button Classes="ghost" Content="Import" Margin="0,0,8,8" Click="ImportButton_Click"/>
+                <Button Classes="ghost danger" Content="Delete" Margin="0,0,0,8"
+                        Command="{Binding AskDeleteCommand}" CommandParameter="{Binding Selected}"/>
+              </WrapPanel>
+
+            </StackPanel>
+          </ScrollViewer>
+
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+                Margin="26,18,26,24">
+            <!-- Cancel leaves the loader as it was. The rest of this sheet has already saved,
+                 which is why it is not the louder of the two. -->
+            <Button Grid.Column="1" Classes="ghost" Content="Cancel"
+                    Command="{Binding CancelInstanceSettingsCommand}"/>
+            <Button Grid.Column="2" Classes="primary" Content="Done"
+                    Command="{Binding CloseInstanceSettingsCommand}"/>
+          </Grid>
+
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- ============ Delete confirmation ============ -->
+    <!-- Outside the instance sheet on purpose: the context menu can ask to delete a card without
+         that sheet ever being open. -->
+    <!-- ================= Version conflicts ================= -->
+    <!-- Raised after the game closes, never during: swapping a mod under someone mid-session is
+         the worst possible moment, and doing it without asking is worse still. -->
+    <!-- ============ Dependencies the loader could not find ============ -->
+    <!-- A missing dependency is the one crash cause with an obvious fix, so it is offered rather
+         than described. Nothing is fetched until it is asked for. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsDependencyPromptOpen}"
+            Classes.closing="{Binding IsDependencyPromptClosing}"
+            IsVisible="{Binding IsDependencyPromptOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsDependencyPromptOpen}"
+              Classes.closing="{Binding IsDependencyPromptClosing}" Width="520" MaxHeight="560">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
+            <TextBlock Text="{Binding DependencyQuestion}" Classes="h2" TextWrapping="Wrap"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Minecraft named these on the way out. Asobu can fetch them for this instance."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                        Margin="26,18,26,0">
+            <ItemsControl ItemsSource="{Binding MissingMods}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="8"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:InstancesViewModel+DependencyRow">
+                  <Border Classes="versionRow">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Text="{Binding Headline}" FontSize="13.5" FontWeight="Medium"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Accent}"
+                                   IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="86">
+                        <Button Classes="primary" Content="Get it" HorizontalAlignment="Stretch"
+                                IsVisible="{Binding IsPending}"
+                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).InstallDependencyCommand}"
+                                CommandParameter="{Binding}"/>
+                        <TextBlock Text="Fetching&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                   IsVisible="{Binding IsInstalling}"/>
+                        <TextBlock Text="Added" Classes="label" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Accent}" IsVisible="{Binding IsInstalled}"/>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+                      Margin="26,18,26,24">
+            <Button Classes="ghost" Content="Not now" Command="{Binding DismissDependenciesCommand}"/>
+            <Button Classes="primary" Content="Get them all" Command="{Binding InstallAllDependenciesCommand}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- ============ Moving mods to another loader ============ -->
+    <!-- Shown after the loader changes, never before: the instance is already on the new loader
+         by this point, and this is the separate question of what to do with its mods. Nothing
+         here is done until it is asked for. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsMovePromptOpen}"
+            Classes.closing="{Binding IsMovePromptClosing}"
+            IsVisible="{Binding IsMovePromptOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsMovePromptOpen}"
+              Classes.closing="{Binding IsMovePromptClosing}" Width="560" MaxHeight="580">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
+            <TextBlock Text="{Binding MoveQuestion}" Classes="h2" TextWrapping="Wrap"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Most mods publish for every loader. A few live under another name over there, and Asobu will follow them across."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                        Margin="26,18,26,0">
+            <ItemsControl ItemsSource="{Binding Moves}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="8"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:InstancesViewModel+MoveRow">
+                  <Border Classes="versionRow">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Text="{Binding Summary}" FontSize="13.5" FontWeight="Medium"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Accent}"
+                                   IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="86">
+                        <Button Classes="primary" Content="Move" HorizontalAlignment="Stretch"
+                                IsVisible="{Binding IsPending}"
+                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).MoveModCommand}"
+                                CommandParameter="{Binding}"/>
+                        <TextBlock Text="Moving&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                   IsVisible="{Binding IsMoving}"/>
+                        <TextBlock Text="Moved" Classes="label" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Accent}" IsVisible="{Binding IsMoved}"/>
+                        <!-- Nothing to press for a mod with nowhere to go. Saying so beats a
+                             disabled button that invites a click and refuses it. -->
+                        <TextBlock Text="Staying" Classes="label" HorizontalAlignment="Center"
+                                   IsVisible="{Binding !CanMove}"/>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Margin="26,18,26,24" Spacing="12">
+            <!-- Nothing moved at all, which is a verdict on the loader rather than on the mods. -->
+            <TextBlock Classes="sub" TextWrapping="Wrap" Foreground="{DynamicResource Accent}"
+                       Text="{Binding StuckSummary}"
+                       IsVisible="{Binding NothingCanMove, FallbackValue=False}"/>
+
+            <!-- Some moved, some did not. -->
+            <TextBlock Classes="label" TextWrapping="Wrap"
+                       IsVisible="{Binding HasStuckMods, FallbackValue=False}"
+                       Text="Anything marked Staying is left where it is rather than deleted — the game will simply not load it."/>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button Classes="ghost" Content="Leave them" Command="{Binding DismissMovesCommand}"/>
+              <Button Classes="ghost twin" Content="{Binding RevertLabel}"
+                      IsVisible="{Binding NothingCanMove, FallbackValue=False}"
+                      Command="{Binding RevertLoaderCommand}"/>
+              <Button Classes="primary" Content="Move them all"
+                      IsVisible="{Binding !NothingCanMove}"
+                      Command="{Binding MoveAllModsCommand}"/>
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
+    <Border Classes="modalScrim" Classes.open="{Binding IsConflictPromptOpen}"
+            Classes.closing="{Binding IsConflictPromptClosing}"
+            IsVisible="{Binding IsConflictPromptOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsConflictPromptOpen}"
+              Classes.closing="{Binding IsConflictPromptClosing}" Width="520" MaxHeight="560">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
+            <TextBlock Text="{Binding ConflictQuestion}" Classes="h2" TextWrapping="Wrap"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Minecraft said so on the way out. Asobu can fetch the builds they asked for."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                        Margin="26,18,26,0">
+            <ItemsControl ItemsSource="{Binding Conflicts}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="8"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:InstancesViewModel+ConflictRow">
+                  <Border Classes="versionRow">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Text="{Binding Headline}" FontSize="13.5" FontWeight="Medium"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Detail}" Classes="label"/>
+                        <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Accent}"
+                                   IsVisible="{Binding HasNotice}"/>
+                      </StackPanel>
+
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="90">
+                        <Button Classes="primary" Content="Swap" HorizontalAlignment="Stretch"
+                                IsVisible="{Binding CanSwap}"
+                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).SwapCommand}"
+                                CommandParameter="{Binding}"/>
+                        <TextBlock Text="Swapping&#x2026;" Classes="label" HorizontalAlignment="Center"
+                                   IsVisible="{Binding IsSwapping}"/>
+                        <TextBlock Text="Swapped" Classes="label" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Accent}"
+                                   IsVisible="{Binding IsSwapped}"/>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="26,18,26,24"
+                      HorizontalAlignment="Right">
+            <Button Classes="ghost" Content="Leave them" Command="{Binding DismissConflictsCommand}"/>
+            <Button Classes="primary" Content="Swap all" Command="{Binding SwapAllCommand}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
+    <Border Classes="modalScrim" Classes.open="{Binding IsDeleteConfirmOpen}"
+            Classes.closing="{Binding IsDeleteConfirmClosing}" IsVisible="{Binding IsDeleteConfirmOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsDeleteConfirmOpen}"
+              Classes.closing="{Binding IsDeleteConfirmClosing}" Width="400">
+        <StackPanel Margin="26,24" Spacing="14">
+          <StackPanel Spacing="3">
+            <TextBlock Text="{Binding DeleteQuestion}" Classes="h2" TextWrapping="Wrap"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Its worlds, mods and settings go with it. This cannot be undone."/>
+          </StackPanel>
+
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <Button Grid.Column="1" Classes="ghost" Content="Keep it"
+                    Command="{Binding CancelDeleteCommand}"/>
+            <Button Grid.Column="2" Classes="primary danger" Content="Delete"
+                    Command="{Binding ConfirmDeleteCommand}"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <!-- ============ Live game output ============ -->
+    <!-- The same lines the launcher is writing to disk, while they are still arriving. Wide and
+         tall on purpose: a stack trace wrapped into a narrow column is unreadable, and reading
+         one is the whole reason anybody opens this. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsLogOpen}"
+            Classes.closing="{Binding IsLogClosing}" IsVisible="{Binding IsLogOpen}"
+            PointerPressed="LogScrim_PointerPressed">
+      <Border Classes="modalCard" Classes.open="{Binding IsLogOpen}"
+              Classes.closing="{Binding IsLogClosing}"
+              Width="900" MaxHeight="620" Margin="24">
+        <Panel>
+          <Grid RowDefinitions="Auto,*,Auto" Margin="26,22">
+
+            <StackPanel Grid.Row="0" Spacing="3" Margin="0,0,0,14">
+              <TextBlock Text="{Binding LogTitle}" Classes="h2" TextWrapping="Wrap"/>
+              <TextBlock Classes="sub"
+                         Text="What Minecraft is saying, as it says it. Everything is written to the log file too."/>
+            </StackPanel>
+
+            <Border Grid.Row="1" Background="{DynamicResource SurfaceAlt}" CornerRadius="12"
+                    Padding="14,12">
+              <ScrollViewer Name="LogScroll" ctrl:SmoothScroll.Enabled="True">
+                <!-- Selectable so a line can be copied out into a bug report, which is most of
+                     what anybody wants from a log they are looking at. -->
+                <SelectableTextBlock FontSize="12" FontFamily="Consolas, Menlo, monospace"
+                                     TextWrapping="NoWrap"
+                                     ctrl:GameLogText.InfoBrush="{DynamicResource LogInfo}"
+                                     ctrl:GameLogText.WarnBrush="{DynamicResource LogWarn}"
+                                     ctrl:GameLogText.ErrorBrush="{DynamicResource LogError}"
+                                     ctrl:GameLogText.ChatterBrush="{DynamicResource LogChatter}"
+                                     ctrl:GameLogText.Lines="{Binding LogLines}"/>
+              </ScrollViewer>
+            </Border>
+
+            <TextBlock Grid.Row="1" Classes="sub" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" IsVisible="{Binding !HasLog}"
+                       Text="Nothing yet. Output appears here as the game produces it."/>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,14,0,0"
+                        HorizontalAlignment="Right">
+              <Button Classes="ghost" Content="Open log file" Command="{Binding OpenLogFileCommand}"/>
+              <Button Classes="primary" Content="Close" Command="{Binding CloseLiveLogCommand}"/>
+            </StackPanel>
+          </Grid>
+
+          <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="0,10,10,0" ToolTip.Tip="Close"
+                  Command="{Binding CloseLiveLogCommand}">
+            <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+                  StrokeThickness="1.8" StrokeLineCap="Round"
+                  Width="13" Height="13" Stretch="Uniform"/>
+          </Button>
+        </Panel>
+      </Border>
+    </Border>
+
+    <!-- ============ Add content: download it, or bring one you have ============ -->
+    <!-- The same two-door layout as the new-instance modal, and for the same reason: there are
+         exactly two ways in and neither is the obvious default. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsAddContentOpen}"
+            Classes.closing="{Binding IsAddContentClosing}" IsVisible="{Binding IsAddContentOpen}"
+            PointerPressed="AddContentScrim_PointerPressed">
+      <Border Classes="modalCard" Classes.open="{Binding IsAddContentOpen}"
+              Classes.closing="{Binding IsAddContentClosing}" Width="720">
+        <Panel>
+        <StackPanel Margin="36,32">
+          <Grid ColumnDefinitions="*,Auto,*" MinHeight="230">
+
+            <Grid Grid.Column="0" RowDefinitions="*,Auto" Margin="8,10,20,6">
+              <StackPanel Spacing="9" VerticalAlignment="Center" Margin="0,0,0,22">
+                <TextBlock Text="{Binding AddDownloadTitle}" Classes="h1" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="250"/>
+                <TextBlock Text="{Binding AddDownloadDetail}" Classes="sub" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="250"/>
+              </StackPanel>
+              <Button Grid.Row="1" Classes="primary" Content="Browse the catalogue"
+                      HorizontalAlignment="Center"
+                      Command="{Binding AddContentFromCatalogueCommand}"/>
+            </Grid>
+
+            <Rectangle Grid.Column="1" Width="1" Margin="0,6" VerticalAlignment="Stretch"
+                       Fill="{DynamicResource Border}"/>
+
+            <Grid Grid.Column="2" RowDefinitions="*,Auto" Margin="20,10,8,6">
+              <StackPanel Spacing="9" VerticalAlignment="Center" Margin="0,0,0,22">
+                <TextBlock Text="{Binding AddLocalTitle}" Classes="h1" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="250"/>
+                <TextBlock Text="{Binding AddLocalDetail}" Classes="sub" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="260"/>
+              </StackPanel>
+              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                <Button Classes="primary" Content="Choose a file" Click="AddLocalFile_Click"/>
+                <!-- A world and an unzipped pack are both folders, so that door has to exist.
+                     A mod never is: the loader only reads a .jar. -->
+                <Button Classes="ghost twin" Content="Choose a folder" Click="AddLocalFolder_Click"
+                        IsVisible="{Binding CanAddFolder, FallbackValue=False}"/>
+              </StackPanel>
+            </Grid>
+          </Grid>
+
+          <ItemsControl ItemsSource="{Binding AddContentNotes}" HorizontalAlignment="Center"
+                        Margin="0,14,0,0" IsVisible="{Binding HasAddContentNotes, FallbackValue=False}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Text="{Binding}" Classes="sub" TextWrapping="Wrap" MaxWidth="560"
+                           TextAlignment="Center" Margin="0,2,0,0"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Button Classes="ghost" Content="Done" HorizontalAlignment="Center" Margin="0,14,0,0"
+                  IsVisible="{Binding HasAddContentNotes, FallbackValue=False}"
+                  Command="{Binding CloseAddContentCommand}"/>
+        </StackPanel>
+
+        <!-- Declared after the content so it sits above it in z-order, and outside the margin
+             so it sits in the corner rather than inside the padding. -->
+        <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,12,12,0" ToolTip.Tip="Close"
+                Command="{Binding CloseAddContentCommand}">
+          <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+                StrokeThickness="1.8" StrokeLineCap="Round"
+                Width="13" Height="13" Stretch="Uniform"/>
+        </Button>
+        </Panel>
+      </Border>
+    </Border>
+
+    <!-- ============ New instance: create from scratch, or import ============ -->
+    <!-- One card, three panes: the choice, the ways in, and the import itself. They slide
+         between each other like pages rather than the card blinking its content out. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsNewFlowOpen}"
+            Classes.closing="{Binding IsNewFlowClosing}" IsVisible="{Binding IsNewFlowOpen}"
+            PointerPressed="NewFlowScrim_PointerPressed">
+      <Border Classes="modalCard" Classes.open="{Binding IsNewFlowOpen}"
+              Classes.closing="{Binding IsNewFlowClosing}" Width="760">
+        <Panel Margin="36,32" MinHeight="340">
+
+          <!-- Pane 1: the choice. -->
+          <Grid Classes="flowPane" ColumnDefinitions="*,Auto,*"
+                IsVisible="{Binding IsFlowChooseVisible}"
+                Classes.open="{Binding IsFlowChooseVisible}"
+                Classes.closing="{Binding IsFlowChooseLeaving}"
+                Classes.back="{Binding IsFlowGoingBack}">
+
+            <Grid Grid.Column="0" RowDefinitions="*,Auto" Margin="8,14,20,6">
+              <StackPanel Spacing="9" VerticalAlignment="Center" Margin="0,0,0,22">
+                <TextBlock Text="Create new instance" Classes="h1" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="250"/>
+                <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="240"
+                           Text="Create a new instance from scratch to your own liking."/>
+              </StackPanel>
+              <Button Grid.Row="1" Classes="primary" Content="Create new instance"
+                      HorizontalAlignment="Center" Command="{Binding FlowCreateCommand}"/>
+            </Grid>
+
+            <Rectangle Grid.Column="1" Width="1" Margin="0,6" VerticalAlignment="Stretch"
+                       Fill="{DynamicResource Border}"/>
+
+            <Grid Grid.Column="2" RowDefinitions="*,Auto" Margin="20,14,8,6">
+              <StackPanel Spacing="9" VerticalAlignment="Center" Margin="0,0,0,22">
+                <TextBlock Text="Or import an existing instance" Classes="h1" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="260"/>
+                <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="260"
+                           Text="For when you already have a modpack in mind or you were shared one."/>
+              </StackPanel>
+              <Button Grid.Row="1" Classes="primary" Content="Import an instance"
+                      HorizontalAlignment="Center" Command="{Binding FlowToImportCommand}"/>
+            </Grid>
+          </Grid>
+
+          <!-- Pane 2: the ways in. -->
+          <Grid Classes="flowPane" ColumnDefinitions="*,Auto,*"
+                IsVisible="{Binding IsFlowImportVisible, FallbackValue=False}"
+                Classes.open="{Binding IsFlowImportVisible}"
+                Classes.closing="{Binding IsFlowImportLeaving}"
+                Classes.back="{Binding IsFlowGoingBack}">
+
+            <Grid Grid.Column="0" RowDefinitions="*,Auto" Margin="8,14,20,6">
+              <StackPanel Spacing="9" VerticalAlignment="Center" Margin="0,0,0,22">
+                <TextBlock Text="From a file or folder" Classes="h1" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="250"/>
+                <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="250"
+                           Text="A modpack zip or .mrpack, or a whole instance folder — Asobu&#8217;s, the CurseForge app&#8217;s, MultiMC&#8217;s or Prism&#8217;s."/>
+              </StackPanel>
+              <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                <Button Classes="primary" Content="Choose a file" Click="ImportPickFile_Click"/>
+                <Button Classes="ghost twin" Content="Choose a folder" Click="ImportPickFolder_Click"/>
+              </StackPanel>
+            </Grid>
+
+            <Rectangle Grid.Column="1" Width="1" Margin="0,6" VerticalAlignment="Stretch"
+                       Fill="{DynamicResource Border}"/>
+
+            <Grid Grid.Column="2" RowDefinitions="*,Auto" Margin="20,14,8,6">
+              <StackPanel Spacing="9" VerticalAlignment="Center" Margin="0,0,0,22">
+                <TextBlock Text="Or import via a code" Classes="h1" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="250"/>
+                <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="250"
+                           Text="A CurseForge profile code, or a link to a modpack on CurseForge or Modrinth."/>
+              </StackPanel>
+              <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBox Classes="field" PlaceholderText="Paste a code or link" Text="{Binding ImportCode}"/>
+                <Button Grid.Column="1" Classes="primary" Content="Import"
+                        Command="{Binding RunCodeImportCommand}"/>
+              </Grid>
+            </Grid>
+          </Grid>
+
+          <!-- Pane 3: the import itself. Stays up on failure so the reason is actually read,
+               and on success with notes so they are too; a clean import closes by itself. -->
+          <Grid Classes="flowPane" RowDefinitions="*,Auto"
+                IsVisible="{Binding IsFlowWorkingVisible, FallbackValue=False}"
+                Classes.open="{Binding IsFlowWorkingVisible}"
+                Classes.closing="{Binding IsFlowWorkingLeaving}"
+                Classes.back="{Binding IsFlowGoingBack}">
+
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="14"
+                        Margin="0,0,0,20">
+              <TextBlock Text="{Binding ImportStatus}" Classes="h2" TextAlignment="Center"
+                         TextWrapping="Wrap" MaxWidth="480"/>
+              <ProgressBar Value="{Binding ImportFraction}" Maximum="1" Height="6" CornerRadius="3"
+                           Width="360" IsVisible="{Binding IsImporting}"/>
+              <TextBlock Text="{Binding ImportError}" Classes="sub" TextWrapping="Wrap" MaxWidth="480"
+                         TextAlignment="Center" Foreground="{DynamicResource Accent}"
+                         IsVisible="{Binding ImportError, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+              <ItemsControl ItemsSource="{Binding ImportNotes}" HorizontalAlignment="Center">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" Classes="sub" TextWrapping="Wrap" MaxWidth="480"
+                               TextAlignment="Center" Margin="0,2,0,0"/>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+              <Button Classes="ghost" Content="Cancel" Command="{Binding CancelImportCommand}"
+                      IsVisible="{Binding IsImporting}"/>
+              <Button Classes="ghost" Content="Back" Command="{Binding FlowBackCommand}"
+                      IsVisible="{Binding ImportError, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+              <Button Classes="primary" Content="Open it" Command="{Binding FlowOpenImportedCommand}"
+                      IsVisible="{Binding IsImportDone}"/>
+            </StackPanel>
+          </Grid>
+
+          <!-- Pane 4: what the launcher is not allowed to fetch. The instance already exists
+               by this point; these are the files whose authors allow downloads only from their
+               own page, so the person opens the page, the browser downloads it, and the watcher
+               puts it in the instance. -->
+          <Grid Classes="flowPane" RowDefinitions="Auto,*,Auto"
+                IsVisible="{Binding IsFlowBlockedVisible, FallbackValue=False}"
+                Classes.open="{Binding IsFlowBlockedVisible}"
+                Classes.closing="{Binding IsFlowBlockedLeaving}"
+                Classes.back="{Binding IsFlowGoingBack}">
+
+            <StackPanel Spacing="6" Margin="0,0,0,16">
+              <TextBlock Text="{Binding BlockedSummary}" Classes="h2" TextAlignment="Center"
+                         TextWrapping="Wrap"/>
+              <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="540"
+                         Text="Open a page and the download starts by itself. Asobu watches your Downloads folder and adds each one to the instance as it lands."/>
+              <ItemsControl ItemsSource="{Binding ImportNotes}" HorizontalAlignment="Center"
+                            Margin="0,4,0,0">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" Classes="sub" TextWrapping="Wrap" MaxWidth="540"
+                               TextAlignment="Center" FontSize="12" Margin="0,2,0,0"/>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1" MaxHeight="260" ctrl:SmoothScroll.Enabled="True">
+              <ItemsControl ItemsSource="{Binding BlockedDownloads}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:BlockedDownloadRow">
+                    <Border Classes="blockedRow">
+                      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                        <TextBlock Grid.Column="0" Text="&#10003;" VerticalAlignment="Center"
+                                   FontSize="15" Foreground="{DynamicResource Accent}"
+                                   IsVisible="{Binding IsDone}"/>
+
+                        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding ModName}" FontSize="13.5" FontWeight="Medium"
+                                     TextTrimming="CharacterEllipsis"/>
+                          <TextBlock Text="{Binding Status}" Classes="sub" FontSize="12"/>
+                        </StackPanel>
+
+                        <Button Grid.Column="2" Classes="ghost" Content="Open page"
+                                IsVisible="{Binding IsPending}"
+                                Command="{Binding $parent[UserControl].((vm:InstancesViewModel)DataContext).OpenBlockedPageCommand}"
+                                CommandParameter="{Binding}"/>
+                        <Button Grid.Column="3" Classes="ghost" Content="Locate&#8230;" Tag="{Binding}"
+                                IsVisible="{Binding IsPending}" Click="LocateBlocked_Click"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
+                        Margin="0,16,0,0">
+              <Button Classes="ghost" Content="Open every page"
+                      IsVisible="{Binding !IsBlockedFinished}"
+                      Command="{Binding OpenAllBlockedPagesCommand}"/>
+              <!-- Leaving early is allowed: the instance is real, and the game will simply say
+                   what is missing. Which is better than a modal nobody can get out of. -->
+              <Button Classes="primary" Content="Open the instance"
+                      Command="{Binding FinishBlockedCommand}"/>
+            </StackPanel>
+          </Grid>
+
+          <!-- The way out, shared by every pane but the one mid-import, which refuses to be
+               closed and so should not offer to be. -->
+          <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="0,-20,-24,0" ToolTip.Tip="Close"
+                  Command="{Binding CloseNewFlowCommand}"
+                  IsVisible="{Binding !IsFlowWorkingVisible}">
+            <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+                  StrokeThickness="1.8" StrokeLineCap="Round"
+                  Width="13" Height="13" Stretch="Uniform"/>
+          </Button>
+          <!-- And back from the ways-in pane to the choice. -->
+          <Button Classes="ghost" Content="&#8592; Back" HorizontalAlignment="Left" VerticalAlignment="Top"
+                  Padding="9,4" Margin="-18,-14,0,0" Command="{Binding FlowBackCommand}"
+                  IsVisible="{Binding IsFlowImportVisible, FallbackValue=False}"/>
+        </Panel>
+      </Border>
+    </Border>
 
   </Panel>
 </UserControl>

@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             x:Class="Asobu.App.Views.PackInstallView"
+             x:DataType="vm:PackInstallViewModel">
+
+  <!-- A modpack is an instance, so this asks the one thing the pack cannot answer for itself:
+       what to call it. Deliberately small — there is nothing else to decide here, and a sheet
+       the size of the instance picker would imply there was. -->
+  <Border Classes="modalScrim" Classes.open="{Binding IsOpen}"
+          Classes.closing="{Binding IsClosing}" IsVisible="{Binding IsOpen}"
+          PointerPressed="Scrim_PointerPressed">
+    <Border Classes="modalCard" Classes.open="{Binding IsOpen}"
+            Classes.closing="{Binding IsClosing}" Width="460">
+      <Panel>
+      <StackPanel Margin="26,24" Spacing="16">
+
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Title}" Classes="h2" TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding Subtitle}" Classes="sub" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- The name box, gone once the work starts: renaming an instance halfway through
+             building it would be a promise this sheet cannot keep. -->
+        <StackPanel Spacing="6" IsVisible="{Binding !IsWorking}">
+          <TextBlock Text="Instance name" Classes="label"/>
+          <TextBox Classes="field" Text="{Binding Name}" PlaceholderText="What to call it"
+                   IsEnabled="{Binding !IsDone}" MaxLength="32"/>
+        </StackPanel>
+
+        <StackPanel Spacing="10" IsVisible="{Binding IsWorking}">
+          <TextBlock Text="{Binding Status}" Classes="label" TextWrapping="Wrap"/>
+          <ProgressBar Value="{Binding Fraction}" Maximum="1" Height="6" CornerRadius="3"/>
+        </StackPanel>
+
+        <TextBlock Text="{Binding Status}" Classes="label" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Accent}" IsVisible="{Binding IsDone}"/>
+
+        <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Accent}" IsVisible="{Binding HasError}"/>
+
+        <ItemsControl ItemsSource="{Binding Notes}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Text="{Binding}" Classes="sub" TextWrapping="Wrap" Margin="0,2,0,0"/>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <Button Grid.Column="1" Classes="ghost" Content="Cancel" IsVisible="{Binding !IsDone}"
+                  Command="{Binding CancelCommand}"/>
+          <Button Grid.Column="2" Classes="primary" Content="Create instance"
+                  IsVisible="{Binding !IsDone}" IsEnabled="{Binding CanCreate}"
+                  Command="{Binding CreateCommand}"/>
+          <Button Grid.Column="2" Classes="primary" Content="Open it" IsVisible="{Binding IsDone}"
+                  Command="{Binding OpenCreatedCommand}"/>
+        </Grid>
+
+      </StackPanel>
+
+      <!-- Cancel already means "close" here, so this is the same way out worn as a corner. -->
+      <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
+              Margin="0,10,10,0" ToolTip.Tip="Close" IsVisible="{Binding !IsWorking}"
+              Command="{Binding CancelCommand}">
+        <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+              StrokeThickness="1.8" StrokeLineCap="Round"
+              Width="13" Height="13" Stretch="Uniform"/>
+      </Button>
+      </Panel>
+    </Border>
+  </Border>
+</UserControl>
