@@ -14,7 +14,22 @@ public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffse
     /// alone could read, so the answer is to say so rather than to send something readable.
     /// </summary>
     public string? PublicKey { get; init; }
+
+    /// <summary>
+    /// Four digits for an offline account, empty for one Mojang vouches for. Shown wherever the
+    /// name is, so that a name carrying no proof never sits beside one that does looking exactly
+    /// the same — and so the pair can be typed back in to find them.
+    /// </summary>
+    public string? Tag { get; init; }
+
+    public bool IsOffline => Tag is { Length: > 0 };
+
+    /// <summary>What to show, and what somebody would type to find them.</summary>
+    public string Handle => IsOffline ? $"{Name}#{Tag}" : Name;
 }
+
+/// <summary>What the network calls an offline account once it has let one in.</summary>
+public sealed record OfflineIdentity(string Uuid, string Tag, string Handle);
 
 /// <summary>
 /// One thing a friend said, as it arrived.
@@ -133,6 +148,35 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
 
         _token = done.Token;
         _vault.Set(VaultKey(session.Uuid), done.Token);
+    }
+
+    /// <summary>
+    /// Puts an offline account on the network, under a name it chose and a tag it did not.
+    ///
+    /// There is no handshake to do here, because there is nothing an offline account could prove:
+    /// it is a name somebody typed. So the server names it instead — four random digits, and the
+    /// pair is what friends type to find them. What holds the door is the ceiling on how many one
+    /// machine and one connection may bring in, which is why the machine digest goes along.
+    ///
+    /// The account's own network id is sent when it has one, so a reinstall is recognised as the
+    /// same person coming back rather than spending another of their five.
+    /// </summary>
+    public async Task<OfflineIdentity> JoinOfflineAsync(
+        Account account, string machineId, CancellationToken cancellationToken = default)
+    {
+        _token = null;
+
+        var reply = await PostAsync<OfflineReply>("offline/join", new
+        {
+            name = account.Username,
+            hwid = machineId,
+            uuid = account.NetworkUuid ?? "",
+        }, cancellationToken).ConfigureAwait(false);
+
+        _token = reply.Token;
+        _vault.Set(VaultKey(account.Uuid), reply.Token);
+
+        return new OfflineIdentity(reply.Uuid, reply.Tag, reply.Handle);
     }
 
     /// <summary>Forgets the session for an account, locally and for good.</summary>
@@ -260,6 +304,7 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
 
     private sealed record BeginReply(string ServerId);
     private sealed record CompleteReply(string Token, string Uuid, string Name);
+    private sealed record OfflineReply(string Token, string Uuid, string Name, string Tag, string Handle);
     private sealed record OkReply(bool Ok);
     private sealed record ErrorReply(string? Error);
 

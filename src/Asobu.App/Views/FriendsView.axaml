@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
@@ -10,16 +10,38 @@
        itself, over in MainWindow; this is everything under them. -->
   <Panel Margin="22,6,22,18">
 
-    <!-- ============ No Microsoft account ============ -->
-    <StackPanel VerticalAlignment="Center" Spacing="10" IsVisible="{Binding NeedsMicrosoft}">
+    <!-- ============ No account at all ============ -->
+    <StackPanel VerticalAlignment="Center" Spacing="10" IsVisible="{Binding NeedsAccount}">
       <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
-      <TextBlock Text="Friends needs a Microsoft account" Classes="h2" HorizontalAlignment="Center"
+      <TextBlock Text="Friends needs an account" Classes="h2" HorizontalAlignment="Center"
                  TextWrapping="Wrap" TextAlignment="Center"
                  Foreground="{DynamicResource TextMuted}"/>
       <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                 Text="Your Minecraft identity is your identity here — no extra account, nothing else to make. Sign in and you're on the network."/>
+                 Text="Sign in with Microsoft and your Minecraft identity is your identity here — nothing else to make. An offline account works too, with a tag after the name."/>
       <Button Classes="primary" Content="Go to Accounts" HorizontalAlignment="Center" Margin="0,8,0,0"
               Command="{Binding GoAccountsCommand}"/>
+    </StackPanel>
+
+    <!-- ============ An offline account, not on the network yet ============ -->
+    <!-- Asked rather than assumed. An offline name is a local thing until somebody says
+         otherwise, and joining publishes it — so joining is a button, pressed once. -->
+    <StackPanel VerticalAlignment="Center" Spacing="10" IsVisible="{Binding NeedsOfflineJoin}">
+      <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
+      <TextBlock Text="Join the friends network" Classes="h2" HorizontalAlignment="Center"
+                 TextWrapping="Wrap" TextAlignment="Center"
+                 Foreground="{DynamicResource TextMuted}"/>
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                 Text="Offline accounts can use friends and chat. Since nobody can vouch for an offline name, Asobu adds four random digits after it — like Player#4963 — and that pair is what friends type to find you."/>
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0"
+                 Foreground="{DynamicResource TextMuted}"
+                 Text="Five offline accounts per computer and per connection."/>
+      <Button Classes="primary" Content="Join the network" HorizontalAlignment="Center" Margin="0,8,0,0"
+              IsEnabled="{Binding !IsConnecting}"
+              Command="{Binding JoinNetworkCommand}"/>
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Accent}"
+                 IsVisible="{Binding ConnectionError, Converter={x:Static conv:ObjectConverters.IsNotNull}}"
+                 Text="{Binding ConnectionError}"/>
     </StackPanel>
 
     <!-- ============ Connection trouble ============ -->
@@ -42,7 +64,7 @@
       <!-- Add by name. Enter works because it's the only button in a one-line form. -->
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
         <TextBox Grid.Column="0" Text="{Binding NewFriendName}"
-                 PlaceholderText="Minecraft username">
+                 PlaceholderText="Minecraft username, or Name#0000">
           <TextBox.KeyBindings>
             <KeyBinding Gesture="Enter" Command="{Binding AddFriendCommand}"/>
           </TextBox.KeyBindings>

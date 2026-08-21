@@ -42,6 +42,25 @@ type User struct {
 	// half never leaves the machine that made it. This is the one piece of chat that is stored,
 	// and it is stored precisely because it is not a secret.
 	PublicKey string `json:"publicKey,omitempty"`
+
+	// Four digits, set only for offline accounts, and what makes their name findable: Mojang
+	// guarantees one Steve, and nobody guarantees the other. Empty means this account proved
+	// itself to Mojang and owns its name outright. See offline.go.
+	Tag string `json:"tag,omitempty"`
+
+	// Which machine made this offline account, keyed the same way the origin ledger is. Kept so
+	// somebody who reinstalls can be handed their own account back rather than spending another
+	// of their five. Never the machine's own identifier — see originKey.
+	HWIDKey string `json:"hwidKey,omitempty"`
+}
+
+// Handle is what a person types to find somebody: a bare name for an account Mojang vouches for,
+// name#tag for one nobody does.
+func (u *User) Handle() string {
+	if u.Tag == "" {
+		return u.Name
+	}
+	return u.Name + "#" + u.Tag
 }
 
 // One row per pair. From is the requester; Accepted flips when the other side says yes.
@@ -62,6 +81,17 @@ type State struct {
 	Friends []*Friendship       `json:"friends"` //
 	Tokens  map[string]*Session `json:"tokens"`  // sha256(token) hex -> session
 	Shares  map[string]*Share   `json:"shares"`  // code -> shared instance, see shares.go
+
+	// Made once, on the first run, and never sent anywhere. Every address and machine id this
+	// server counts against is keyed through it, so what lands in state.json cannot be turned
+	// back into either — not by us and not by anyone who ends up holding the file. See originKey.
+	Salt string `json:"salt,omitempty"`
+
+	// Which offline accounts came from where, so five per address and five per machine can be
+	// counted without keeping either. Keys are origin keys; values are the accounts made under
+	// them. See offline.go.
+	OfflineIPs   map[string][]string `json:"offlineIps,omitempty"`
+	OfflineHWIDs map[string][]string `json:"offlineHwids,omitempty"`
 }
 
 type Server struct {
@@ -129,26 +159,47 @@ const (
 
 func (s *Server) load() {
 	s.state = State{
-		Users:  map[string]*User{},
-		Tokens: map[string]*Session{},
-		Shares: map[string]*Share{},
+		Users:        map[string]*User{},
+		Tokens:       map[string]*Session{},
+		Shares:       map[string]*Share{},
+		OfflineIPs:   map[string][]string{},
+		OfflineHWIDs: map[string][]string{},
 	}
 
-	data, err := os.ReadFile(s.path)
-	if err != nil {
-		return // first run
+	// Read into that rather than returning early when there is no file. A first run has to leave
+	// here as set up as any other, and the early return this used to take skipped everything
+	// below it — which on a brand new deployment meant the first write to one of these maps was
+	// a write to a nil one, and a panic in the middle of the request that got there first.
+	if data, err := os.ReadFile(s.path); err == nil {
+		if err := json.Unmarshal(data, &s.state); err != nil {
+			log.Printf("state file unreadable, starting empty: %v", err)
+		}
+
+		// A file written by an older build has no idea about the newer fields, so every map is
+		// checked again after unmarshalling — decoding a JSON object with a key missing leaves
+		// that field exactly as nil, not as the empty map it started as.
+		if s.state.Users == nil {
+			s.state.Users = map[string]*User{}
+		}
+		if s.state.Tokens == nil {
+			s.state.Tokens = map[string]*Session{}
+		}
+		if s.state.Shares == nil {
+			s.state.Shares = map[string]*Share{}
+		}
+		if s.state.OfflineIPs == nil {
+			s.state.OfflineIPs = map[string][]string{}
+		}
+		if s.state.OfflineHWIDs == nil {
+			s.state.OfflineHWIDs = map[string][]string{}
+		}
 	}
-	if err := json.Unmarshal(data, &s.state); err != nil {
-		log.Printf("state file unreadable, starting empty: %v", err)
-	}
-	if s.state.Users == nil {
-		s.state.Users = map[string]*User{}
-	}
-	if s.state.Tokens == nil {
-		s.state.Tokens = map[string]*Session{}
-	}
-	if s.state.Shares == nil {
-		s.state.Shares = map[string]*Share{}
+
+	// Made on the first run and kept for the life of the file. Losing it would not lose anybody
+	// their account, only the count of which machine made which — so a fresh one is written
+	// rather than treated as a failure.
+	if s.state.Salt == "" {
+		s.state.Salt = randomHex(32)
 	}
 }
 
@@ -535,6 +586,11 @@ type wireFriend struct {
 	Online   bool      `json:"online"`
 	LastSeen time.Time `json:"lastSeen"`
 
+	// Four digits for an offline account, empty for one Mojang vouches for. The launcher shows
+	// the pair, so that a name carrying no proof never appears alongside one that does looking
+	// exactly the same.
+	Tag string `json:"tag,omitempty"`
+
 	// Empty for somebody who has not published one — an older launcher, or one that has not
 	// finished starting. Their friend's client refuses to send rather than falling back to
 	// plaintext, which would quietly undo the whole thing.
@@ -549,6 +605,7 @@ func (s *Server) wire(uuid string) wireFriend {
 	return wireFriend{
 		UUID:      u.UUID,
 		Name:      u.Name,
+		Tag:       u.Tag,
 		Online:    time.Since(u.LastSeen) < onlineWindow,
 		LastSeen:  u.LastSeen,
 		PublicKey: u.PublicKey,
@@ -647,15 +704,13 @@ func (s *Server) handleFriendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var target *User
-	for _, u := range s.state.Users {
-		if strings.EqualFold(u.Name, body.Name) {
-			target = u
-			break
-		}
-	}
+	target := s.findByHandle(body.Name)
 	if target == nil {
-		fail(w, http.StatusNotFound, "no one by that name is on Asobu yet")
+		if strings.Contains(body.Name, "#") {
+			fail(w, http.StatusNotFound, "no one with that name and tag is on Asobu")
+		} else {
+			fail(w, http.StatusNotFound, "no one by that name is on Asobu yet")
+		}
 		return
 	}
 	if target.UUID == me.UUID {
@@ -765,6 +820,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /v1/auth/begin", locked(s.handleAuthBegin))
 	mux.HandleFunc("POST /v1/auth/complete", locked(s.handleAuthComplete))
+	mux.HandleFunc("POST /v1/offline/join", locked(s.handleOfflineJoin))
 	mux.HandleFunc("GET /v1/friends", locked(s.handleFriendsList))
 	mux.HandleFunc("GET /v1/friends/watch", locked(s.handleFriendsWatch))
 	mux.HandleFunc("POST /v1/friends/requests", locked(s.handleFriendRequest))

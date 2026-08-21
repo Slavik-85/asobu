@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -37,6 +37,24 @@ public sealed class Account
 
     /// <summary>MSAL's account identifier, used to refresh silently. Never a token.</summary>
     public string? HomeAccountId { get; set; }
+
+    /// <summary>
+    /// What the friends network calls this offline account, once somebody has asked to put it
+    /// there. Null until then, and null forever for a Microsoft account, whose identity on the
+    /// network is the Minecraft one Mojang already vouches for.
+    ///
+    /// Kept apart from <see cref="Uuid"/> on purpose. That one is derived from the name alone, so
+    /// every Steve in the world has the same — as a network identity it would make them one
+    /// account reading each other's messages.
+    /// </summary>
+    public string? NetworkUuid { get; set; }
+
+    /// <summary>The four digits friends type after the name to find this account.</summary>
+    public string? NetworkTag { get; set; }
+
+    /// <summary>The name as the network shows it: plain for Microsoft, name#tag for offline.</summary>
+    [JsonIgnore]
+    public string NetworkHandle => NetworkTag is { Length: > 0 } tag ? $"{Username}#{tag}" : Username;
 
     public DateTimeOffset Added { get; set; } = DateTimeOffset.UtcNow;
 

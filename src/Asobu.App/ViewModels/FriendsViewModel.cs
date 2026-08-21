@@ -20,7 +20,14 @@ namespace Asobu.App.ViewModels;
 public partial class FriendRow(Friend friend) : ViewModelBase
 {
     public string Uuid => friend.Uuid;
-    public string Name => friend.Name;
+
+    /// <summary>
+    /// The handle rather than the bare name: an offline account is shown as name#tag everywhere,
+    /// so one carrying no proof of who it is never sits in the list looking exactly like one that
+    /// does. It is also what a person would type to add them.
+    /// </summary>
+    public string Name => friend.Handle;
+
     public bool Online => friend.Online;
 
     /// <summary>Their chat key, or null when they have not published one.</summary>
@@ -111,8 +118,24 @@ public partial class FriendsViewModel : ViewModelBase
     [ObservableProperty] public partial string? Notice { get; set; }
     [ObservableProperty] public partial bool NoticeIsGood { get; set; }
 
-    /// <summary>The network runs on proven Minecraft identities, which offline accounts don't have.</summary>
-    public bool NeedsMicrosoft => _accounts.Active is not { Kind: AccountKind.Microsoft };
+    /// <summary>Nothing signed in at all, so there is nobody to be on the network as.</summary>
+    public bool NeedsAccount => _accounts.Active is null;
+
+    /// <summary>
+    /// An offline account that has not asked to be on the network yet.
+    ///
+    /// Asking is the whole of it, and it is asked once. An offline account is a local thing —
+    /// a name typed into a box — and a launcher that announced every name anyone had ever played
+    /// under would be publishing a list nobody chose to publish.
+    /// </summary>
+    public bool NeedsOfflineJoin =>
+        _accounts.Active is { Kind: AccountKind.Offline, NetworkUuid: null or "" };
+
+    /// <summary>What this account is called on the network — name#tag when it is an offline one.</summary>
+    public string MyHandle => _accounts.Active?.NetworkHandle ?? "";
+
+    /// <summary>True once an offline account is on the network, which is when its tag is worth showing.</summary>
+    public bool ShowsHandle => _accounts.Active is { Kind: AccountKind.Offline, NetworkTag: { Length: > 0 } };
 
     public bool IsEmpty => IsConnected && Friends.Count == 0 && Incoming.Count == 0 && Outgoing.Count == 0;
     public bool HasFriends => Friends.Count > 0;
@@ -288,7 +311,7 @@ public partial class FriendsViewModel : ViewModelBase
         Incoming.Clear();
         Outgoing.Clear();
         RaiseCounts();
-        OnPropertyChanged(nameof(NeedsMicrosoft));
+        RaiseGates();
 
         _ = TryResumeAsync();
     }
@@ -636,6 +659,67 @@ public partial class FriendsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Raises the three things that decide which of the page's openings is showing.</summary>
+    private void RaiseGates()
+    {
+        OnPropertyChanged(nameof(NeedsAccount));
+        OnPropertyChanged(nameof(NeedsOfflineJoin));
+        OnPropertyChanged(nameof(MyHandle));
+        OnPropertyChanged(nameof(ShowsHandle));
+    }
+
+    /// <summary>
+    /// Puts this offline account on the network, which is the one thing here somebody has to ask
+    /// for rather than have happen to them.
+    ///
+    /// The tag comes back from the server rather than being chosen here — that is what makes it
+    /// worth anything, since a name anybody can type is not an identity but a name plus four
+    /// digits nobody chose is at least a distinct one.
+    /// </summary>
+    [RelayCommand]
+    private async Task JoinNetworkAsync()
+    {
+        if (_accounts.Active is not { Kind: AccountKind.Offline } account || IsConnecting) return;
+
+        IsConnecting = true;
+        ConnectionError = null;
+
+        try
+        {
+            var identity = await _launcher.Friends.JoinOfflineAsync(
+                account, MachineId.ForNetwork(_launcher.Paths));
+
+            account.NetworkUuid = identity.Uuid;
+            account.NetworkTag = identity.Tag;
+            _accounts.SaveAccounts();
+
+            RaiseGates();
+
+            IsConnected = true;
+            StartWatching();
+            await EnsureChatKeyAsync();
+
+            Notice = $"You're on the network as {identity.Handle}. That's what friends type to find you.";
+            NoticeIsGood = true;
+
+            await RefreshAsync(quiet: false);
+        }
+        catch (FriendsException e)
+        {
+            // The ceilings answer through here, and they explain themselves — five to a machine,
+            // five to a connection — so the server's own words are the right ones to show.
+            ConnectionError = e.Message;
+        }
+        catch (Exception)
+        {
+            ConnectionError = "Couldn't reach the network. Try again in a moment.";
+        }
+        finally
+        {
+            IsConnecting = false;
+        }
+    }
+
     [RelayCommand]
     private void GoAccounts() => _goAccounts();
 
@@ -644,8 +728,8 @@ public partial class FriendsViewModel : ViewModelBase
 
     private async Task EnsureConnectedAsync(bool thenRefresh)
     {
-        OnPropertyChanged(nameof(NeedsMicrosoft));
-        if (NeedsMicrosoft || IsConnecting) return;
+        RaiseGates();
+        if (NeedsAccount || NeedsOfflineJoin || IsConnecting) return;
 
         if (!IsConnected)
         {
@@ -656,10 +740,26 @@ public partial class FriendsViewModel : ViewModelBase
                 var account = _accounts.Active!;
                 if (!await _launcher.Friends.TryResumeAsync(account))
                 {
-                    // The full handshake. The Minecraft token this refreshes goes to Mojang
-                    // and nowhere else.
-                    var session = await _launcher.ResolveSessionAsync(account);
-                    await _launcher.Friends.ConnectAsync(session);
+                    if (account.Kind == AccountKind.Offline)
+                    {
+                        // Already on the network — this is the same account coming back after its
+                        // stored session aged out, which the server recognises by its own id and
+                        // this machine, and hands back rather than counting again.
+                        var identity = await _launcher.Friends.JoinOfflineAsync(
+                            account, MachineId.ForNetwork(_launcher.Paths));
+
+                        account.NetworkUuid = identity.Uuid;
+                        account.NetworkTag = identity.Tag;
+                        _accounts.SaveAccounts();
+                        RaiseGates();
+                    }
+                    else
+                    {
+                        // The full handshake. The Minecraft token this refreshes goes to Mojang
+                        // and nowhere else.
+                        var session = await _launcher.ResolveSessionAsync(account);
+                        await _launcher.Friends.ConnectAsync(session);
+                    }
                 }
                 IsConnected = true;
                 StartWatching();

@@ -1920,6 +1920,17 @@ public partial class InstancesViewModel : ViewModelBase
 
     [ObservableProperty] public partial string DuplicateName { get; set; } = "";
     [ObservableProperty] public partial string DuplicateIcon { get; set; } = "🌸";
+
+    /// <summary>The picture the copy will wear, whether inherited from the original or just chosen.</summary>
+    [ObservableProperty] public partial string? DuplicateIconImagePath { get; set; }
+
+    /// <summary>Set only when a picture was chosen here. Copied in once the clone has a folder.</summary>
+    private string? _pendingDuplicateIconPath;
+
+    public bool DuplicateIconIsImage => DuplicateIconImagePath is { Length: > 0 };
+
+    partial void OnDuplicateIconImagePathChanged(string? value) =>
+        OnPropertyChanged(nameof(DuplicateIconIsImage));
     [ObservableProperty] public partial string? DuplicateVersion { get; set; }
     [ObservableProperty] public partial string? DuplicateLoader { get; set; }
 
@@ -1980,6 +1991,19 @@ public partial class InstancesViewModel : ViewModelBase
         DuplicateStatus = null;
         IsDuplicating = false;
 
+        // The original's picture, if it has one — the clone inherits the folder it lives in, so
+        // showing it here is showing what the copy will actually look like. Nothing is staged:
+        // there is nothing to copy in until somebody chooses a different one.
+        _pendingDuplicateIconPath = null;
+        DuplicateIconImagePath = source.IconImagePath;
+
+        // Seeded with what the instance already is, before anything is selected. A box asked to
+        // show something its list does not contain answers by clearing itself — and writes that
+        // clear back through the binding, which is how both of these came up empty in front of
+        // an instance that plainly has a version and a loader. The real lists arrive below.
+        BringTo(DuplicateVersions, [source.MinecraftVersion]);
+        BringTo(DuplicateLoaders, [source.LoaderName]);
+
         _loadingDuplicateLoaders = true;
         DuplicateVersion = source.MinecraftVersion;
         DuplicateLoader = source.LoaderName;
@@ -2030,14 +2054,11 @@ public partial class InstancesViewModel : ViewModelBase
             if (!releases.Contains(source.MinecraftVersion, StringComparer.OrdinalIgnoreCase))
                 releases.Insert(0, source.MinecraftVersion);
 
-            // Emptying the list takes the box's selection with it, the item it was holding having
-            // left. Put it back afterwards, or the user is shown an empty Minecraft box for an
-            // instance that plainly has a version, and a Duplicate button that refuses to press.
             var wanted = DuplicateVersion ?? source.MinecraftVersion;
+            if (!releases.Contains(wanted, StringComparer.OrdinalIgnoreCase)) releases.Insert(0, wanted);
 
             _loadingDuplicateLoaders = true;
-            DuplicateVersions.Clear();
-            foreach (var version in releases) DuplicateVersions.Add(version);
+            BringTo(DuplicateVersions, releases);
             DuplicateVersion = wanted;
             _loadingDuplicateLoaders = false;
         }
@@ -2046,8 +2067,7 @@ public partial class InstancesViewModel : ViewModelBase
             // Offline. The version it is already on is the only one that can be offered, which
             // still allows a plain copy.
             _loadingDuplicateLoaders = true;
-            DuplicateVersions.Clear();
-            DuplicateVersions.Add(source.MinecraftVersion);
+            BringTo(DuplicateVersions, [source.MinecraftVersion]);
             DuplicateVersion = source.MinecraftVersion;
             _loadingDuplicateLoaders = false;
         }
@@ -2069,35 +2089,89 @@ public partial class InstancesViewModel : ViewModelBase
 
             if (DuplicateVersion != version) return;   // moved on while we were asking
 
-            _loadingDuplicateLoaders = true;
-
-            DuplicateLoaders.Clear();
-            DuplicateLoaders.Add("Vanilla");
-            if (fabric.Result is { Length: > 0 }) DuplicateLoaders.Add("Fabric");
-            if (forge.Result is { Length: > 0 }) DuplicateLoaders.Add("Forge");
-            if (neoForge.Result is { Length: > 0 }) DuplicateLoaders.Add("NeoForge");
-            if (quilt.Result is { Length: > 0 }) DuplicateLoaders.Add("Quilt");
+            List<string> available = ["Vanilla"];
+            if (fabric.Result is { Length: > 0 }) available.Add("Fabric");
+            if (forge.Result is { Length: > 0 }) available.Add("Forge");
+            if (neoForge.Result is { Length: > 0 }) available.Add("NeoForge");
+            if (quilt.Result is { Length: > 0 }) available.Add("Quilt");
 
             // Keep the choice where it still exists, and fall back to the source's rather than
             // to nothing — an empty box reads as though the copy had lost its loader.
-            DuplicateLoader = wanted is { Length: > 0 } && DuplicateLoaders.Contains(wanted)
-                ? wanted
-                : DuplicateLoaders.Contains(_duplicating?.LoaderName ?? "") ? _duplicating!.LoaderName : "Vanilla";
+            var keeping =
+                wanted is { Length: > 0 } && available.Contains(wanted, StringComparer.OrdinalIgnoreCase) ? wanted
+                : available.Contains(_duplicating?.LoaderName ?? "", StringComparer.OrdinalIgnoreCase) ? _duplicating!.LoaderName
+                : "Vanilla";
 
+            _loadingDuplicateLoaders = true;
+            BringTo(DuplicateLoaders, available);
+            DuplicateLoader = keeping;
             _loadingDuplicateLoaders = false;
 
             OnPropertyChanged(nameof(DuplicateMovesMods));
         }
         catch (Exception)
         {
+            // Whatever went wrong, the box is not left blank: the loader it already runs is
+            // always an answer, since the copy could simply keep it.
+            _loadingDuplicateLoaders = true;
+            BringTo(DuplicateLoaders, [_duplicating?.LoaderName ?? "Vanilla"]);
+            DuplicateLoader = _duplicating?.LoaderName ?? "Vanilla";
             _loadingDuplicateLoaders = false;
         }
+    }
+
+    /// <summary>
+    /// Brings a bound list to a new set of values without ever emptying it.
+    ///
+    /// Clearing and refilling is shorter, and is what this used to do. But a box checks its
+    /// selection against its items, and on finding the selected one gone — even for the instant
+    /// between the clear and the refill — it clears itself and writes that back through the
+    /// binding. The selection is then genuinely lost, and re-setting it afterwards is a race
+    /// against the box's own bookkeeping. Never removing the selected item avoids the argument.
+    /// </summary>
+    private static void BringTo(ObservableCollection<string> list, IReadOnlyList<string> wanted)
+    {
+        for (var i = list.Count - 1; i >= 0; i--)
+            if (!wanted.Contains(list[i], StringComparer.OrdinalIgnoreCase))
+                list.RemoveAt(i);
+
+        for (var i = 0; i < wanted.Count; i++)
+        {
+            if (i < list.Count && string.Equals(list[i], wanted[i], StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var already = -1;
+            for (var j = i; j < list.Count; j++)
+                if (string.Equals(list[j], wanted[i], StringComparison.OrdinalIgnoreCase)) { already = j; break; }
+
+            if (already >= 0) list.Move(already, i);
+            else list.Insert(i, wanted[i]);
+        }
+
+        while (list.Count > wanted.Count) list.RemoveAt(list.Count - 1);
     }
 
     [RelayCommand]
     private void SelectDuplicateIcon(string? icon)
     {
-        if (icon is { Length: > 0 }) DuplicateIcon = icon;
+        if (icon is not { Length: > 0 }) return;
+
+        // Picking an emoji is also how somebody changes their mind about a picture, so the
+        // staged one goes with it rather than being quietly applied anyway on Duplicate.
+        _pendingDuplicateIconPath = null;
+        DuplicateIconImagePath = null;
+        DuplicateIcon = icon;
+    }
+
+    /// <summary>
+    /// A picture chosen for the copy. Nothing is copied anywhere yet — the file is only read once
+    /// the copy exists and has a folder of its own to keep it in.
+    /// </summary>
+    public void StageDuplicateIcon(string imagePath)
+    {
+        _pendingDuplicateIconPath = imagePath;
+        DuplicateIcon = Instance.CustomIconPrefix + Path.GetFileName(imagePath);
+        DuplicateIconImagePath = imagePath;
     }
 
     [RelayCommand]
@@ -2134,7 +2208,21 @@ public partial class InstancesViewModel : ViewModelBase
             var clone = _launcher.Instances.Clone(source);
 
             clone.Name = DuplicateName.Trim();
-            clone.Icon = DuplicateIcon;
+
+            if (_pendingDuplicateIconPath is { } chosen)
+            {
+                // Done here rather than at the sheet, because this is the first moment there is
+                // a folder to put the file in. The clone arrives wearing the original's icon,
+                // so the old one is dropped first or it rides along unseen in every export.
+                if (clone.HasCustomIcon) _launcher.Instances.ClearCustomIcon(clone);
+                TryArtwork(() => _launcher.Instances.SetCustomIcon(clone, chosen));
+            }
+            else if (!DuplicateIcon.Equals(clone.Icon, StringComparison.Ordinal))
+            {
+                // Swapped to an emoji from the picture the original had.
+                if (clone.HasCustomIcon) _launcher.Instances.ClearCustomIcon(clone);
+                clone.Icon = DuplicateIcon;
+            }
 
             var loader = DuplicateLoader ?? source.LoaderName;
             var version = DuplicateVersion ?? source.MinecraftVersion;

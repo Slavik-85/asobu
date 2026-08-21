@@ -89,12 +89,29 @@
         <li>
           <strong>What it stores:</strong> your Minecraft username and UUID, who your friends are,
           pending friend requests, when you were last seen, and a hashed copy of your session token.
+          For an offline account, its tag and the doubly-hashed machine digest described below.
           Share codes are kept here too, described below. Messages are not on this list, and that is
           not an oversight — see below.
         </li>
         <li>
           <strong>Your friends can see when you were last online.</strong> That is what a friends list is
           for, but it is worth saying plainly.
+        </li>
+        <li>
+          <strong>Offline accounts can join, and that part works differently.</strong> An offline account
+          has nothing to prove to Mojang, so the server gives it four random digits after the name —
+          <code>Player#4963</code> — and that pair is what friends type to find it. It only happens when
+          you press the button on the friends page; an offline name is a local thing until you say
+          otherwise.
+        </li>
+        <li>
+          <strong>Joining as an offline account sends a one-way digest of your computer.</strong> Five
+          offline accounts are allowed per computer and per internet connection, and counting them means
+          recognising a repeat. Your launcher does not send a machine identifier: it sends a SHA-256
+          digest of one, and the server hashes that again with a secret of its own before writing
+          anything down. What ends up stored says <em>some machine has made three accounts</em> and
+          cannot be turned back into which machine, or which address, by us or by anyone who ends up
+          holding the file. Microsoft accounts never send this at all.
         </li>
         <li>
           <strong>Nothing contacts it until you use it.</strong> Open the launcher, play Minecraft, never

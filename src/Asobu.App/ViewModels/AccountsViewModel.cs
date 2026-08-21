@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -74,6 +74,12 @@ public partial class AccountsViewModel(AsobuLauncher launcher) : ViewModelBase
     public string RemoveLabel => ConfirmingRemove ? "Really?" : "Remove";
 
     public Account? Active => SelectedCard?.Account;
+
+    /// <summary>
+    /// Writes the list back out after something else changed an account in place — the friends
+    /// page recording the network identity an offline account was just given, for instance.
+    /// </summary>
+    public void SaveAccounts() => launcher.Accounts.Save(Cards.Select(c => c.Account));
 
     public string ActiveLabel => Active?.Username ?? "Not signed in";
     public string ActiveKindLabel => Active is null

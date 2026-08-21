@@ -106,6 +106,12 @@ public partial class InstancesView : UserControl
         if (await PickImageAsync("Choose an icon") is { } path) vm.StageCustomIcon(path);
     }
 
+    private async void PickDuplicateIcon_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not InstancesViewModel vm) return;
+        if (await PickImageAsync("Choose an icon for the copy") is { } path) vm.StageDuplicateIcon(path);
+    }
+
     private async void PickBanner_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not InstancesViewModel vm) return;

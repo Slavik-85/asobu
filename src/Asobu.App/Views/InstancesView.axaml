@@ -1065,12 +1065,21 @@
               </Border>
 
               <StackPanel Spacing="7">
-                <Grid ColumnDefinitions="*,Auto">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
                   <TextBlock Grid.Column="0" Text="Icon" Classes="label" VerticalAlignment="Center"/>
-                  <Border Grid.Column="1" Width="34" Height="34" CornerRadius="10"
-                          Background="{DynamicResource AccentSoft}">
-                    <TextBlock Text="{Binding DuplicateIcon}" FontSize="18"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Classes="ghost" Content="Choose a picture…"
+                          VerticalAlignment="Center" Click="PickDuplicateIcon_Click"/>
+                  <!-- Clipped, so a picture that is not square is cropped to the rounded box
+                       rather than drawn over the corners of it. -->
+                  <Border Grid.Column="2" Width="34" Height="34" CornerRadius="10"
+                          ClipToBounds="True" Background="{DynamicResource AccentSoft}">
+                    <Panel>
+                      <TextBlock Text="{Binding DuplicateIcon}" FontSize="18"
+                                 IsVisible="{Binding !DuplicateIconIsImage}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      <Image IsVisible="{Binding DuplicateIconIsImage}" Stretch="UniformToFill"
+                             Source="{Binding DuplicateIconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+                    </Panel>
                   </Border>
                 </Grid>
                 <ItemsControl ItemsSource="{Binding IconChoices}">
