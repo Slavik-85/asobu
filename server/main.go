@@ -399,9 +399,17 @@ func (s *Server) handleAuthComplete(w http.ResponseWriter, r *http.Request) {
 	// The only outbound call this service makes. Mojang is the authority on who joined.
 	// Unlocked while we wait: hasJoined can take a second, and holding the lock would stall
 	// every other request behind one sign-in.
-	s.mu.Unlock()
-	profile, err := hasJoined(claim.name, body.ServerId)
-	s.mu.Lock()
+	//
+	// The re-lock is deferred rather than written after the call, so it happens even if that
+	// call panics. Every handler here is wrapped in a deferred Unlock, and returning from this
+	// one without the lock held would unlock an unlocked mutex — which panics in turn, and
+	// leaves the server's locking in a state no later request can recover from.
+	profile, err := func() (*mojangProfile, error) {
+		s.mu.Unlock()
+		defer s.mu.Lock()
+
+		return hasJoined(claim.name, body.ServerId)
+	}()
 	if err != nil {
 		fail(w, http.StatusBadGateway, "could not reach Mojang, try again")
 		return
