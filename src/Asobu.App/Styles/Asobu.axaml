@@ -973,14 +973,25 @@
         <Border Name="track" Width="44" Height="24" CornerRadius="12"
                 Background="{DynamicResource Border}"
                 HorizontalAlignment="Center" VerticalAlignment="Center">
-          <!-- PART_MovingKnobs and PART_SwitchKnob are required by ToggleSwitch itself, which
-               reaches for them to drive drag gestures; both must be Panels, so the visible
-               circle is an Ellipse hosted inside the knob panel. -->
-          <Panel Name="PART_MovingKnobs" HorizontalAlignment="Left" VerticalAlignment="Center"
-                 Margin="3,0,0,0">
-            <Panel Name="PART_SwitchKnob" Width="18" Height="18">
-              <Ellipse Name="knob" Fill="{DynamicResource TextMuted}"/>
+          <Panel>
+            <!-- PART_MovingKnobs and PART_SwitchKnob are required by ToggleSwitch itself, which
+                 reaches for them to drive its drag gesture. They are kept and never drawn.
+
+                 The visible circle used to live inside PART_SwitchKnob, and that is why it did not
+                 slide: the control writes that panel's RenderTransform itself while handling a
+                 drag, and a value set on a control outranks one set by a style — so the style's
+                 travel was overruled and the knob simply appeared at the far end. Ours is its own
+                 element, driven by nothing but the styles below. -->
+            <!-- Transparent rather than collapsed: the control measures these to work out how far
+                 a drag has travelled, and a part that is never laid out has no width to measure. -->
+            <Panel Name="PART_MovingKnobs" Opacity="0" IsHitTestVisible="False"
+                   HorizontalAlignment="Left" VerticalAlignment="Center" Margin="3,0,0,0">
+              <Panel Name="PART_SwitchKnob" Width="18" Height="18"/>
             </Panel>
+
+            <Ellipse Name="knob" Width="18" Height="18" Margin="3,0,0,0"
+                     HorizontalAlignment="Left" VerticalAlignment="Center"
+                     Fill="{DynamicResource TextMuted}"/>
           </Panel>
         </Border>
       </ControlTemplate>
@@ -993,20 +1004,14 @@
       </Transitions>
     </Setter>
   </Style>
-  <!-- The knob slides on a transform so the travel can ease; alignment can't be animated.
-       Transform rides the knob Panel, colour rides the Ellipse inside it. -->
-  <Style Selector="ToggleSwitch /template/ Panel#PART_SwitchKnob">
+  <!-- The knob slides on a transform rather than by moving its alignment, which cannot be
+       animated. Both the travel and the colour ride the one Ellipse now. -->
+  <Style Selector="ToggleSwitch /template/ Ellipse#knob">
     <Setter Property="RenderTransform" Value="none"/>
     <Setter Property="Transitions">
       <Transitions>
-        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" Easing="CubicEaseOut"/>
-      </Transitions>
-    </Setter>
-  </Style>
-  <Style Selector="ToggleSwitch /template/ Ellipse#knob">
-    <Setter Property="Transitions">
-      <Transitions>
-        <BrushTransition Property="Fill" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+        <BrushTransition Property="Fill" Duration="0:0:0.18" Easing="CubicEaseOut"/>
       </Transitions>
     </Setter>
   </Style>
@@ -1019,10 +1024,8 @@
   <Style Selector="ToggleSwitch:checked:pointerover /template/ Border#track">
     <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
   </Style>
-  <Style Selector="ToggleSwitch:checked /template/ Panel#PART_SwitchKnob">
-    <Setter Property="RenderTransform" Value="translateX(20px)"/>
-  </Style>
   <Style Selector="ToggleSwitch:checked /template/ Ellipse#knob">
+    <Setter Property="RenderTransform" Value="translateX(20px)"/>
     <Setter Property="Fill" Value="#FFFFFF"/>
   </Style>
 
