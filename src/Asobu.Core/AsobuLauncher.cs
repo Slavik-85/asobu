@@ -907,6 +907,86 @@ public sealed class AsobuLauncher
     }
 
     /// <summary>
+    /// What an instance has, and whether each of them is the newest build it could be running.
+    ///
+    /// Two questions rather than one because the buttons need both. "Do you have this mod" alone
+    /// would hide Add on a mod sitting three versions behind, which is the one time it is most
+    /// worth pressing.
+    /// </summary>
+    public sealed class InstanceContents(InstalledMods installed, HashSet<string> outdated)
+    {
+        public static readonly InstanceContents Empty = new(InstalledMods.Empty, []);
+
+        /// <summary>Installed, and there is nothing newer to move to — so nothing left to offer.</summary>
+        public bool HasNewestOf(CatalogueMod mod) =>
+            installed.Find(mod) is { } entry && !outdated.Contains(entry.Path);
+
+        public bool Has(CatalogueMod mod) => installed.Has(mod);
+
+        /// <summary>
+        /// The same knowledge of what is behind, over a fresh look at what is installed.
+        ///
+        /// For the moment after an add, when the folder has changed but the world has not: a mod
+        /// that was three versions behind a minute ago still is, and hashing the whole folder
+        /// again to rediscover that would make every add slower than the one before it.
+        /// </summary>
+        public InstanceContents WithInstalled(InstalledMods rescanned) => new(rescanned, outdated);
+    }
+
+    /// <summary>
+    /// Whether an instance has this one mod at the newest build it could run.
+    ///
+    /// The single-mod form of <see cref="ReadContentsAsync"/>, for a page that is about one mod:
+    /// it hashes the one jar rather than the whole folder. False when the mod is not installed at
+    /// all, and true when it is installed and nothing can be reached to say otherwise.
+    /// </summary>
+    public async Task<bool> HasNewestOfAsync(
+        Instance instance, CatalogueMod mod, CancellationToken cancellationToken = default)
+    {
+        if (InstalledMods.For(Paths, instance).Find(mod) is not { } entry) return false;
+
+        try
+        {
+            var updates = await FindUpdatesAsync(instance, [entry], cancellationToken).ConfigureAwait(false);
+
+            return !updates.Any(update => update.CanApply);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Reads an instance's folders and asks which of what it holds has moved on since.
+    ///
+    /// The update half is allowed to fail quietly. Offline, everything installed counts as
+    /// current: offering to fetch a newer build that cannot be reached is worse than not
+    /// mentioning one, and the mod's own page still lists every build either way.
+    /// </summary>
+    public async Task<InstanceContents> ReadContentsAsync(
+        Instance instance, CancellationToken cancellationToken = default)
+    {
+        var installed = InstalledMods.For(Paths, instance);
+        var outdated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var mods = ModScanner.Scan(ModScanner.ModsDirectory(Paths, instance.Folder));
+
+            foreach (var update in await FindUpdatesAsync(instance, mods, cancellationToken).ConfigureAwait(false))
+                if (update.CanApply)
+                    outdated.Add(update.Path);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Nothing reachable to compare against. See the note above.
+        }
+
+        return new InstanceContents(installed, outdated);
+    }
+
+    /// <summary>
     /// Looks over an instance's mods folder for builds newer than what is in it.
     ///
     /// Modrinth answers for the whole folder in one request, which is most of why this is worth

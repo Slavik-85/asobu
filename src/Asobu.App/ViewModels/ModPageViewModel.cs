@@ -340,18 +340,22 @@ public partial class ModPageViewModel(
 
     /// <summary>
     /// Turns the page's Download button into an Added badge when the instance this page was
-    /// opened for already has the mod.
+    /// opened for already has the mod at the newest build it could run.
+    ///
+    /// Only when there is nothing newer to move to. A mod that has fallen behind keeps its
+    /// button, and pressing it brings the instance up to date rather than adding a copy.
     ///
     /// The mod, not the build — which is why this touches the card at the top and never the
-    /// versions table below it. "Do you have Sodium" and "do you have this exact Sodium" are
-    /// different questions, and only the first has an answer that should stop a button working.
+    /// versions table below it. That table is how somebody goes deliberately backwards, so every
+    /// row in it stays pressable however current the instance is.
     /// </summary>
     private async Task MarkIfAlreadyInstalledAsync(ModCard card, Instance? target)
     {
         if (target is null) return;
 
-        if (await Task.Run(() => InstalledMods.For(launcher.Paths, target).Has(card.Mod)))
-            card.IsInstalled = true;
+        // The single-mod check: this page is about one mod, so hashing the whole folder to answer
+        // for it would be forty jars of work to learn one thing.
+        if (await launcher.HasNewestOfAsync(target, card.Mod)) card.IsInstalled = true;
     }
 
     [RelayCommand]

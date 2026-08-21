@@ -53,11 +53,14 @@ public partial class BrowseViewModel(
     public bool IsInstanceScoped => Target is not null;
 
     /// <summary>
-    /// What the target instance already has, so a result that is already in it says Added rather
-    /// than offering to add it again. Empty until the scan comes back, and empty for the
-    /// unscoped browser, which has no instance to compare against.
+    /// What the target instance has and how current it is, so a result already in it at the
+    /// newest build says Added rather than offering itself again.
+    ///
+    /// Empty until the scan comes back, and empty for the unscoped browser: with no instance in
+    /// view there is no answer to "do you have this", and Add opens the picker, which says which
+    /// instances do.
     /// </summary>
-    private InstalledMods _installed = InstalledMods.Empty;
+    private AsobuLauncher.InstanceContents _contents = AsobuLauncher.InstanceContents.Empty;
 
     /// <summary>Where closing this browser goes back to. Only set on the scoped one.</summary>
     private Action? _back;
@@ -97,26 +100,36 @@ public partial class BrowseViewModel(
     }
 
     /// <summary>
-    /// Rereads what the instance has and marks the results accordingly.
+    /// Rereads what the instance has, and how current it is, then marks the results.
     ///
     /// Run again after each add rather than trusted from the first scan: a mod that brought
     /// dependencies with it put several files in the folder, and any of them might be further
     /// down the same list of search results.
     /// </summary>
-    private async Task RefreshInstalledAsync()
+    /// <param name="checkForUpdates">
+    /// False just after an add, when the folder has changed but nothing else has. The expensive
+    /// half — a hash of every jar and a request about all of them — answers a question whose
+    /// answer cannot have moved in the last two seconds, and doing it on every add would make
+    /// each one slower than the last.
+    /// </param>
+    private async Task RefreshInstalledAsync(bool checkForUpdates = true)
     {
         if (Target is not { } target)
         {
-            _installed = InstalledMods.Empty;
+            _contents = AsobuLauncher.InstanceContents.Empty;
             return;
         }
 
-        // Reading forty jars is not something to do on the thread drawing the list.
-        _installed = await Task.Run(() => InstalledMods.For(launcher.Paths, target));
+        // Hashing forty jars and asking two shops about them is not work for the thread drawing
+        // the list.
+        _contents = checkForUpdates
+            ? await launcher.ReadContentsAsync(target)
+            : _contents.WithInstalled(await Task.Run(() => InstalledMods.For(launcher.Paths, target)));
 
+        // Set both ways. A mod that has fallen behind since this list was built has to get its
+        // button back, which is the whole point of asking about updates at all.
         foreach (var card in Results)
-            if (!card.IsInstalled && _installed.Has(card.Mod))
-                card.IsInstalled = true;
+            card.IsInstalled = _contents.HasNewestOf(card.Mod);
     }
 
     [RelayCommand]
@@ -490,9 +503,10 @@ public partial class BrowseViewModel(
         {
             if (!_listed.Add(CatalogueMod.KeyFor(mod.Title))) continue;
 
-            // Already in this instance, so the tile says Added and offers no button — the same
-            // state a tile reaches after being installed from here.
-            var card = new ModCard(mod) { IsInstalled = _installed.Has(mod) };
+            // In this instance at the newest build it could run, so the tile says Added and
+            // offers no button. One that has fallen behind keeps its button, and pressing it
+            // moves the instance up rather than adding a second copy.
+            var card = new ModCard(mod) { IsInstalled = _contents.HasNewestOf(mod) };
 
             Results.Add(card);
             _ = LoadIconAsync(card, cancellationToken);
@@ -540,7 +554,9 @@ public partial class BrowseViewModel(
             await ModInstall.RunAsync(launcher, target, card);
 
             // Dependencies came in alongside it, and any of them may be further down this list.
-            await RefreshInstalledAsync();
+            // A rescan of the folder only: what is behind cannot have changed since the tile was
+            // pressed.
+            await RefreshInstalledAsync(checkForUpdates: false);
             return;
         }
 
