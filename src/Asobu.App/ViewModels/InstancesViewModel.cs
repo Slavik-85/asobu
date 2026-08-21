@@ -643,7 +643,15 @@ public partial class InstancesViewModel : ViewModelBase
     {
         DismissSheets();
         EnvironmentVariablesText = value is null ? "" : FormatEnvironment(value.EnvironmentVariables);
+
+        // Both belong to the instance that was on screen, not to the page. The error is the one
+        // that matters: it stayed put while the instance under it changed, so a Forge install
+        // that had failed went on being reported under a Fabric instance that had never been
+        // launched — an accusation about the wrong thing entirely, and one nothing would clear
+        // until something else went wrong.
+        Error = null;
         DiskUsageLabel = null;
+
         Backdrop = Backdrops.For(value, _launcher.Paths);
 
         LoadInstanceSettings(value);

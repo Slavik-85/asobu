@@ -36,14 +36,30 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
 
         using var archive = ZipFile.OpenRead(installerPath);
 
-        var version = Read<VersionJson>(archive, "version.json")
-            ?? throw new InvalidDataException("The loader installer carries no version.json.");
+        var profile = Read<InstallProfile>(archive, "install_profile.json")
+            ?? throw new InvalidDataException("The loader installer carries no install_profile.json.");
+
+        // Forge changed shape at 1.13. Newer installers ship the version document as its own file
+        // and a list of processors to run; older ones — every 1.12.2 and before — keep it inside
+        // the profile as "versionInfo" and have no processors at all, because the whole install
+        // was ever only "put this jar where the game will find it".
+        //
+        // Looked for in both places rather than one, which is what left 1.8.9 reporting that the
+        // installer carried no version.json. It carried no such file and never had.
+        var version = Read<VersionJson>(archive, "version.json") ?? profile.VersionInfo
+            ?? throw new InvalidDataException(
+                "The loader installer carries no version document, in either of the two places Forge has kept one.");
 
         var marker = Path.Combine(paths.VersionDir(version.Id), MarkerFile);
         if (File.Exists(marker)) return version;
 
-        var profile = Read<InstallProfile>(archive, "install_profile.json")
-            ?? throw new InvalidDataException("The loader installer carries no install_profile.json.");
+        // The old way: one jar out of the installer and into the libraries folder, and nothing to
+        // run. Done before the processors below, which such an installer has none of.
+        if (profile.Install is { FilePath.Length: > 0, Path.Length: > 0 } legacy)
+        {
+            progress?.Report(new InstallProgress("Installing the loader", 0));
+            ExtractLegacyJar(archive, legacy);
+        }
 
         progress?.Report(new InstallProgress("Fetching loader tools", 0));
         await DownloadToolsAsync(profile, cancellationToken).ConfigureAwait(false);
@@ -304,11 +320,57 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
         }
     }
 
+    /// <summary>
+    /// Puts the loader jar an old installer carries into the libraries folder, under the Maven
+    /// coordinate the profile names.
+    ///
+    /// Nothing downloads it: the jar is inside the installer already, which is why an old Forge
+    /// install works offline once the installer is in hand.
+    /// </summary>
+    private void ExtractLegacyJar(ZipArchive archive, LegacyInstall install)
+    {
+        if (archive.GetEntry(install.FilePath) is not { } entry)
+            throw new InvalidDataException(
+                $"The loader installer does not contain {install.FilePath}, which its profile says it does.");
+
+        var destination = Path.Combine(paths.Libraries, Maven.PathFor(install.Path));
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+        // Written even where one is already there: a half-extracted jar from an interrupted
+        // install would otherwise be kept forever, and the file is a few megabytes.
+        entry.ExtractToFile(destination, overwrite: true);
+    }
+
     private sealed class InstallProfile
     {
         public List<Library> Libraries { get; init; } = [];
         public List<Processor> Processors { get; init; } = [];
         public Dictionary<string, DataEntry> Data { get; init; } = [];
+
+        /// <summary>
+        /// The version document itself, for installers old enough to keep it here.
+        ///
+        /// Forge changed shape at 1.13. Before that there was no version.json in the jar at all
+        /// and no processors either: the whole install was "put this jar in libraries", and the
+        /// version document sat inside the profile under this name.
+        /// </summary>
+        public VersionJson? VersionInfo { get; init; }
+
+        /// <summary>What the old installers had instead of processors.</summary>
+        public LegacyInstall? Install { get; init; }
+    }
+
+    /// <summary>
+    /// The pre-1.13 install step: one jar, carried inside the installer, that belongs in the
+    /// libraries folder under a Maven coordinate.
+    /// </summary>
+    private sealed class LegacyInstall
+    {
+        /// <summary>Where it goes: "net.minecraftforge:forge:1.8.9-11.15.1.2318-1.8.9".</summary>
+        public string Path { get; init; } = "";
+
+        /// <summary>What it is called inside the installer.</summary>
+        public string FilePath { get; init; } = "";
     }
 
     private sealed class DataEntry
