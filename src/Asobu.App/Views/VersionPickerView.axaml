@@ -87,6 +87,12 @@
               <TextBox Text="{Binding InstanceName}" PlaceholderText="My world" MaxLength="32"/>
               <Button Classes="primary" Content="Create instance" HorizontalAlignment="Stretch"
                       IsEnabled="{Binding CanCreate}" Command="{Binding CreateCommand}"/>
+
+              <!-- Only ever up for the moment the ticked mod takes to arrive, which is why the
+                   button goes quiet rather than the page changing to something empty. -->
+              <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                         IsVisible="{Binding IsFetchingExtras}"
+                         Text="{Binding PerformanceModName, StringFormat='Fetching {0}…'}"/>
             </StackPanel>
 
             <!-- AllowAutoHide off so the bar keeps its own gutter instead of floating over the

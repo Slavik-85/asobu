@@ -91,6 +91,9 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     [ObservableProperty] public partial string PerformanceModName { get; set; } = "Sodium";
     [ObservableProperty] public partial bool CanUsePerformanceMod { get; set; }
 
+    /// <summary>Set while the ticked mod is being fetched, which happens before the page changes.</summary>
+    [ObservableProperty] public partial bool IsFetchingExtras { get; set; }
+
     /// <summary>
     /// Whether the box currently offers OptiFine rather than one of the two on Modrinth. Kept
     /// rather than worked out again at save time: by then the loader and version may have moved,
@@ -103,7 +106,8 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     [ObservableProperty] public partial string PerformanceModNote { get; set; } = "";
 
     public bool HasNoSelection => SelectedVersion is null;
-    public bool CanCreate => Detail is not null && InstanceName.Trim().Length > 0 && !IsCheckingLoaders;
+    public bool CanCreate => Detail is not null && InstanceName.Trim().Length > 0
+                             && !IsCheckingLoaders && !IsFetchingExtras;
 
     public bool FabricAvailable => FabricVersion is { Length: > 0 };
     public bool ForgeAvailable => ForgeVersion is { Length: > 0 };
@@ -129,6 +133,7 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     partial void OnDetailChanged(VersionDetail? value) => OnPropertyChanged(nameof(CanCreate));
     partial void OnInstanceNameChanged(string value) => OnPropertyChanged(nameof(CanCreate));
     partial void OnIsCheckingLoadersChanged(bool value) => OnPropertyChanged(nameof(CanCreate));
+    partial void OnIsFetchingExtrasChanged(bool value) => OnPropertyChanged(nameof(CanCreate));
 
     partial void OnFabricVersionChanged(string? value) => OnLoaderAvailabilityChanged(nameof(FabricAvailable));
     partial void OnForgeVersionChanged(string? value) => OnLoaderAvailabilityChanged(nameof(ForgeAvailable));
@@ -186,22 +191,42 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     };
 
     [RelayCommand]
-    private void Create()
+    private async Task CreateAsync()
     {
         if (SelectedVersion is not { } row || InstanceName.Trim() is not { Length: > 0 } name) return;
 
         var loader = Loader;
+        var wanted = IncludePerformanceMod && CanUsePerformanceMod
+            ? _performanceIsOptiFine ? OptiFine.Marker : Modrinth.PerformanceModFor(loader)
+            : null;
 
-        // Downloading happens on Play, so creating an instance stays instant and offline-safe —
-        // the extras are recorded as wishes and fetched with everything else.
-        onCreated(launcher.Instances.Create(
-            name,
-            row.Id,
-            loader,
-            LoaderVersion,
-            IncludePerformanceMod && CanUsePerformanceMod
-                ? _performanceIsOptiFine ? OptiFine.Marker : Modrinth.PerformanceModFor(loader)
-                : null));
+        var instance = launcher.Instances.Create(name, row.Id, loader, LoaderVersion, wanted);
+
+        // Fetched here rather than left for the first launch. Everything else an instance needs is
+        // large and belongs with the launch that needs it, but a performance mod is one jar and it
+        // was asked for by ticking a box a moment ago — finding an empty mods folder afterwards
+        // reads as the tick having done nothing.
+        if (wanted is { Length: > 0 })
+        {
+            IsFetchingExtras = true;
+
+            try
+            {
+                await launcher.InstallPerformanceModAsync(instance);
+            }
+            catch (Exception e)
+            {
+                // The instance exists and is perfectly good without it, and the launch will try
+                // again. Worth saying, not worth refusing to make the instance over.
+                Error = $"{PerformanceModName} could not be fetched: {e.Message}. It will be tried again on launch.";
+            }
+            finally
+            {
+                IsFetchingExtras = false;
+            }
+        }
+
+        onCreated(instance);
     }
 
     /// <summary>

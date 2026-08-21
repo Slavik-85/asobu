@@ -581,8 +581,50 @@ public static class ModScanner
     }
 
     /// <summary>Turns "sodium-fabric-0.5.8.jar" into something closer to a title.</summary>
-    private static string Clean(string fileName) =>
-        System.IO.Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ');
+    /// <summary>
+    /// A readable name out of a file name, for the mods that never say what they are called.
+    ///
+    /// Most declare a name and this is never seen. Some declare none at all — Essential ships a
+    /// manifest carrying an id and a version and nothing else, and its Forge jar has no manifest
+    /// whatsoever — and for those this is the only name there will ever be. Left as the bare file
+    /// name it read "Essential 1-4-1-1 fabric 26-2" in a column beside "Fabric API", which looks
+    /// like the launcher failing rather than the jar being quiet.
+    ///
+    /// So the version and the platform come off and what is in front of them is the name. That is
+    /// all a person does when they read one of these, and it is right far more often than it is
+    /// wrong — the worst case is a name a little shorter than its author would have written.
+    /// </summary>
+    private static string Clean(string fileName)
+    {
+        var stem = System.IO.Path.GetFileNameWithoutExtension(fileName);
+
+        // Build metadata: everything after a + is the game version, never part of the name.
+        if (stem.IndexOf('+') is > 0 and var plus) stem = stem[..plus];
+
+        var pieces = stem.Split(['_', '-'], StringSplitOptions.RemoveEmptyEntries);
+        var kept = pieces.TakeWhile(piece => !LooksLikeVersion(piece)).ToList();
+
+        while (kept.Count > 1 && Platforms.Contains(kept[^1])) kept.RemoveAt(kept.Count - 1);
+
+        // A name made entirely of version parts leaves nothing to show, so the file name stands.
+        if (kept.Count == 0) return stem.Replace('_', ' ');
+
+        var name = string.Join(' ', kept);
+        return char.IsLower(name[0]) ? char.ToUpperInvariant(name[0]) + name[1..] : name;
+    }
+
+    /// <summary>"1.2.3", "v26.2.1", "mc1.21" — a segment that says which build rather than what.</summary>
+    private static bool LooksLikeVersion(string piece) =>
+        char.IsAsciiDigit(piece[0])
+        || (piece.Length > 1 && piece[0] is 'v' or 'V' && char.IsAsciiDigit(piece[1]))
+        || (piece.Length > 2 && piece.StartsWith("mc", StringComparison.OrdinalIgnoreCase)
+            && char.IsAsciiDigit(piece[2]));
+
+    /// <summary>What a jar's name says about where it runs rather than about what it is.</summary>
+    private static readonly HashSet<string> Platforms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fabric", "forge", "neoforge", "quilt", "mc", "client", "server", "universal", "all",
+    };
 
     /// <summary>
     /// Flips something on or off by renaming it, and returns its new path. Packs kept unzipped

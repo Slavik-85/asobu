@@ -258,6 +258,19 @@ public sealed class AsobuLauncher
     /// name is left alone, disabled ones included — re-adding a mod someone deliberately turned
     /// off would be worse than not having it.
     /// </summary>
+    /// <summary>
+    /// Fetches the performance mod an instance was created wanting, on its own.
+    ///
+    /// The same work a launch does, reachable without launching: somebody who ticks the box while
+    /// making an instance means now, not the first time they press Play. Safe to call twice — it
+    /// looks in the folder first and does nothing when the mod is already there.
+    /// </summary>
+    public Task InstallPerformanceModAsync(
+        Instance instance,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        EnsureModsAsync(instance, progress, cancellationToken);
+
     private async Task EnsureModsAsync(
         Instance instance, IProgress<InstallProgress>? progress, CancellationToken cancellationToken)
     {

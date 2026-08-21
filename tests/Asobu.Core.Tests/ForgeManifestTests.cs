@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using Asobu.Core.Mods;
 
 namespace Asobu.Core.Tests;
@@ -149,5 +149,58 @@ public class ForgeManifestTests : IDisposable
 
         Assert.Equal("Unknown", mod.Author);
         Assert.Null(mod.ModId);
+    }
+
+    // ---- the name a jar gets when it never says ----
+
+    private string Bare(string name)
+    {
+        var path = Path.Combine(_folder, name);
+
+        using var file = File.Create(path);
+        using var zip = new ZipArchive(file, ZipArchiveMode.Create);
+        zip.CreateEntry("nothing.txt");
+
+        return path;
+    }
+
+    /// <summary>
+    /// Essential is the reason this exists: its manifest carries an id and a version and no name
+    /// at all, and its Forge jar has no manifest whatsoever. Shown as the bare file name it read
+    /// "Essential 1-4-1-1 fabric 26-2" beside "Fabric API", which looks like the launcher failing
+    /// rather than the jar being quiet.
+    /// </summary>
+    [Theory]
+    [InlineData("Essential_1-4-1-1_fabric_26-2.jar", "Essential")]
+    [InlineData("Essential_1-4-1-1_forge_1-19-2.jar", "Essential")]
+    [InlineData("sodium-fabric-0.9.2.jar", "Sodium")]
+    [InlineData("cushionbackport-26.2-NeoForge.jar", "Cushionbackport")]
+    [InlineData("mcw-doors-1.1.5-mc26.2forge.jar", "Mcw doors")]
+    [InlineData("ForgeConfigAPIPort-v26.2.1.jar", "ForgeConfigAPIPort")]
+    [InlineData("better_deco-1.1.4.2-NeoForge.jar", "Better deco")]
+    [InlineData("apexcore-26.2.3.jar", "Apexcore")]
+    public void Makes_a_name_out_of_a_file_name(string file, string expected)
+    {
+        Bare(file);
+
+        Assert.Equal(expected, Assert.Single(ModScanner.Scan(_folder, ModKind.Mod)).Name);
+    }
+
+    /// <summary>Nothing but version parts leaves nothing to shorten to, so the name stands.</summary>
+    [Fact]
+    public void Keeps_a_file_name_that_is_all_version()
+    {
+        Bare("1.21.4.jar");
+
+        Assert.Equal("1.21.4", Assert.Single(ModScanner.Scan(_folder, ModKind.Mod)).Name);
+    }
+
+    /// <summary>A name that is only a platform word is still that mod's name.</summary>
+    [Fact]
+    public void Does_not_strip_the_only_word_there_is()
+    {
+        Bare("fabric-0.1.0.jar");
+
+        Assert.Equal("Fabric", Assert.Single(ModScanner.Scan(_folder, ModKind.Mod)).Name);
     }
 }

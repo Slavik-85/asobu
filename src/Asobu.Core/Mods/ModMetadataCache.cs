@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -40,8 +40,9 @@ public sealed class ModMetadataCache
     /// work: correct code, stale cache, and nothing on screen any different.
     ///
     /// 2: Forge and NeoForge manifests, which used to fall back to the file name.
+    /// 3: a readable name for the jars that declare none, rather than the file name whole.
     /// </summary>
-    private const int Generation = 2;
+    private const int Generation = 3;
 
     public ModMetadataCache(AsobuPaths paths)
     {
