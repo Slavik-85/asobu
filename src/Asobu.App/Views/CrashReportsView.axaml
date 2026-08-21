@@ -137,8 +137,16 @@
                 </StackPanel>
               </Border>
 
-              <SelectableTextBlock Text="{Binding Content}" FontFamily="Consolas,monospace" FontSize="12"
-                                    TextWrapping="Wrap" Foreground="{DynamicResource Text}"/>
+              <!-- Through the same formatter the live log uses, so a saved report reads the way
+                   the running game did: log4j XML unwrapped into ordinary lines, and each one
+                   coloured by how loud it was. -->
+              <SelectableTextBlock FontFamily="Consolas, Menlo, monospace" FontSize="12"
+                                   TextWrapping="Wrap"
+                                   ctrl:GameLogText.InfoBrush="{DynamicResource LogInfo}"
+                                   ctrl:GameLogText.WarnBrush="{DynamicResource LogWarn}"
+                                   ctrl:GameLogText.ErrorBrush="{DynamicResource LogError}"
+                                   ctrl:GameLogText.ChatterBrush="{DynamicResource LogChatter}"
+                                   ctrl:GameLogText.Lines="{Binding Lines}"/>
             </StackPanel>
           </ScrollViewer>
         </Panel>

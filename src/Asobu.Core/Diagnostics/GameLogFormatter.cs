@@ -213,7 +213,33 @@ public sealed class GameLogFormatter
 
         if (line.Contains("/WARN]", StringComparison.OrdinalIgnoreCase)) return GameLogLevel.Warn;
 
+        // The head of a stack trace, which is the line that says what actually went wrong. Its
+        // frames underneath were already caught above, so without this the most important line in
+        // a crash report was the one rendered as ordinary chatter while everything explaining it
+        // was red.
+        if (LooksLikeThrowable(line)) return GameLogLevel.Error;
+
         return GameLogLevel.Info;
+    }
+
+    /// <summary>
+    /// Whether a line opens with a throwable's own name: "java.lang.NoSuchMethodError: '...'".
+    ///
+    /// Matched on shape rather than against a list of names, because mods throw their own and
+    /// there is no list to keep. A qualified name, no spaces in it, ending in Exception or Error
+    /// — which ordinary prose does not manage by accident.
+    /// </summary>
+    private static bool LooksLikeThrowable(string line)
+    {
+        var colon = line.IndexOf(':');
+        var head = colon < 0 ? line : line[..colon];
+
+        if (head.Length == 0 || head.Contains(' ') || !head.Contains('.')) return false;
+
+        var name = head[(head.LastIndexOf('.') + 1)..];
+
+        return name.EndsWith("Exception", StringComparison.Ordinal)
+               || name.EndsWith("Error", StringComparison.Ordinal);
     }
 
     /// <summary>An attribute out of the opening tag, without paying for an XML parser per line.</summary>

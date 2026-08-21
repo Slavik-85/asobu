@@ -2602,6 +2602,9 @@ public partial class InstancesViewModel : ViewModelBase
 
         /// <summary>The game ran out of memory and there is room to give it more.</summary>
         Memory,
+
+        /// <summary>A mod built for another version of the game. Get the build made for this one.</summary>
+        WrongBuild,
     }
 
     /// <summary>
@@ -2629,6 +2632,13 @@ public partial class InstancesViewModel : ViewModelBase
 
         public static ProblemRow For(CrashSuspect suspect) =>
             new(ProblemKind.BadMod, $"{suspect.Name} looks like the cause", suspect.ConfidenceLabel)
+            {
+                Suspect = suspect,
+            };
+
+        public static ProblemRow ForWrongBuild(CrashSuspect suspect) =>
+            new(ProblemKind.WrongBuild, $"{suspect.Name} was built for another version",
+                "It calls something this Minecraft no longer has")
             {
                 Suspect = suspect,
             };
@@ -2661,7 +2671,7 @@ public partial class InstancesViewModel : ViewModelBase
         {
             ProblemKind.Conflict => [Conflict!.ModId, Conflict.ModName],
             ProblemKind.Missing => [Missing!.Id, Missing.Name],
-            ProblemKind.BadMod => [Suspect!.Name, Suspect.FileName],
+            ProblemKind.BadMod or ProblemKind.WrongBuild => [Suspect!.Name, Suspect.FileName],
 
             // Not about a mod, so there is nothing for another row to collide with.
             _ => [],
@@ -2672,6 +2682,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Conflict => "Swap",
             ProblemKind.Missing => "Get it",
             ProblemKind.BadMod => "Turn off",
+            ProblemKind.WrongBuild => "Fix it",
             _ => "Give it more",
         };
 
@@ -2680,6 +2691,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Conflict => "Swapping…",
             ProblemKind.Missing => "Fetching…",
             ProblemKind.BadMod => "Turning off…",
+            ProblemKind.WrongBuild => "Looking…",
             _ => "Saving…",
         };
 
@@ -2688,6 +2700,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Conflict => "Swapped",
             ProblemKind.Missing => "Added",
             ProblemKind.BadMod => "Off",
+            ProblemKind.WrongBuild => "Sorted",
             _ => "Raised",
         };
 
@@ -2716,6 +2729,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Conflict => "One mod wants a different version of another",
             ProblemKind.Missing => "A mod is missing something it needs",
             ProblemKind.BadMod => "One mod looks like the cause",
+            ProblemKind.WrongBuild => "One mod was built for another version",
             _ => "That session ran out of memory",
         }
         : $"{Problems.Count} things went wrong in that session";
@@ -2758,6 +2772,12 @@ public partial class InstancesViewModel : ViewModelBase
             {
                 return rows;
             }
+
+            // A mod built for another version of the game. Named outright by the loader, and the
+            // fix is a different one from turning it off — the mod is wanted, just not this build
+            // of it.
+            if (analysis is { Cause: CrashCause.WrongBuild })
+                rows.AddRange(analysis.Suspects.Select(ProblemRow.ForWrongBuild));
 
             // Only when the analyser blames a mod outright. An out-of-memory kill or a graphics
             // fault has no mod to turn off, and offering to turn one off anyway would be a guess
@@ -2875,6 +2895,31 @@ public partial class InstancesViewModel : ViewModelBase
                       ?? (result.Blocked
                           ? "The author allows downloads from their page only."
                           : $"No build for {instance.LoaderName} {instance.MinecraftVersion}."));
+            }
+
+            case ProblemKind.WrongBuild:
+            {
+                var directory = ModScanner.ModsDirectory(_launcher.Paths, instance.Folder);
+
+                var mod = await Task.Run(() => ModScanner.Scan(directory).FirstOrDefault(candidate =>
+                    string.Equals(candidate.FileName, row.Suspect!.FileName, StringComparison.OrdinalIgnoreCase)));
+
+                if (mod is null) return (false, $"{row.Suspect!.Name} is no longer in this instance.");
+
+                // Any build that runs here will do — this is not a disagreement about versions,
+                // it is a mod compiled for another game entirely as far as the JVM is concerned.
+                var swap = await _launcher.SwapModAsync(instance, new ModConflict(
+                    "Minecraft " + instance.MinecraftVersion, mod.ModId ?? mod.Name, mod.Name,
+                    Present: null, VersionBound.Any, Evidence: row.Detail));
+
+                if (swap.Swapped) return (true, $"Now {swap.Installed}, built for {instance.MinecraftVersion}.");
+
+                // No build for this instance. The mod cannot run here at all, and the game will
+                // not start while it is in the folder, so turning it off is the remaining answer
+                // — done rather than merely suggested, and said plainly.
+                if (mod.Enabled) ModScanner.SetEnabled(mod, false);
+
+                return (true, $"Its author has no build for {instance.MinecraftVersion}, so it is turned off.");
             }
 
             case ProblemKind.Memory:

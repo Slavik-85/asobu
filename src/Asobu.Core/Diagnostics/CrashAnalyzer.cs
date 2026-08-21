@@ -19,6 +19,13 @@ public enum CrashCause
     /// decides what goes on the classpath.
     /// </summary>
     DuplicateLibrary,
+
+    /// <summary>
+    /// A mod reaching for something that is not there — a method or class that existed in the
+    /// version it was built against and does not exist here. Not a broken mod: the wrong build
+    /// of a working one, which is why the fix is to get the right build rather than to remove it.
+    /// </summary>
+    WrongBuild,
     OutOfMemory,
     Graphics,
     Java,
@@ -110,6 +117,10 @@ public static partial class CrashAnalyzer
         // nothing and the whole crash comes back as "nothing obvious".
         if (Incompatible(report) is { } incompatible) return incompatible;
 
+        // Also before the suspect hunt. The loader names the mod outright here too, and the fix
+        // is a different one — the mod is fine, it is the wrong build of it.
+        if (WrongBuild(report, installedMods) is { } wrong) return wrong;
+
         var suspects = FindSuspects(report, installedMods);
         if (suspects.Count == 0)
         {
@@ -127,6 +138,44 @@ public static partial class CrashAnalyzer
                 : $"{top.Name} is the most likely cause",
             "Turn it off and launch again. If the crash goes away you've found it; if not, turn it back on and try the next one.",
             suspects);
+    }
+
+    /// <summary>
+    /// A mod calling something that is not there.
+    ///
+    /// The loader names the mod whose entrypoint blew up, and the exception underneath says what
+    /// went missing — a method, a field, a whole class. Together those mean one thing: the mod
+    /// was compiled against a different version of the game, or of a library, than the one it is
+    /// running with. Its own file name usually admits it, carrying the Minecraft version it was
+    /// built for while the instance runs another.
+    ///
+    /// Worth telling apart from an ordinary mod crash because the fix is different. The mod is
+    /// not broken and does not want removing; the right build of it wants installing.
+    /// </summary>
+    private static CrashAnalysis? WrongBuild(string report, IReadOnlyList<ModEntry> installedMods)
+    {
+        if (EntrypointFailurePattern().Match(report) is not { Success: true } entrypoint) return null;
+        if (LinkagePattern().Match(report) is not { Success: true } linkage) return null;
+
+        var id = entrypoint.Groups["id"].Value;
+        var file = Resolve(id, BuildTokens(installedMods));
+
+        // Named a mod this instance does not have. Nothing to act on, so leave it to the suspect
+        // hunt rather than claiming to know.
+        if (file is null) return null;
+
+        var mod = installedMods.First(m => m.FileName.Equals(file, StringComparison.OrdinalIgnoreCase));
+
+        var missing = Shorten(linkage.Value);
+
+        return new CrashAnalysis(
+            CrashCause.WrongBuild,
+            $"{mod.Name} was built for a different version",
+            $"It called something the game no longer has, so the loader stopped: {missing}. That happens when a mod "
+            + "is built for one Minecraft version and run on another. Asobu can fetch the build made for this "
+            + "instance, and turn the mod off if its author has not published one.",
+            [new CrashSuspect(mod.Name, mod.FileName, DirectAccusationScore, NamedDirectly: true,
+                [Shorten(entrypoint.Value), missing])]);
     }
 
     /// <summary>
@@ -417,6 +466,27 @@ public static partial class CrashAnalyzer
     /// </summary>
     [GeneratedRegex(@"duplicate (?<what>[\w.-]+ )?classes found on classpath", RegexOptions.IgnoreCase)]
     private static partial Regex DuplicateLibraryPattern();
+
+    /// <summary>
+    /// Fabric naming the mod whose entrypoint threw:
+    ///
+    ///     Could not execute entrypoint stage 'main' due to errors, provided by 'corner-entity'
+    ///
+    /// The id in there is the mod's own, which is what the installed jars are matched against.
+    /// </summary>
+    [GeneratedRegex(@"Could not execute entrypoint stage '[^']*' due to errors,? provided by '(?<id>[^']+)'",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex EntrypointFailurePattern();
+
+    /// <summary>
+    /// The JVM's way of saying a class was compiled against something that is not here any more.
+    /// Every one of these means a version mismatch rather than a logic error — the code asked for
+    /// a member that existed when it was built.
+    /// </summary>
+    [GeneratedRegex(
+        @"java\.lang\.(?:NoSuchMethodError|NoSuchFieldError|NoClassDefFoundError|AbstractMethodError|"
+        + @"IncompatibleClassChangeError|ClassNotFoundException)[^\n]*")]
+    private static partial Regex LinkagePattern();
 
     [GeneratedRegex(@"Pixel format not accelerated|Couldn't set pixel format|Failed to create window|GLFW error|" +
         @"EXCEPTION_ACCESS_VIOLATION[\s\S]{0,400}?(nvoglv|atio6axx|amdvlk|ig\d*icd|opengl32|vulkan)|" +

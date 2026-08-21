@@ -64,6 +64,18 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
     [ObservableProperty] public partial Instance? Instance { get; set; }
     [ObservableProperty] public partial CrashReportEntry? Selected { get; set; }
     [ObservableProperty] public partial string? Content { get; set; }
+
+    /// <summary>
+    /// The same report, formatted the way the live log is: log4j events unwrapped into ordinary
+    /// lines and each one coloured by level.
+    ///
+    /// A launch log saved to disk is raw log4j XML — three lines of tags around every message —
+    /// and reading one in that state means reading past the markup to find the sentence. The
+    /// running game's output already went through this; there was no reason the saved copy
+    /// should not. Kept beside <see cref="Content"/> rather than replacing it, because the
+    /// analysis reads the original text.
+    /// </summary>
+    [ObservableProperty] public partial IReadOnlyList<GameLogLine> Lines { get; set; } = [];
     [ObservableProperty] public partial bool IsLoadingContent { get; set; }
     [ObservableProperty] public partial CrashAnalysis? Analysis { get; set; }
 
@@ -117,6 +129,7 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
     {
         _contentRequest?.Cancel();
         Content = null;
+        Lines = [];
         Analysis = null;
         Suspects.Clear();
         if (entry is null) return;
@@ -130,6 +143,11 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
             if (request.IsCancellationRequested) return;
 
             Content = text;
+
+            // Off the UI thread with the analysis: a launch log runs to hundreds of thousands of
+            // lines and formatting them is not work for the thread drawing the page.
+            Lines = await Task.Run(() => Format(text), request.Token);
+
             await AnalyseAsync(text);
         }
         catch (OperationCanceledException)
@@ -137,12 +155,35 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
         }
         catch (Exception ex)
         {
-            if (!request.IsCancellationRequested) Content = $"Couldn't read this file: {ex.Message}";
+            if (request.IsCancellationRequested) return;
+
+            Content = $"Couldn't read this file: {ex.Message}";
+            Lines = [new GameLogLine(Content, GameLogLevel.Error)];
         }
         finally
         {
             if (ReferenceEquals(_contentRequest, request)) IsLoadingContent = false;
         }
+    }
+
+    /// <summary>
+    /// Runs a whole saved report through the live log's formatter.
+    ///
+    /// The formatter is fed a line at a time because that is how it reads a running game, and an
+    /// event spans several lines. Drain picks up anything still buffered at the end — a report
+    /// that was cut off mid-event, which is exactly what a hard crash leaves behind.
+    /// </summary>
+    private static IReadOnlyList<GameLogLine> Format(string text)
+    {
+        var formatter = new GameLogFormatter();
+        var lines = new List<GameLogLine>();
+
+        foreach (var line in text.Split('\n'))
+            lines.AddRange(formatter.Feed(line.TrimEnd('\r')));
+
+        lines.AddRange(formatter.Drain());
+
+        return lines;
     }
 
     /// <summary>

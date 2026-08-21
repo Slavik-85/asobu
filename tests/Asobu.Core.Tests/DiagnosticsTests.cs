@@ -159,6 +159,143 @@ public class DiagnosticsTests
         Assert.Contains("None of your mods", analysis.Advice);
     }
 
+    /// <summary>Word for word from the report, for a mod built for 1.21.1 run on 1.21.8.</summary>
+    private const string WrongBuildCrash = """
+        ---- Minecraft Crash Report ----
+        Description: Initializing game
+
+        java.lang.RuntimeException: Could not execute entrypoint stage 'main' due to errors, provided by 'corner-entity' at 'com.corner.entity.CornerEntity'!
+        	at net.fabricmc.loader.impl.FabricLoaderImpl.lambda$invokeEntrypoints$0(FabricLoaderImpl.java:413)
+        Caused by: java.lang.NoSuchMethodError: 'net.minecraft.class_1299 net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder.build()'
+        	at knot//com.corner.entity.CornerEntity.<clinit>(CornerEntity.java:50)
+        """;
+
+    private static readonly Asobu.Core.Mods.ModEntry CornerEntity = new(
+        "C:/mods/corner-entity-2.0.0+1.21.1.jar", "corner-entity-2.0.0+1.21.1.jar",
+        "Corner Entity", "someone", "corner-entity", 4096, true, null);
+
+    [Fact]
+    public void Crash_NamesTheModThatWasBuiltForAnotherVersion()
+    {
+        var analysis = CrashAnalyzer.Analyze(WrongBuildCrash, [CornerEntity]);
+
+        Assert.Equal(CrashCause.WrongBuild, analysis.Cause);
+        Assert.Contains("Corner Entity", analysis.Headline);
+
+        // The suspect carries the file name so the sheet can find the jar and replace it.
+        var suspect = Assert.Single(analysis.Suspects);
+        Assert.Equal("corner-entity-2.0.0+1.21.1.jar", suspect.FileName);
+        Assert.True(suspect.NamedDirectly);
+    }
+
+    [Fact]
+    public void Crash_SaysTheFixIsAnotherBuildRatherThanRemoval()
+    {
+        var analysis = CrashAnalyzer.Analyze(WrongBuildCrash, [CornerEntity]);
+
+        // The mod is wanted; the wrong build of it is the problem. Advice that says "turn it off"
+        // would throw away a mod whose author has probably shipped one that works.
+        Assert.Contains("build made for this instance", analysis.Advice);
+    }
+
+    [Fact]
+    public void Crash_LeavesTheGuessingToTheSuspectHuntWhenTheModIsNotInstalled()
+    {
+        // Named a mod this instance does not have — claiming to know which jar to replace would
+        // be a lie, so it falls through rather than inventing one.
+        var analysis = CrashAnalyzer.Analyze(WrongBuildCrash, []);
+
+        Assert.NotEqual(CrashCause.WrongBuild, analysis.Cause);
+    }
+
+    [Fact]
+    public void Crash_DoesNotCallAnOrdinaryModCrashAWrongBuild()
+    {
+        // An entrypoint that threw something ordinary is a bug in the mod, not a version
+        // mismatch, and the fix for it is not "fetch another build".
+        const string ordinary = """
+            java.lang.RuntimeException: Could not execute entrypoint stage 'main' due to errors, provided by 'corner-entity' at 'com.corner.entity.CornerEntity'!
+            Caused by: java.lang.NullPointerException: Cannot invoke "java.lang.String.length()" because "s" is null
+            	at knot//com.corner.entity.CornerEntity.<clinit>(CornerEntity.java:50)
+            """;
+
+        Assert.NotEqual(CrashCause.WrongBuild, CrashAnalyzer.Analyze(ordinary, [CornerEntity]).Cause);
+    }
+
+    [Fact]
+    public void Log_UnwrapsSavedLog4jXmlTheWayTheLiveViewDoes()
+    {
+        // Straight out of a saved launch log: three lines of markup around one sentence.
+        const string raw = """
+            <log4j:Event logger="FabricLoader/GameProvider" timestamp="1787323148641" level="INFO" thread="main">
+              <log4j:Message><![CDATA[Loading Minecraft 1.21.8 with Fabric Loader 0.19.3]]></log4j:Message>
+            </log4j:Event>
+            """;
+
+        var line = Assert.Single(Formatted(raw));
+
+        Assert.Contains("Loading Minecraft 1.21.8 with Fabric Loader 0.19.3", line.Text);
+        Assert.Contains("FabricLoader/GameProvider", line.Text);
+        Assert.DoesNotContain("log4j", line.Text);
+        Assert.DoesNotContain("CDATA", line.Text);
+        Assert.Equal(GameLogLevel.Info, line.Level);
+    }
+
+    [Fact]
+    public void Log_ColoursAWarningAsAWarning()
+    {
+        const string raw = """
+            <log4j:Event logger="Sodium-Workarounds" timestamp="1787323152213" level="WARN" thread="main">
+              <log4j:Message><![CDATA[Sodium has applied one or more workarounds]]></log4j:Message>
+            </log4j:Event>
+            """;
+
+        Assert.Equal(GameLogLevel.Warn, Assert.Single(Formatted(raw)).Level);
+    }
+
+    [Fact]
+    public void Log_KeepsAStackTraceTogetherUnderItsError()
+    {
+        const string raw = """
+            <log4j:Event logger="FabricLoader" timestamp="1787323132553" level="ERROR" thread="Essential Thread 3">
+              <log4j:Message><![CDATA[Uncaught exception in thread "Essential Thread 3"]]></log4j:Message>
+              <log4j:Throwable><![CDATA[gg.essential.minecraftauth.exception.AuthenticationException: expired
+            	at knot//gg.essential.MicrosoftAuthenticationService.requestAccessToken(x.kt:146)
+            ]]></log4j:Throwable>
+            </log4j:Event>
+            """;
+
+        var lines = Formatted(raw);
+
+        // The message and every frame beneath it stay one error rather than the frames going
+        // quiet and separating from what they explain.
+        Assert.True(lines.Count >= 2);
+        Assert.All(lines, line => Assert.Equal(GameLogLevel.Error, line.Level));
+        Assert.Contains(lines, line => line.Text.Contains("requestAccessToken"));
+    }
+
+    [Fact]
+    public void Log_LeavesPlainTextAloneButStillReadsItsLevel()
+    {
+        // Crash reports are not XML at all, and plenty of mods print straight to stdout. None of
+        // that should be mangled — but a stack trace is still an error.
+        var lines = Formatted("java.lang.NoSuchMethodError: FabricEntityTypeBuilder.build()");
+
+        Assert.Equal(GameLogLevel.Error, Assert.Single(lines).Level);
+    }
+
+    private static IReadOnlyList<GameLogLine> Formatted(string text)
+    {
+        var formatter = new GameLogFormatter();
+        var lines = new List<GameLogLine>();
+
+        foreach (var line in text.Split('\n')) lines.AddRange(formatter.Feed(line.TrimEnd('\r')));
+
+        lines.AddRange(formatter.Drain());
+
+        return lines;
+    }
+
     [Theory]
     // A game version in front of the mod's own is not part of it.
     [InlineData("mc26.2-0.9.1-fabric", "0.9.0", true)]
