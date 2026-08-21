@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets/asobu.ico</ApplicationIcon>
+    <ApplicationIcon>../../assets/asobu.ico</ApplicationIcon>
 
     <!-- What an update compares itself against. The packaging script passes the same number to
          vpk, so the release on GitHub and the build inside it always agree. -->
@@ -60,6 +60,12 @@
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
+
+    <!-- Linked from assets/ rather than copied in beside the backdrops, so the icon the
+         generator writes and the icon the window shows cannot end up being different files.
+         The Link is what keeps it reachable as /Assets/asobu.ico. Forward slashes because the
+         Linux job builds this same file, and the Link becomes part of the resource's name. -->
+    <AvaloniaResource Include="../../assets/asobu.ico" Link="Assets/asobu.ico" />
   </ItemGroup>
 
   <ItemGroup>

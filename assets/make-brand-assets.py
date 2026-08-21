@@ -1,12 +1,13 @@
-"""Draws Asobu's icon and installer splash.
+"""Builds Asobu's icon and installer splash.
 
-Both are generated rather than drawn by hand so they cannot drift from the launcher: the mark
-here is the same rounded square and offset play triangle the sidebar draws, in the same accent,
-and the splash uses the same background and pink as the welcome the installer hands over to.
+The icon is artwork: asobu-source.png beside this file is drawn by hand, and everything here
+does is resample it into the sizes Windows and Linux each want. The splash is still generated,
+using the same background and pink as the welcome the installer hands over to, and the mark it
+draws is the same rounded square and offset play triangle the sidebar draws.
 
     python assets/make-brand-assets.py
 
-Needs Pillow. Writes asobu.ico and installer-splash.gif beside this file.
+Needs Pillow. Writes asobu.ico, asobu.png and installer-splash.gif beside this file.
 """
 
 import math
@@ -15,6 +16,10 @@ import os
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# The artwork the launcher's icon is made of. Kept as a file rather than drawn below, because
+# the icon somebody picks out of a taskbar is worth more than something a script can produce.
+SOURCE = os.path.join(HERE, "asobu-source.png")
 
 # Straight out of Styles/Asobu.axaml.
 ACCENT = (196, 67, 112)        # Accent, light theme — reads on both light and dark desktops
@@ -57,9 +62,14 @@ def draw_mark(size, fill=ACCENT, supersample=8):
 
 
 def build_icon():
-    """A .ico carrying every size Windows asks for, each scaled from one clean drawing."""
+    """A .ico carrying every size Windows asks for, each resampled from the artwork."""
     sizes = [16, 24, 32, 48, 64, 128, 256]
-    frames = [draw_mark(s) for s in sizes]
+
+    with Image.open(SOURCE) as art:
+        # Lanczos rather than nearest. The source is drawn at 256 rather than being a small grid
+        # blown up, so there is no block size to line up with, and point sampling would just
+        # throw away fifteen pixels in sixteen by the time it reached 16x16.
+        frames = [art.convert("RGBA").resize((s, s), Image.LANCZOS) for s in sizes]
 
     out = os.path.join(HERE, "asobu.ico")
     frames[-1].save(out, format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
@@ -67,14 +77,17 @@ def build_icon():
 
 
 def build_png():
-    """The same mark as a plain PNG, which is what Linux packaging wants.
+    """The same artwork as a plain PNG, which is what Linux packaging wants.
 
     AppImage and the .desktop entry beside it take a PNG; neither reads an .ico. 256 is the
     largest size freedesktop's icon spec defines, and every smaller one a desktop needs is
     scaled from it.
     """
     out = os.path.join(HERE, "asobu.png")
-    draw_mark(256).save(out, format="PNG")
+
+    with Image.open(SOURCE) as art:
+        art.convert("RGBA").save(out, format="PNG")
+
     print(f"wrote {out}  (256)")
 
 
