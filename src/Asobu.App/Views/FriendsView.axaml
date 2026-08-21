@@ -147,14 +147,21 @@
                                   Width="24" Height="24" Stretch="None"/>
                           </Viewbox>
                         </Button>
+                        <!-- One press arms, the second means it. An icon alone gave no warning
+                             and no second thought, and unfriending takes both people to undo. -->
                         <Button Classes="iconGhost" VerticalAlignment="Center" ToolTip.Tip="Remove friend"
-                                Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).RemoveCommand}"
+                                IsVisible="{Binding !IsConfirmingRemove}"
+                                Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).RemoveFriendCommand}"
                                 CommandParameter="{Binding}">
                           <Viewbox Classes="icon">
                             <Path Data="M6 6 L18 18 M18 6 L6 18" StrokeThickness="2" StrokeLineCap="Round"
                                   Width="24" Height="24" Stretch="None"/>
                           </Viewbox>
                         </Button>
+                        <Button Classes="confirmRemove" VerticalAlignment="Center" Content="Remove?"
+                                IsVisible="{Binding IsConfirmingRemove}"
+                                Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).RemoveFriendCommand}"
+                                CommandParameter="{Binding}"/>
                       </StackPanel>
                     </Grid>
                   </Border>

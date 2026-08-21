@@ -39,6 +39,13 @@ public partial class FriendRow(Friend friend) : ViewModelBase
     public bool HasFace => Face is not null;
     partial void OnFaceChanged(Bitmap? value) => OnPropertyChanged(nameof(HasFace));
 
+    /// <summary>
+    /// The X has been pressed once and is waiting to be meant. Only friends arm like this —
+    /// declining a request or cancelling one costs nothing to get wrong, where unfriending
+    /// somebody takes both of you to undo.
+    /// </summary>
+    [ObservableProperty] public partial bool IsConfirmingRemove { get; set; }
+
     /// <summary>Things said while their conversation was not the one on screen.</summary>
     [ObservableProperty] public partial int Unread { get; set; }
 
@@ -248,6 +255,7 @@ public partial class FriendsViewModel : ViewModelBase
         // ever existed in memory anyway.
         _conversations.Clear();
         CloseChat();
+        Disarm();
 
         // Somebody else's key is no use to this account, and holding it would have messages
         // sealed to the wrong person.
@@ -413,6 +421,7 @@ public partial class FriendsViewModel : ViewModelBase
 
         ChatError = null;
         Draft = "";
+        Disarm();
         ChatWith = row;
         Conversation = ConversationFor(row.Uuid);
 
@@ -691,6 +700,43 @@ public partial class FriendsViewModel : ViewModelBase
             NoticeIsGood = false;
             Notice = e.Message;
         }
+    }
+
+    /// <summary>
+    /// Unfriending, which asks first.
+    ///
+    /// The X used to do it on one press, and one press is easy to make by accident in a row of
+    /// small buttons — losing somebody who then has to be asked back and has to agree. So the
+    /// first press arms and the second means it, and an arming that goes unanswered forgets
+    /// itself rather than lying in wait for a stray click later.
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveFriendAsync(FriendRow? row)
+    {
+        if (row is null) return;
+
+        if (!row.IsConfirmingRemove)
+        {
+            foreach (var other in Friends) other.IsConfirmingRemove = ReferenceEquals(other, row);
+
+            // Forgets itself. Left armed, the next stray click on that spot would remove them
+            // after all, which is the accident this exists to stop rather than a shorter path
+            // to it.
+            var armed = row;
+            _ = Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ =>
+                Dispatcher.UIThread.Post(() => armed.IsConfirmingRemove = false));
+
+            return;
+        }
+
+        row.IsConfirmingRemove = false;
+        await RemoveAsync(row);
+    }
+
+    /// <summary>Clears any half-pressed X, for leaving the list or changing what it shows.</summary>
+    private void Disarm()
+    {
+        foreach (var row in Friends) row.IsConfirmingRemove = false;
     }
 
     /// <summary>Unfriend, cancel, or decline — one action, because it's one wish: not this person.</summary>

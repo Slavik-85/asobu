@@ -2696,6 +2696,20 @@
     <Setter Property="HorizontalAlignment" Value="Center"/>
   </Style>
 
+  <!-- The armed half of unfriending. Loud enough to be noticed mid-accident, small enough not
+       to shout at somebody who meant it. -->
+  <Style Selector="Button.confirmRemove">
+    <Setter Property="Padding" Value="10,6"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="FontSize" Value="11.5"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.confirmRemove /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource LogError}"/>
+    <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+    <Setter Property="CornerRadius" Value="9"/>
+  </Style>
+
   <!-- The count riding the friends button. Bordered in the page background so it reads as a
        badge sitting on the button rather than as part of it. -->
   <Style Selector="Border.fabBadge">
