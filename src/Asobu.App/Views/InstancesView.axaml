@@ -42,16 +42,13 @@
         <!-- Card grid sits underneath: when there are zero items it renders nothing, but as
              a Panel child declared first it must stay below the overlay messages below, or it
              would sit on top in z-order and swallow their clicks despite looking empty. -->
-        <ScrollViewer IsVisible="{Binding !IsEmpty}" ctrl:SmoothScroll.Enabled="True">
-          <ItemsControl ItemsSource="{Binding InstanceGroups}" Margin="0,0,0,24">
+        <ScrollViewer x:Name="LibraryScroll" IsVisible="{Binding !IsEmpty}" ctrl:SmoothScroll.Enabled="True">
+          <ItemsControl x:Name="BandList" ItemsSource="{Binding InstanceGroups}" Margin="0,0,0,24">
            <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:InstanceGroup">
              <!-- The whole band is the drop target, not just its header: aiming at a 30px strip
                   while dragging is a game, and the band below the pointer is unambiguous. -->
-             <StackPanel Margin="0,0,0,10" DragDrop.AllowDrop="True"
-                         DragDrop.DragOver="GroupBand_DragOver"
-                         DragDrop.DragLeave="GroupBand_DragLeave"
-                         DragDrop.Drop="GroupBand_Drop">
+             <StackPanel Classes="band" Margin="0,0,0,10" Classes.lifted="{Binding IsDragging}">
 
               <!-- A line rather than the bands shuffling live under the pointer: a band is tall
                    and full of cards, and rearranging them every frame is a layout pass each. -->
@@ -72,12 +69,18 @@
                 </Button.ContextMenu>
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                   <Border Grid.Column="0" Classes="groupPill">
-                    <StackPanel Orientation="Horizontal" Spacing="9">
-                      <!-- Drags the band. Its own press handler rather than the header's, and it
-                           marks the press handled so reaching for the grip does not also fold the
-                           band away underneath the pointer. -->
-                      <Border Classes="groupGrip" IsVisible="{Binding CanReorder}"
-                              Tag="{Binding}" PointerPressed="GroupGrip_PointerPressed">
+                    <!-- No Spacing on this row. The grip widens from nothing on hover, and a
+                         spacing would hold its gap open while it was still invisible — the name
+                         would sit permanently shifted right for a handle that was not there. -->
+                    <StackPanel Orientation="Horizontal">
+                      <!-- Drags the band, driving the pointer itself rather than handing over to
+                           the system drag loop: that one draws its own cursor and swallows the
+                           scroll wheel, and this one has to carry the band and keep scrolling. -->
+                      <Border Classes="groupGrip" IsVisible="{Binding CanReorder}" Tag="{Binding}"
+                              PointerPressed="GroupGrip_PointerPressed"
+                              PointerMoved="GroupGrip_PointerMoved"
+                              PointerReleased="GroupGrip_PointerReleased"
+                              PointerCaptureLost="GroupGrip_CaptureLost">
                         <Path Data="M0,0 H10 M0,4 H10" StrokeThickness="2" StrokeLineCap="Round"/>
                       </Border>
                       <Path Classes="groupChevron" Classes.expanded="{Binding IsExpanded}"
@@ -85,7 +88,7 @@
                             StrokeLineCap="Round" StrokeJoin="Round"
                             Width="9" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
                       <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
-                                 VerticalAlignment="Center"/>
+                                 Margin="9,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                   </Border>
                   <Border Grid.Column="1" Height="1" VerticalAlignment="Center"
@@ -226,6 +229,20 @@
                    TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                    Margin="0,0,0,20" Foreground="{DynamicResource Accent}"
                    IsVisible="{Binding Error, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+
+        <!-- The band riding along under the cursor. Declared last so it draws over everything,
+             outside the ScrollViewer so it cannot scroll away from the pointer it is following,
+             and hit-test invisible so it never becomes the thing beneath the pointer itself. -->
+        <Canvas x:Name="DragLayer" IsHitTestVisible="False">
+          <Border x:Name="DragGhost" Classes="dragGhost" IsVisible="False">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+              <Path Data="M0,0 H10 M0,4 H10" StrokeThickness="2" StrokeLineCap="Round"
+                    Stroke="{DynamicResource OnAccent}" VerticalAlignment="Center"/>
+              <TextBlock x:Name="DragGhostName" FontSize="13" FontWeight="SemiBold"
+                         Foreground="{DynamicResource OnAccent}" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+        </Canvas>
 
       </Panel>
     </Grid>

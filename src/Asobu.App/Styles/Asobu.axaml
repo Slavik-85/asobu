@@ -1679,19 +1679,70 @@
        Background has to be set to something, transparent included — a Border with no brush at
        all is not hit-testable, and the press that starts the drag would land on the header. -->
   <Style Selector="Border.groupGrip">
-    <Setter Property="Padding" Value="1,3"/>
+    <!-- Zero-width at rest, and the gap to the chevron is inside that width rather than being a
+         spacing on the row. Both have to be part of the same number, or the name sits shifted
+         right for a handle nobody can see. Clipped, so the icon slides out of its own edge
+         instead of spilling past it on the way. -->
+    <Setter Property="Width" Value="0"/>
+    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="Padding" Value="0,3,9,3"/>
+    <Setter Property="ClipToBounds" Value="True"/>
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
     <Setter Property="Cursor" Value="SizeAll"/>
-    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <!-- Eased, not sprung. An overshoot here reads as a shake rather than as bounce: this
+             width is a layout value, so every frame of it shoves the name beside it, and the
+             back-swing on the way closed drives it past zero and recovers in full view. The
+             spring belongs on the thing being carried, where it moves nothing but itself.
+
+             Opacity runs shorter than the width so the handle has finished appearing before it
+             has finished arriving, rather than sliding in as a half-visible smudge. -->
+        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.groupHeader:pointerover Border.groupGrip">
+    <Setter Property="Width" Value="21"/>
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+
+  <!-- The band left behind while its copy is being carried. Faded rather than hidden, so the
+       page keeps its shape and the gap the band would leave does not make everything jump.
+
+       The transition belongs to .band, which is always on, rather than to .lifted: a transition
+       declared on the class being added disappears along with it, and the fade back would not
+       run at all. -->
+  <Style Selector="StackPanel.band">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="StackPanel.band.lifted">
+    <Setter Property="Opacity" Value="0.38"/>
+  </Style>
+
+  <!-- What follows the cursor. Solid accent rather than a copy of the band: a translucent
+       hundreds-of-pixels-tall screenshot of cards would obscure the very lines it is being
+       dropped onto, and the name is the only part anyone is aiming with. -->
+  <Style Selector="Border.dragGhost">
+    <Setter Property="Padding" Value="11,7"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BoxShadow" Value="0 12 28 0 #4D000000"/>
+    <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+    <!-- Only the fade lives here. The position, the tilt and the spring on pickup are all set
+         per frame from the carry's own clock, and a transition on those would be fighting it. -->
     <Setter Property="Transitions">
       <Transitions>
         <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut"/>
       </Transitions>
     </Setter>
-  </Style>
-  <Style Selector="Button.groupHeader:pointerover Border.groupGrip">
-    <Setter Property="Opacity" Value="1"/>
   </Style>
   <Style Selector="Border.groupGrip Path">
     <Setter Property="Stroke" Value="{DynamicResource TextMuted}"/>

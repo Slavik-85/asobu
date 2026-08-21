@@ -87,6 +87,9 @@ public partial class InstanceGroup(string name, bool canDelete) : ViewModelBase
     [ObservableProperty] public partial bool ShowDropAbove { get; set; }
     [ObservableProperty] public partial bool ShowDropBelow { get; set; }
 
+    /// <summary>True for the band currently being carried, which fades where it sits.</summary>
+    [ObservableProperty] public partial bool IsDragging { get; set; }
+
     [ObservableProperty] public partial bool IsExpanded { get; set; } = true;
 
     /// <summary>True only while the band is folding away, so it stays mounted to animate.</summary>

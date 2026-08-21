@@ -1,4 +1,6 @@
-using System;
+﻿using System;
+using Avalonia;
+using Avalonia.Media;
 using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using Avalonia.Input;
@@ -294,97 +296,262 @@ public partial class InstancesView : UserControl
             vm.OpenSettingsForCommand.Execute(instance);
     }
 
-    // ---- Dragging a group band into a different place ----
+    // ---- Carrying a group band to a different place ----
+    //
+    // Driven from the pointer rather than handed to the system drag loop. That one draws its own
+    // cursor, gives no say in what the drag looks like, and holds the message pump for the length
+    // of it — so the wheel stops working and the page cannot scroll while a band is in the air.
+    // Both of those are the point here, so the pointer is captured and everything is done by hand.
+
+    /// <summary>How far the pointer must travel before a press becomes a drag rather than a click.</summary>
+    private const double DragThreshold = 4;
+
+    /// <summary>Distance from the top or bottom edge at which the page starts scrolling itself.</summary>
+    private const double AutoScrollMargin = 84;
+
+    /// <summary>Pixels per tick at the very edge, tapering to nothing at the edge of the margin.</summary>
+    private const double AutoScrollSpeed = 13;
 
     /// <summary>
-    /// In-process only: the name never leaves the launcher, so there is nothing to serialise and
-    /// nothing another application could be handed if somebody drags a band out of the window.
+    /// How far the ghost closes on the cursor each frame. Below 1 it trails, which is what makes
+    /// it read as carried rather than welded to the pointer.
     /// </summary>
-    private static readonly DataFormat<string> GroupBandFormat =
-        DataFormat.CreateInProcessFormat<string>("asobu-group-band");
+    private const double GhostFollow = 0.3;
 
-    private async void GroupGrip_PointerPressed(object? sender, PointerPressedEventArgs e)
+    private InstanceGroup? _carrying;
+    private Point _pressedAt;
+    private bool _carryStarted;
+
+    // Two frames, deliberately. The ghost lives on the Canvas and the bands live inside this
+    // control, and the toolbar above them means the two do not share an origin — mixing them up
+    // puts the line on the wrong band by exactly the height of the search row.
+    private Point _pointerOnPage;   // relative to this control, for finding the band underneath
+    private Point _ghostGoing;      // relative to the Canvas, for drawing the ghost
+
+    private Point _ghostAt;
+    private double _ghostScale;
+    private DispatcherTimer? _carryTimer;
+
+    // Reused rather than rebuilt sixty times a second.
+    private readonly RotateTransform _ghostTilt = new();
+    private readonly ScaleTransform _ghostSize = new();
+
+    /// <summary>Bumped by every pickup, so a queued fade-out cannot hide a ghost picked up since.</summary>
+    private int _carryGeneration;
+
+    private void GroupGrip_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not Control { Tag: InstanceGroup group } || !group.CanReorder) return;
+        if (sender is not Control { Tag: InstanceGroup band } grip || !band.CanReorder) return;
+        if (!e.GetCurrentPoint(grip).Properties.IsLeftButtonPressed) return;
 
         // Or the press bubbles on to the header button and folds the band away under the pointer.
         e.Handled = true;
 
-        var carried = new DataTransfer();
-        carried.Add(DataTransferItem.Create(GroupBandFormat, group.Name));
+        _carrying = band;
+        _carryStarted = false;
+        _pressedAt = e.GetPosition(this);
 
-        try
-        {
-            await DragDrop.DoDragDropAsync(e, carried, DragDropEffects.Move);
-        }
-        catch (Exception)
-        {
-            // A drag that the platform refuses to start is not worth interrupting anyone over.
-        }
-        finally
-        {
-            // Whatever happened — dropped, cancelled, or dragged out of the window entirely —
-            // the lines have to go. There is no drop handler on the paths that end elsewhere.
-            ClearDropLines();
-        }
+        e.Pointer.Capture(grip);
     }
 
-    private void GroupBand_DragOver(object? sender, DragEventArgs e)
+    private void GroupGrip_PointerMoved(object? sender, PointerEventArgs e)
     {
-        if (!TargetOf(sender, e, out var band, out var above) || band is null)
+        if (_carrying is null || sender is not Control grip) return;
+        if (!ReferenceEquals(e.Pointer.Captured, grip)) return;
+
+        var here = e.GetPosition(this);
+
+        // A press that never travels is somebody clicking the header, so nothing is picked up
+        // until the pointer has actually gone somewhere.
+        if (!_carryStarted)
         {
-            // Cleared here as well, so dragging back over the band you lifted does not leave the
-            // line it was last showing somewhere else on the page.
-            e.DragEffects = DragDropEffects.None;
-            ClearDropLines();
+            var moved = Math.Abs(here.X - _pressedAt.X) + Math.Abs(here.Y - _pressedAt.Y);
+            if (moved < DragThreshold) return;
+
+            BeginCarry(e.GetPosition(DragLayer));
+        }
+
+        _pointerOnPage = here;
+        _ghostGoing = e.GetPosition(DragLayer);
+
+        MarkDropTarget(here);
+    }
+
+    private void GroupGrip_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_carrying is null) return;
+
+        var carried = _carrying;
+        var landed = _carryStarted ? BandUnder(e.GetPosition(this)) : null;
+
+        EndCarry();
+        e.Pointer.Capture(null);
+
+        if (landed is { } drop && DataContext is InstancesViewModel vm)
+            vm.MoveGroup(carried.Name, drop.Band.Name, drop.Above);
+    }
+
+    /// <summary>Ends the carry wherever it got to — the window losing the pointer counts as let go.</summary>
+    private void GroupGrip_CaptureLost(object? sender, PointerCaptureLostEventArgs e) => EndCarry();
+
+    private void BeginCarry(Point at)
+    {
+        if (_carrying is null) return;
+
+        _carryStarted = true;
+        _carryGeneration++;
+        _carrying.IsDragging = true;
+
+        DragGhostName.Text = _carrying.Name;
+        DragGhost.RenderTransform = new TransformGroup { Children = { _ghostSize, _ghostTilt } };
+        DragGhost.Opacity = 1;
+        DragGhost.IsVisible = true;
+
+        // Starts under the cursor rather than easing in from wherever it was left last time,
+        // and a little small, so it springs up into the hand rather than simply appearing.
+        _ghostAt = at;
+        _ghostGoing = at;
+        _ghostScale = 0.84;
+        DrawGhost(0);
+
+        _carryTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _carryTimer.Tick -= CarryTick;
+        _carryTimer.Tick += CarryTick;
+        _carryTimer.Start();
+    }
+
+    private void EndCarry()
+    {
+        _carryTimer?.Stop();
+
+        var wasCarrying = _carryStarted;
+
+        if (_carrying is not null) _carrying.IsDragging = false;
+        _carrying = null;
+        _carryStarted = false;
+
+        ClearDropLines();
+
+        if (!wasCarrying)
+        {
+            DragGhost.IsVisible = false;
             return;
         }
 
-        e.DragEffects = DragDropEffects.Move;
+        // Faded out rather than snatched away, and unmounted only once the fade has run. The
+        // generation is what stops a second pickup, made during that fade, being hidden by the
+        // first one's timer.
+        var mine = _carryGeneration;
+        DragGhost.Opacity = 0;
 
-        ClearDropLines();
-        band.ShowDropAbove = above;
-        band.ShowDropBelow = !above;
-    }
-
-    private void GroupBand_DragLeave(object? sender, DragEventArgs e)
-    {
-        if (sender is Control { DataContext: InstanceGroup band })
-        {
-            band.ShowDropAbove = false;
-            band.ShowDropBelow = false;
-        }
-    }
-
-    private void GroupBand_Drop(object? sender, DragEventArgs e)
-    {
-        ClearDropLines();
-
-        if (!TargetOf(sender, e, out var band, out var above) || band is null) return;
-        if (e.DataTransfer.TryGetValue(GroupBandFormat) is not { } dragged) return;
-
-        (DataContext as InstancesViewModel)?.MoveGroup(dragged, band.Name, above);
-        e.Handled = true;
+        DispatcherTimer.RunOnce(
+            () => { if (_carryGeneration == mine) DragGhost.IsVisible = false; },
+            TimeSpan.FromMilliseconds(170));
     }
 
     /// <summary>
-    /// The band under the pointer and which half of it, or nothing if this is not a drop the
-    /// library will take — a band being dragged over itself included, which would be a move to
-    /// where it already is.
+    /// One frame of the carry: the ghost closes some of the distance to the cursor, and the page
+    /// scrolls itself if the pointer is being held near an edge.
+    ///
+    /// Both belong on a clock rather than on pointer movement. Holding still at the bottom of the
+    /// page is exactly when the scrolling is wanted, and that is precisely when no move arrives.
     /// </summary>
-    private static bool TargetOf(object? sender, DragEventArgs e, out InstanceGroup? band, out bool above)
+    private void CarryTick(object? sender, EventArgs e)
     {
-        band = null;
-        above = false;
+        if (!_carryStarted) return;
 
-        if (sender is not Control { DataContext: InstanceGroup hovered } control) return false;
-        if (e.DataTransfer.TryGetValue(GroupBandFormat) is not { } dragged) return false;
-        if (!hovered.CanReorder) return false;
-        if (hovered.Name.Equals(dragged, StringComparison.OrdinalIgnoreCase)) return false;
+        var dx = _ghostGoing.X - _ghostAt.X;
+        var dy = _ghostGoing.Y - _ghostAt.Y;
 
-        band = hovered;
-        above = e.GetPosition(control).Y < control.Bounds.Height / 2;
-        return true;
+        _ghostAt = new Point(_ghostAt.X + dx * GhostFollow, _ghostAt.Y + dy * GhostFollow);
+        _ghostScale += (1 - _ghostScale) * 0.22;
+
+        // Tilt out of how far behind it is running, so it swings when thrown about and settles
+        // level when held still. Capped, or a fast flick spins it.
+        DrawGhost(Math.Clamp(dx * 0.22, -11, 11));
+
+        AutoScroll();
+    }
+
+    private void DrawGhost(double tilt)
+    {
+        // Held below and right of the cursor, clear of the pointer itself.
+        Canvas.SetLeft(DragGhost, _ghostAt.X + 14);
+        Canvas.SetTop(DragGhost, _ghostAt.Y + 10);
+
+        _ghostTilt.Angle = tilt;
+        _ghostSize.ScaleX = _ghostScale;
+        _ghostSize.ScaleY = _ghostScale;
+    }
+
+    /// <summary>
+    /// Scrolls when the pointer is held near the top or bottom, faster the closer to the edge.
+    /// Without it the only bands reachable are the ones that happened to be on screen when the
+    /// drag started.
+    /// </summary>
+    private void AutoScroll()
+    {
+        if (LibraryScroll is not { } scroller) return;
+
+        var height = scroller.Bounds.Height;
+        if (height <= 0) return;
+
+        var y = _ghostGoing.Y;
+        var step = 0d;
+
+        if (y < AutoScrollMargin)
+            step = -AutoScrollSpeed * (1 - y / AutoScrollMargin);
+        else if (y > height - AutoScrollMargin)
+            step = AutoScrollSpeed * (1 - (height - y) / AutoScrollMargin);
+
+        if (step == 0) return;
+
+        var reach = Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height);
+        var next = Math.Clamp(scroller.Offset.Y + step, 0, reach);
+
+        if (Math.Abs(next - scroller.Offset.Y) < 0.01) return;
+
+        scroller.Offset = scroller.Offset.WithY(next);
+
+        // The bands have moved under a pointer that has not, so the line has to be worked out
+        // again — otherwise it stays on whichever band used to be there. In page coordinates:
+        // the band positions are measured in those, and the ghost's are not.
+        MarkDropTarget(_pointerOnPage);
+    }
+
+    private void MarkDropTarget(Point at)
+    {
+        ClearDropLines();
+
+        if (BandUnder(at) is not { } drop) return;
+
+        drop.Band.ShowDropAbove = drop.Above;
+        drop.Band.ShowDropBelow = !drop.Above;
+    }
+
+    /// <summary>
+    /// The band beneath a point and which half of it, or nothing where there is no landing to be
+    /// had — off the list entirely, over Pinned, or over the band already being carried.
+    /// </summary>
+    private (InstanceGroup Band, bool Above)? BandUnder(Point at)
+    {
+        if (BandList?.ItemsPanelRoot is not { } panel) return null;
+
+        foreach (var child in panel.Children)
+        {
+            if (child is not Control { DataContext: InstanceGroup band } container) continue;
+            if (!band.CanReorder || ReferenceEquals(band, _carrying)) continue;
+
+            if (container.TranslatePoint(default, this) is not { } origin) continue;
+
+            var top = origin.Y;
+            var bottom = top + container.Bounds.Height;
+            if (at.Y < top || at.Y > bottom) continue;
+
+            return (band, at.Y < top + container.Bounds.Height / 2);
+        }
+
+        return null;
     }
 
     private void ClearDropLines()
