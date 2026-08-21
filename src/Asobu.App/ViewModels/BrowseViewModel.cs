@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -52,6 +52,13 @@ public partial class BrowseViewModel(
 
     public bool IsInstanceScoped => Target is not null;
 
+    /// <summary>
+    /// What the target instance already has, so a result that is already in it says Added rather
+    /// than offering to add it again. Empty until the scan comes back, and empty for the
+    /// unscoped browser, which has no instance to compare against.
+    /// </summary>
+    private InstalledMods _installed = InstalledMods.Empty;
+
     /// <summary>Where closing this browser goes back to. Only set on the scoped one.</summary>
     private Action? _back;
 
@@ -85,6 +92,31 @@ public partial class BrowseViewModel(
 
         if (Categories.Count == 0) _ = LoadCategoriesAsync();
         if (Results.Count == 0) _ = SearchAsync();
+
+        _ = RefreshInstalledAsync();
+    }
+
+    /// <summary>
+    /// Rereads what the instance has and marks the results accordingly.
+    ///
+    /// Run again after each add rather than trusted from the first scan: a mod that brought
+    /// dependencies with it put several files in the folder, and any of them might be further
+    /// down the same list of search results.
+    /// </summary>
+    private async Task RefreshInstalledAsync()
+    {
+        if (Target is not { } target)
+        {
+            _installed = InstalledMods.Empty;
+            return;
+        }
+
+        // Reading forty jars is not something to do on the thread drawing the list.
+        _installed = await Task.Run(() => InstalledMods.For(launcher.Paths, target));
+
+        foreach (var card in Results)
+            if (!card.IsInstalled && _installed.Has(card.Mod))
+                card.IsInstalled = true;
     }
 
     [RelayCommand]
@@ -458,7 +490,10 @@ public partial class BrowseViewModel(
         {
             if (!_listed.Add(CatalogueMod.KeyFor(mod.Title))) continue;
 
-            var card = new ModCard(mod);
+            // Already in this instance, so the tile says Added and offers no button — the same
+            // state a tile reaches after being installed from here.
+            var card = new ModCard(mod) { IsInstalled = _installed.Has(mod) };
+
             Results.Add(card);
             _ = LoadIconAsync(card, cancellationToken);
         }
@@ -503,6 +538,9 @@ public partial class BrowseViewModel(
         if (Target is { } target)
         {
             await ModInstall.RunAsync(launcher, target, card);
+
+            // Dependencies came in alongside it, and any of them may be further down this list.
+            await RefreshInstalledAsync();
             return;
         }
 
@@ -510,7 +548,8 @@ public partial class BrowseViewModel(
             $"Install {card.Title}",
             instance => ModInstall.RunAsync(launcher, instance, card),
             // Every build this mod has, so the sheet can say which instances can take it.
-            async token => ModSupport.From(await launcher.Mods.GetVersionsAsync(card.Mod, token)));
+            async token => ModSupport.From(await launcher.Mods.GetVersionsAsync(card.Mod, token)),
+            card.Mod);
     }
 
     /// <summary>See the note on Explore's: this opens the mod's page inside Asobu.</summary>

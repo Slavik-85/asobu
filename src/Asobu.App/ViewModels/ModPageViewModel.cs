@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -493,7 +493,8 @@ public partial class ModPageViewModel(
 
                 return notice;
             },
-            async token => ModSupport.From(await launcher.Mods.GetVersionsAsync(card.Mod, token)));
+            async token => ModSupport.From(await launcher.Mods.GetVersionsAsync(card.Mod, token)),
+            card.Mod);
     }
 
     /// <summary>
@@ -677,7 +678,8 @@ public partial class ModPageViewModel(
         askInstall(
             $"Install {row.Name}",
             instance => InstallVersionAsync(instance, row),
-            _ => Task.FromResult(ModSupport.From([row.Version])));
+            _ => Task.FromResult(ModSupport.From([row.Version])),
+            Card?.Mod);
     }
 
     private async Task<string?> InstallVersionAsync(Instance instance, ModVersionRow row)
@@ -687,8 +689,10 @@ public partial class ModPageViewModel(
 
         try
         {
+            // The project goes along so an older build of this same mod is replaced rather than
+            // left beside the new one, which is what a version list is usually being used for.
             var result = await launcher.InstallVersionAsync(
-                instance, row.Version, Card?.Mod.Kind ?? ModKind.Mod);
+                instance, row.Version, Card?.Mod.Kind ?? ModKind.Mod, Card?.Mod);
 
             if (result.Installed)
             {

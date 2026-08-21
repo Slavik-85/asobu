@@ -26,10 +26,16 @@ namespace Asobu.App.ViewModels;
 /// Which versions and loaders the thing being installed has builds for, fetched when the sheet
 /// opens. It is what sorts the instances into the ones that can take it and the ones that cannot.
 /// </param>
+/// <param name="subject">
+/// The mod being installed, where the caller knows which one it is. Used only to say which
+/// instances already have it — an answer worth having before choosing, not a rule about what may
+/// be chosen.
+/// </param>
 public delegate void AskInstall(
     string title,
     Func<Instance, Task<string?>> install,
-    Func<CancellationToken, Task<ModSupport>> support);
+    Func<CancellationToken, Task<ModSupport>> support,
+    CatalogueMod? subject = null);
 
 /// <summary>One instance to choose between.</summary>
 public partial class InstanceChoice(Instance instance) : ViewModelBase
@@ -50,6 +56,13 @@ public partial class InstanceChoice(Instance instance) : ViewModelBase
     /// so the list does not flicker half the instances out from under the pointer.
     /// </summary>
     [ObservableProperty] public partial bool IsCompatible { get; set; } = true;
+
+    /// <summary>
+    /// This instance already has the mod. Said rather than enforced: choosing it again is a
+    /// perfectly reasonable way to move to a different build, and doing that replaces what is
+    /// there rather than adding a second copy.
+    /// </summary>
+    [ObservableProperty] public partial bool HasAlready { get; set; }
 
     /// <summary>Said on hover, since a greyed row that will not explain itself is a puzzle.</summary>
     public string Reason => $"No build for {LoaderName} {MinecraftVersion}";
@@ -96,7 +109,8 @@ public partial class InstallPickerViewModel(AsobuLauncher launcher, Action newIn
     public void Open(
         string title,
         Func<Instance, Task<string?>> install,
-        Func<CancellationToken, Task<ModSupport>> support)
+        Func<CancellationToken, Task<ModSupport>> support,
+        CatalogueMod? subject = null)
     {
         Title = title;
         _install = install;
@@ -114,6 +128,31 @@ public partial class InstallPickerViewModel(AsobuLauncher launcher, Action newIn
         IsOpen = true;
 
         _ = CheckAsync(support);
+        _ = MarkWhatIsAlreadyThereAsync(subject);
+    }
+
+    /// <summary>
+    /// Says which instances already have this mod.
+    ///
+    /// Not a filter and not a rule: an instance that has it is still worth choosing, because
+    /// choosing it is how someone moves to a different build. It is only worth knowing before
+    /// clicking rather than after.
+    /// </summary>
+    private async Task MarkWhatIsAlreadyThereAsync(CatalogueMod? subject)
+    {
+        if (subject is null) return;
+
+        // A scan of every instance's folders, off the UI thread and against the copy of the list
+        // that was current when the sheet opened.
+        var choices = _all;
+
+        var already = await Task.Run(() => choices
+            .Where(choice => InstalledMods.For(launcher.Paths, choice.Instance).Has(subject))
+            .ToList());
+
+        if (!ReferenceEquals(choices, _all)) return;
+
+        foreach (var choice in already) choice.HasAlready = true;
     }
 
     /// <summary>

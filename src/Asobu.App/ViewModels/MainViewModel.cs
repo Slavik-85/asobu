@@ -332,8 +332,9 @@ public partial class MainViewModel : ViewModelBase
     private void AskInstall(
         string title,
         Func<Instance, Task<string?>> install,
-        Func<CancellationToken, Task<ModSupport>> support) =>
-        InstallPicker.Open(title, install, support);
+        Func<CancellationToken, Task<ModSupport>> support,
+        CatalogueMod? subject = null) =>
+        InstallPicker.Open(title, install, support, subject);
 
     /// <summary>
     /// The same for a modpack, which cannot use the sheet above: there is no instance to choose

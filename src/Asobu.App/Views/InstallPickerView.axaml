@@ -78,6 +78,12 @@
                           <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock Text="{Binding LoaderName}" Classes="label"/>
                             <TextBlock Text="{Binding MinecraftVersion}" Classes="label"/>
+
+                            <!-- Said, not enforced: picking this one anyway is how someone moves
+                                 to a different build, and that replaces what is there. -->
+                            <TextBlock Text="Already has it" Classes="label"
+                                       Foreground="{DynamicResource Accent}"
+                                       IsVisible="{Binding HasAlready}"/>
                           </StackPanel>
                         </StackPanel>
                       </Grid>

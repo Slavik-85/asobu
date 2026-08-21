@@ -326,6 +326,11 @@ public sealed class AsobuLauncher
         if (ModScanner.ContentDirectory(Paths, instance.Folder, entry.Kind) is not { } destination)
             return new ModInstallResult(null, null, Reason: RefusalFor(entry.Kind));
 
+        // What is already there, looked up before anything is fetched. Installing a mod the
+        // instance has is a replacement rather than a second copy — which the loader refuses to
+        // start with anyway — so the old file is taken out once the new one has landed.
+        var previous = InstalledMods.For(Paths, instance).Find(entry);
+
         var blocked = false;
 
         foreach (var listing in entry.DownloadOrder)
@@ -361,6 +366,8 @@ public sealed class AsobuLauncher
                     ? new ModInstallResult(world, listing.Provider)
                     : new ModInstallResult(null, null, Reason: "That world's archive had no level.dat in it.");
 
+            RetirePreviousCopy(previous, landed, entry.Kind);
+
             // Dependencies go to mods/ whatever needed them: what a shader pack or a resource
             // pack cannot run without is a loader mod — Iris, or the mod whose blocks it retextures.
             var carried = await CarryDependenciesAsync(
@@ -378,14 +385,22 @@ public sealed class AsobuLauncher
     /// current. Picked off a mod's version list, so the file is already known and there is
     /// nothing left to ask for — except what it depends on, which is looked up like any other.
     /// </summary>
+    /// <param name="project">
+    /// The catalogue entry this build belongs to, where the caller knows it. Only used to find
+    /// the copy already installed so it can be replaced rather than added beside — a version
+    /// list gives no way to work out which file on disk is an older build of the same mod.
+    /// </param>
     public async Task<ModInstallResult> InstallVersionAsync(
         Instance instance, ModVersion version, ModKind kind = ModKind.Mod,
+        CatalogueMod? project = null,
         CancellationToken cancellationToken = default)
     {
         if (ModScanner.ContentDirectory(Paths, instance.Folder, kind) is not { } directory)
             return new ModInstallResult(null, null, Reason: RefusalFor(kind));
 
         if (version.Url is not { Length: > 0 } url) return new ModInstallResult(null, null, Blocked: true);
+
+        var previous = project is null ? null : InstalledMods.For(Paths, instance).Find(project);
 
         Directory.CreateDirectory(directory);
 
@@ -400,6 +415,8 @@ public sealed class AsobuLauncher
                 ? new ModInstallResult(world, version.Provider)
                 : new ModInstallResult(null, null, Reason: "That world's archive had no level.dat in it.");
 
+        RetirePreviousCopy(previous, landed, kind);
+
         var source = ModSources.FirstOrDefault(s => s.Provider == version.Provider);
 
         var carried = source is null
@@ -409,6 +426,34 @@ public sealed class AsobuLauncher
                 version.Requires, cancellationToken).ConfigureAwait(false);
 
         return new ModInstallResult(version.FileName, version.Provider, Dependencies: carried);
+    }
+
+    /// <summary>
+    /// Takes out the build that was already there, now that its replacement has landed.
+    ///
+    /// Two builds of one mod in a folder is exactly what a loader refuses to start with, so
+    /// installing a different version has to mean replacing rather than adding beside. Done after
+    /// the download rather than before, so a download that fails leaves the working copy alone.
+    /// </summary>
+    private static void RetirePreviousCopy(ModEntry? previous, string landed, ModKind kind)
+    {
+        // A world is a folder full of somebody's building, and "you already have this world" is
+        // never a reason to delete it. Installing one again lands beside it.
+        if (previous is null || kind == ModKind.World) return;
+
+        // Downloaded over itself: the same build, same file name. Nothing to retire, and deleting
+        // it here would delete what was just fetched.
+        if (string.Equals(previous.Path, landed, StringComparison.OrdinalIgnoreCase)) return;
+
+        try
+        {
+            File.Delete(previous.Path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Held open or read-only. Two builds is a mess the loader will complain about, but
+            // the one that was asked for is in — which beats failing the install over tidying.
+        }
     }
 
     /// <summary>

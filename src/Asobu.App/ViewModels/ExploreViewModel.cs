@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -811,7 +811,8 @@ public partial class ExploreViewModel(
             $"Install {card.Title}",
             instance => ModInstall.RunAsync(launcher, instance, card),
             // Every build this mod has, so the sheet can say which instances can take it.
-            async token => ModSupport.From(await launcher.Mods.GetVersionsAsync(card.Mod, token)));
+            async token => ModSupport.From(await launcher.Mods.GetVersionsAsync(card.Mod, token)),
+            card.Mod);
     }
 
     /// <summary>
