@@ -6,7 +6,15 @@ using Asobu.Core.Accounts;
 namespace Asobu.Core.Online;
 
 /// <summary>Someone on the network, as the friends list shows them.</summary>
-public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffset LastSeen);
+public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffset LastSeen)
+{
+    /// <summary>
+    /// The public half of their chat key, or null when they have not published one — an older
+    /// launcher, or one still starting. Without it there is no way to write to them that they
+    /// alone could read, so the answer is to say so rather than to send something readable.
+    /// </summary>
+    public string? PublicKey { get; init; }
+}
 
 /// <summary>
 /// One thing a friend said, as it arrived.
@@ -14,7 +22,7 @@ public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffse
 /// The server relays chat and keeps none of it, so this is the only copy there will ever be —
 /// once a snapshot carrying it has been read, asking again returns nothing.
 /// </summary>
-public sealed record ChatMessage(string From, string Name, string Text, DateTimeOffset At);
+public sealed record ChatMessage(string From, string Name, string Box, DateTimeOffset At);
 
 /// <summary>The whole social picture in one answer: friends, requests waiting on you, requests waiting on them.</summary>
 public sealed record FriendsSnapshot(
@@ -170,8 +178,16 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// conversation to open — sending is the whole of it, and what comes back arrives on the
     /// watch like everything else.
     /// </summary>
-    public Task SayAsync(string uuid, string text, CancellationToken cancellationToken = default) =>
-        SendAsync<OkReply>(HttpMethod.Post, "chat", new { to = uuid, text }, cancellationToken);
+    public Task SayAsync(string uuid, string box, CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Post, "chat", new { to = uuid, box }, cancellationToken);
+
+    /// <summary>
+    /// Publishes the public half of this launcher's chat key, so friends can seal messages that
+    /// only it can open. Sent on every connect: it is cheap, the server ignores an unchanged one,
+    /// and a key that never arrived is a conversation nobody can start.
+    /// </summary>
+    public Task PublishKeyAsync(string publicKey, CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Post, "chat/key", new { publicKey }, cancellationToken);
 
     public Task AddAsync(string name, CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "friends/requests", new { name }, cancellationToken);

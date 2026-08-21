@@ -36,6 +36,12 @@ type User struct {
 	UUID     string    `json:"uuid"` // dashless, lowercase, as Mojang reports it
 	Name     string    `json:"name"`
 	LastSeen time.Time `json:"lastSeen"`
+
+	// The public half of this account's chat key, base64 SPKI, published by its launcher so
+	// friends can seal messages to it. Public by design and useless on its own — the private
+	// half never leaves the machine that made it. This is the one piece of chat that is stored,
+	// and it is stored precisely because it is not a secret.
+	PublicKey string `json:"publicKey,omitempty"`
 }
 
 // One row per pair. From is the requester; Accepted flips when the other side says yes.
@@ -516,6 +522,11 @@ type wireFriend struct {
 	Name     string    `json:"name"`
 	Online   bool      `json:"online"`
 	LastSeen time.Time `json:"lastSeen"`
+
+	// Empty for somebody who has not published one — an older launcher, or one that has not
+	// finished starting. Their friend's client refuses to send rather than falling back to
+	// plaintext, which would quietly undo the whole thing.
+	PublicKey string `json:"publicKey,omitempty"`
 }
 
 func (s *Server) wire(uuid string) wireFriend {
@@ -523,7 +534,13 @@ func (s *Server) wire(uuid string) wireFriend {
 	if u == nil {
 		return wireFriend{UUID: uuid, Name: "?"}
 	}
-	return wireFriend{UUID: u.UUID, Name: u.Name, Online: time.Since(u.LastSeen) < onlineWindow, LastSeen: u.LastSeen}
+	return wireFriend{
+		UUID:      u.UUID,
+		Name:      u.Name,
+		Online:    time.Since(u.LastSeen) < onlineWindow,
+		LastSeen:  u.LastSeen,
+		PublicKey: u.PublicKey,
+	}
 }
 
 func (s *Server) handleFriendsList(w http.ResponseWriter, r *http.Request) {
@@ -742,6 +759,7 @@ func main() {
 	mux.HandleFunc("POST /v1/friends/accept", locked(s.handleFriendAccept))
 	mux.HandleFunc("DELETE /v1/friends/{uuid}", locked(s.handleFriendRemove))
 	mux.HandleFunc("POST /v1/chat", locked(s.handleChatSend))
+	mux.HandleFunc("POST /v1/chat/key", locked(s.handlePublishKey))
 	mux.HandleFunc("POST /v1/shares", locked(s.handleShareCreate))
 	mux.HandleFunc("GET /v1/shares/{code}", locked(s.handleShareRead))
 	mux.HandleFunc("DELETE /v1/shares/{code}", locked(s.handleShareDelete))

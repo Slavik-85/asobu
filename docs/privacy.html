@@ -43,7 +43,7 @@
       </p>
 
       <div class="note">
-        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. The Asobu server is only involved in friends, messages and share codes — it passes messages between friends without storing any of them, and it never sees your worlds, your game files, or your password.</p>
+        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. The Asobu server is only involved in friends, messages and share codes — it passes messages between friends encrypted, without being able to read them and without storing any of them, and it never sees your worlds, your game files, or your password.</p>
       </div>
 
       <h2>What we collect</h2>
@@ -130,10 +130,29 @@
           accepted friends. Removing someone stops them immediately.
         </li>
         <li>
-          <strong>It is not encrypted end to end.</strong> The connection is HTTPS, so nobody between you
-          and the server can read it, but the server handles the text in the clear on its way past. It
-          is a relay for "launching in five", not a secure messenger, and it would be wrong to let you
-          think otherwise.
+          <strong>They are encrypted end to end.</strong> Your launcher makes a key pair the first time
+          you use chat. The private half stays on your machine, in the same protected file as your
+          Microsoft token; the public half goes to the server so friends can seal messages to you. A
+          message is encrypted before it leaves your computer and opened on your friend's, so the
+          server relays something it has no key for.
+        </li>
+        <li>
+          <strong>The honest caveat: we hand out the public keys.</strong> That means a server that
+          lied — giving you its own key instead of your friend's — could sit in the middle and read
+          everything. No system where one party distributes the keys can rule that out by itself. Every
+          conversation therefore shows a row of numbers under the shield icon; read them to each other
+          somewhere else, and if they match, nobody is in the middle. If they don't, someone is.
+        </li>
+        <li>
+          <strong>What encryption does not hide.</strong> The server still has to know who is messaging
+          whom and when, because it has to know where to send things. The contents are closed to it;
+          the fact of the conversation is not.
+        </li>
+        <li>
+          <strong>No forward secrecy.</strong> The key that protects your messages is long-lived rather
+          than fresh per message, so somebody who both stole a private key and had kept a recording of
+          the ciphertext could read it. Keeping the recording is the hard part — nothing is stored, so
+          there is no archive to take.
         </li>
       </ul>
 

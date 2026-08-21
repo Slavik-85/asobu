@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Asobu.App.Controls;
@@ -21,6 +22,16 @@ public partial class FriendRow(Friend friend) : ViewModelBase
     public string Uuid => friend.Uuid;
     public string Name => friend.Name;
     public bool Online => friend.Online;
+
+    /// <summary>Their chat key, or null when they have not published one.</summary>
+    public string? PublicKey => friend.PublicKey;
+
+    /// <summary>
+    /// Whether anything can be sent to them. False for a friend on a launcher old enough not to
+    /// have a key: there is no way to write to them that only they could read, and sending
+    /// something readable instead would quietly break the promise the feature makes.
+    /// </summary>
+    public bool CanReceive => friend.PublicKey is { Length: > 0 };
 
     public string PresenceLabel => friend.Online ? "Online" : Ago(friend.LastSeen);
 
@@ -161,6 +172,31 @@ public partial class FriendsViewModel : ViewModelBase
         });
     }
 
+    /// <summary>
+    /// Makes sure this launcher has a chat key and that the server has its public half.
+    ///
+    /// Run on every connect. The key itself is made once and kept; publishing it again costs one
+    /// request the server discards when it is unchanged, which is a great deal cheaper than a
+    /// friend being unable to write to somebody because a key never arrived.
+    /// </summary>
+    private async Task EnsureChatKeyAsync()
+    {
+        if (_accounts.Active is not { } account) return;
+
+        try
+        {
+            _chatKey ??= new MessageCrypto(new TokenVault(_launcher.Paths)).MineFor(account.Uuid);
+            _myPublicKey = MessageCrypto.PublicKeyOf(_chatKey);
+
+            await _launcher.Friends.PublishKeyAsync(_myPublicKey);
+        }
+        catch (Exception)
+        {
+            // Offline, or an older server without the endpoint. Chat will say it cannot send
+            // rather than sending something readable, which is the right way to fail.
+        }
+    }
+
     private void StopWatching()
     {
         _watching?.Cancel();
@@ -191,6 +227,7 @@ public partial class FriendsViewModel : ViewModelBase
         {
             IsConnected = true;
             StartWatching();
+            _ = EnsureChatKeyAsync();
             return RefreshAsync(quiet: true);
         });
     }
@@ -211,6 +248,12 @@ public partial class FriendsViewModel : ViewModelBase
         // ever existed in memory anyway.
         _conversations.Clear();
         CloseChat();
+
+        // Somebody else's key is no use to this account, and holding it would have messages
+        // sealed to the wrong person.
+        _chatKey?.Dispose();
+        _chatKey = null;
+        _myPublicKey = null;
 
         Friends.Clear();
         Incoming.Clear();
@@ -245,6 +288,15 @@ public partial class FriendsViewModel : ViewModelBase
     /// </summary>
     private readonly Dictionary<string, ObservableCollection<ChatLine>> _conversations = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// This account's chat key. The private half stays here and in the vault; the public half is
+    /// published so friends can write to it.
+    /// </summary>
+    private ECDiffieHellman? _chatKey;
+
+    /// <summary>What this launcher published, for working out the fingerprint of a conversation.</summary>
+    private string? _myPublicKey;
+
     /// <summary>The friend whose conversation is on screen, or null when the list is.</summary>
     [ObservableProperty] public partial FriendRow? ChatWith { get; set; }
 
@@ -263,12 +315,72 @@ public partial class FriendsViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsChatting));
         OnPropertyChanged(nameof(CanSend));
+        OnPropertyChanged(nameof(Fingerprint));
+        OnPropertyChanged(nameof(HasFingerprint));
+        OnPropertyChanged(nameof(CanReachThem));
     }
+
+    /// <summary>Whether the person on screen can be written to at all.</summary>
+    public bool CanReachThem => ChatWith is { CanReceive: true };
 
     partial void OnDraftChanged(string value) => OnPropertyChanged(nameof(CanSend));
     partial void OnChatErrorChanged(string? value) => OnPropertyChanged(nameof(HasChatError));
     partial void OnConversationChanged(ObservableCollection<ChatLine>? value) =>
         OnPropertyChanged(nameof(ConversationIsEmpty));
+
+    /// <summary>What one message turns out to say, or a note in its place when it will not open.</summary>
+    private string Unseal(ChatMessage message)
+    {
+        if (_chatKey is null) return "[can't read this — no key on this launcher]";
+
+        var sender = Friends.FirstOrDefault(f =>
+            string.Equals(f.Uuid, message.From, StringComparison.OrdinalIgnoreCase));
+
+        if (sender?.PublicKey is not { Length: > 0 } theirs)
+            return "[can't read this — no key published for " + message.Name + "]";
+
+        return MessageCrypto.Open(_chatKey, theirs, message.Box)
+               ?? "[couldn't be decrypted — they may have changed keys]";
+    }
+
+    /// <summary>The longest a message may be, matched to what the server will carry once sealed.</summary>
+    private const int MaxMessageLength = 2000;
+
+    /// <summary>
+    /// Trims and takes out the characters that are not text.
+    ///
+    /// Done here because here is the only place it can be. The server used to do it and now sees
+    /// nothing but ciphertext, so a control character reaching a text renderer is this method's
+    /// to prevent or nobody's.
+    /// </summary>
+    private static string Clean(string text)
+    {
+        var kept = new System.Text.StringBuilder(text.Length);
+
+        foreach (var c in text)
+            if (c is '\n' or '\t' || !char.IsControl(c))
+                kept.Append(c);
+
+        return kept.ToString().Trim();
+    }
+
+    /// <summary>
+    /// The code both ends of this conversation can read out to each other.
+    ///
+    /// The one check that catches a server handing out the wrong key, which is the hole nothing
+    /// else here can close. Empty until both keys are known.
+    /// </summary>
+    public string? Fingerprint =>
+        _myPublicKey is { Length: > 0 } mine && ChatWith?.PublicKey is { Length: > 0 } theirs
+            ? MessageCrypto.Fingerprint(mine, theirs)
+            : null;
+
+    public bool HasFingerprint => Fingerprint is { Length: > 0 };
+
+    [ObservableProperty] public partial bool ShowFingerprint { get; set; }
+
+    [RelayCommand]
+    private void ToggleFingerprint() => ShowFingerprint = !ShowFingerprint;
 
     private ObservableCollection<ChatLine> ConversationFor(string uuid) =>
         _conversations.TryGetValue(uuid, out var existing)
@@ -309,7 +421,12 @@ public partial class FriendsViewModel : ViewModelBase
 
         foreach (var message in messages)
         {
-            ConversationFor(message.From).Add(new ChatLine(message.Text, mine: false, message.At));
+            // Only this launcher can. A message that will not open is shown as one that could
+            // not be read rather than hidden: silently dropping it would leave one person
+            // wondering why the other never replied.
+            var text = Unseal(message);
+
+            ConversationFor(message.From).Add(new ChatLine(text, mine: false, message.At));
 
             if (string.Equals(ChatWith?.Uuid, message.From, StringComparison.OrdinalIgnoreCase))
             {
@@ -328,7 +445,35 @@ public partial class FriendsViewModel : ViewModelBase
     [RelayCommand]
     private async Task SendChatAsync()
     {
-        if (ChatWith is not { } friend || Draft.Trim() is not { Length: > 0 } text) return;
+        if (ChatWith is not { } friend) return;
+
+        // The last place the text exists in the clear, so the last place anything about it can
+        // be checked. Control characters go here rather than at the server, which from now on
+        // sees only ciphertext.
+        var text = Clean(Draft);
+        if (text.Length == 0) return;
+
+        if (text.Length > MaxMessageLength) text = text[..MaxMessageLength];
+
+        if (_chatKey is null || friend.PublicKey is not { Length: > 0 } theirs)
+        {
+            // No fallback to sending it readable. A feature that says it is encrypted and
+            // quietly is not, when the other end is old or a key has not arrived, is worse than
+            // one that says it cannot send.
+            ChatError = $"{friend.Name} is on a version of Asobu that can't receive encrypted messages yet.";
+            return;
+        }
+
+        string box;
+        try
+        {
+            box = MessageCrypto.Seal(_chatKey, theirs, text);
+        }
+        catch (Exception e)
+        {
+            ChatError = "Couldn't encrypt that: " + e.Message;
+            return;
+        }
 
         // On screen before it is on the wire. Chat that waits for a round trip before showing
         // what you typed feels broken on a slow connection, and this one cannot be un-said
@@ -340,7 +485,7 @@ public partial class FriendsViewModel : ViewModelBase
 
         try
         {
-            await _launcher.Friends.SayAsync(friend.Uuid, text);
+            await _launcher.Friends.SayAsync(friend.Uuid, box);
         }
         catch (FriendsException e)
         {
@@ -379,6 +524,7 @@ public partial class FriendsViewModel : ViewModelBase
                 }
                 IsConnected = true;
                 StartWatching();
+                await EnsureChatKeyAsync();
             }
             catch (FriendsException e)
             {

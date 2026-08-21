@@ -1,10 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
 	"net/http"
-	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 // One message on its way from one friend to another.
@@ -14,16 +13,21 @@ import (
 // beside the auth handshakes, where nothing can serialise them by accident. A restart forgets
 // every message in flight, which is the correct amount of chat history for a relay to keep.
 type message struct {
-	From string    `json:"from"`
-	Name string    `json:"name"`
-	Text string    `json:"text"`
-	At   time.Time `json:"at"`
+	From string `json:"from"`
+	Name string `json:"name"`
+
+	// Nonce, ciphertext and authentication tag, base64. Sealed by the sender against the
+	// recipient's published key, so this process relays bytes it has no way to read — and the
+	// tag means it cannot alter them either without the recipient noticing.
+	Box string    `json:"box"`
+	At  time.Time `json:"at"`
 }
 
 const (
-	// Long enough for anything worth typing at somebody, short enough that a full inbox is a
-	// few hundred kilobytes of memory rather than a problem.
-	maxMessageRunes = 2000
+	// The sealed box, base64. A 2000-character message is at most 8 KB of UTF-8, plus a nonce
+	// and a tag, plus a third again for base64 — this leaves room and still bounds it. The
+	// server can no longer count characters, because it can no longer see any.
+	maxBoxBytes = 12000
 
 	// Messages one person may have waiting. Past this the oldest goes: somebody who has not
 	// opened Asobu in a week should not cost more than the last hundred things said to them.
@@ -63,19 +67,22 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		To   string `json:"to"`
-		Text string `json:"text"`
+		To  string `json:"to"`
+		Box string `json:"box"`
 	}
 	if !readBody(w, r, &body) {
 		return
 	}
 
-	text := cleanMessage(body.Text)
-	if text == "" {
+	// All that can be checked about a message nobody here can read: that there is one, and that
+	// it is not enormous. Emptiness, length in characters and anything about the text itself are
+	// the sending client's job now — necessarily, since that is the last place it exists in the
+	// clear.
+	if body.Box == "" {
 		fail(w, http.StatusBadRequest, "nothing to send")
 		return
 	}
-	if utf8.RuneCountInString(text) > maxMessageRunes {
+	if len(body.Box) > maxBoxBytes {
 		fail(w, http.StatusBadRequest, "that message is too long")
 		return
 	}
@@ -101,7 +108,7 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 	s.inbox[body.To] = append(waiting, message{
 		From: me.UUID,
 		Name: me.Name,
-		Text: text,
+		Box:  body.Box,
 		At:   time.Now(),
 	})
 
@@ -110,23 +117,6 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 	s.bump()
 
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-// cleanMessage trims a message and takes out the characters that are not text.
-//
-// Newlines and tabs stay — people write both on purpose. Everything else below a space goes:
-// escape sequences, nulls and the rest are of no use to anyone typing and every use to somebody
-// probing what a terminal or a text renderer does when handed them.
-func cleanMessage(text string) string {
-	var kept strings.Builder
-
-	for _, r := range text {
-		if r == '\n' || r == '\t' || r >= ' ' {
-			kept.WriteRune(r)
-		}
-	}
-
-	return strings.TrimSpace(kept.String())
 }
 
 // held counts every message waiting anywhere, for the ceiling on the process as a whole.
@@ -177,4 +167,53 @@ func (s *Server) dropStaleMessages(now time.Time) {
 
 		s.inbox[uuid] = kept
 	}
+}
+
+// handlePublishKey records the public half of a launcher's chat key.
+//
+// Public keys are the one part of chat that is stored, because a public key is not a secret and
+// friends have to be able to fetch one to send anything. What it costs is the honest caveat on
+// the whole feature: this server hands out the keys, so a server that lied could hand out its
+// own and read everything. The fingerprint each conversation shows is the answer to that, and it
+// only works if the two people actually compare it.
+func (s *Server) handlePublishKey(w http.ResponseWriter, r *http.Request) {
+	me := s.authed(w, r)
+	if me == nil {
+		return
+	}
+
+	if !s.limiter.allow("key:"+me.UUID, 20, time.Hour) {
+		fail(w, http.StatusTooManyRequests, "slow down")
+		return
+	}
+
+	var body struct {
+		PublicKey string `json:"publicKey"`
+	}
+	if !readBody(w, r, &body) {
+		return
+	}
+
+	// Must be base64 and must be about the size of a P-256 SPKI. Not proof it is a key — only
+	// the friend who fails to open a message would find that out — but enough that this field
+	// cannot be used as somewhere to park arbitrary data.
+	raw, err := base64.StdEncoding.DecodeString(body.PublicKey)
+	if err != nil || len(raw) < 32 || len(raw) > 200 {
+		fail(w, http.StatusBadRequest, "that is not a public key")
+		return
+	}
+
+	if me.PublicKey == body.PublicKey {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+
+	me.PublicKey = body.PublicKey
+	s.dirty = true
+
+	// Friends need to see the new key before they can send anything readable, so this is worth
+	// waking them for.
+	s.bump()
+
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
