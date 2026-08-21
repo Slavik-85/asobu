@@ -7,6 +7,42 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Asobu.App.ViewModels;
 
+/// <summary>One setting out of a mod's config file, as a control on screen.</summary>
+public partial class ConfigSettingRow : ViewModelBase
+{
+    private readonly ConfigSetting _setting;
+
+    public ConfigSettingRow(ConfigSetting setting)
+    {
+        _setting = setting;
+        Text = setting.Value;
+        IsOn = setting.Value == "true";
+    }
+
+    public string Key => _setting.Key;
+    public string Label => _setting.Label;
+    public string? Section => _setting.Section;
+
+    /// <summary>The mod author's own explanation, where the file's format kept one.</summary>
+    public string? Note => _setting.Note;
+    public bool HasNote => Note is { Length: > 0 };
+
+    public bool IsBoolean => _setting.Kind == ConfigValueKind.Boolean;
+    public bool IsText => _setting.Kind != ConfigValueKind.Boolean;
+
+    [ObservableProperty] public partial bool IsOn { get; set; }
+    [ObservableProperty] public partial string Text { get; set; }
+
+    /// <summary>What the control says now, in the file's own spelling.</summary>
+    public string Current => IsBoolean ? IsOn ? "true" : "false" : Text;
+
+    /// <summary>Only what moved is written back, so an untouched file stays untouched.</summary>
+    public bool Changed => !string.Equals(Current, _setting.Value, StringComparison.Ordinal);
+
+    partial void OnIsOnChanged(bool value) => OnPropertyChanged(nameof(Changed));
+    partial void OnTextChanged(string value) => OnPropertyChanged(nameof(Changed));
+}
+
 public partial class ModRowViewModel : ViewModelBase
 {
     private ModEntry _entry;
@@ -22,6 +58,15 @@ public partial class ModRowViewModel : ViewModelBase
     public string Name => _entry.Name;
     public string Author => _entry.Author;
     public string SizeLabel => _entry.SizeLabel;
+
+    /// <summary>What was scanned. Needed to find the mod's config, which is named after its id.</summary>
+    public ModEntry Entry => _entry;
+
+    /// <summary>Which folder this came out of, which decides what deleting it means.</summary>
+    public ModKind Kind { get; init; } = ModKind.Mod;
+
+    /// <summary>A world is a folder full of somebody's building; everything else is one file.</summary>
+    public bool IsWorld => Kind == ModKind.World;
 
     /// <summary>Where the jar is, which is how an update is matched back to the row that wants it.</summary>
     public string Path => _entry.Path;

@@ -577,6 +577,18 @@ public partial class InstancesView : UserControl
             vm.CloneForCommand.Execute(instance);
     }
 
+    private void ModConfig_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: ModRowViewModel row } && DataContext is InstancesViewModel vm)
+            vm.OpenModConfigCommand.Execute(row);
+    }
+
+    private void ModDelete_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: ModRowViewModel row } && DataContext is InstancesViewModel vm)
+            vm.AskDeleteContentCommand.Execute(row);
+    }
+
     private void CardDelete_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: Instance instance } && DataContext is InstancesViewModel vm)

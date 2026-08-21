@@ -457,6 +457,21 @@
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:ModRowViewModel">
                     <Border Classes="modRowShell">
+                      <!-- On the shell rather than the grid, so the whole row answers a
+                           right-click and not just the part with text in it. -->
+                      <!-- Tag and a Click handler rather than a command bound up through
+                           $parent: a ContextMenu is shown in a popup of its own and is not a
+                           child of the list, so an ancestor binding has no ancestor to find.
+                           Every other menu on this page is wired the same way for the same
+                           reason. -->
+                      <Border.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Config" Tag="{Binding}" Click="ModConfig_Click"/>
+                          <Separator/>
+                          <MenuItem Header="Delete" Classes="danger" Tag="{Binding}"
+                                    Click="ModDelete_Click"/>
+                        </ContextMenu>
+                      </Border.ContextMenu>
                       <DockPanel>
                         <!-- Outside the grid entirely: the same width the header leaves free, so
                              the columns are exactly what they were before any of this. -->
@@ -1010,6 +1025,95 @@
             </StackPanel>
           </StackPanel>
         </Grid>
+      </Border>
+    </Border>
+
+    <!-- ============ A mod's own settings ============ -->
+    <!-- The file the mod keeps its options in, as a form. Not what ModMenu does — that runs
+         inside the game and draws Minecraft's own screens — but the same file those screens
+         save to, which is the state the game actually reads at startup. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsModConfigOpen}"
+            Classes.closing="{Binding IsModConfigClosing}"
+            IsVisible="{Binding IsModConfigOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsModConfigOpen}"
+              Classes.closing="{Binding IsModConfigClosing}" Width="560" MaxHeight="680">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
+            <TextBlock Text="{Binding ModConfigTitle}" Classes="h2"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="Settings from this mod's own config file. Saved changes take effect the next time the game starts."/>
+
+            <!-- Shown only where there is a choice to make. -->
+            <ComboBox ItemsSource="{Binding ModConfigFiles}" SelectedItem="{Binding ModConfigFile}"
+                      HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                      IsVisible="{Binding HasModConfigChoice}"/>
+
+            <TextBlock Classes="sub" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Foreground="{DynamicResource TextMuted}"
+                       IsVisible="{Binding ModConfigLosesComments}"
+                       Text="This file is JSON, so saving rewrites it from its contents — any comments in it are not kept."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                        Margin="26,16,26,0">
+            <StackPanel Spacing="14">
+
+              <TextBlock Classes="sub" TextWrapping="Wrap" Text="{Binding ModConfigStatus}"
+                         Foreground="{DynamicResource Accent}"
+                         IsVisible="{Binding HasModConfigStatus}"/>
+
+              <ItemsControl ItemsSource="{Binding ModConfigSettings}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ConfigSettingRow">
+                    <StackPanel Spacing="5" Margin="0,0,0,14">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                          <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold"
+                                     TextWrapping="Wrap"/>
+                          <TextBlock Text="{Binding Section}" Classes="label"
+                                     IsVisible="{Binding Section, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsOn}" OnContent="" OffContent=""
+                                      VerticalAlignment="Center" IsVisible="{Binding IsBoolean}"/>
+                      </Grid>
+
+                      <!-- The mod author's own words, where the file's format kept them. -->
+                      <TextBlock Classes="sub" TextWrapping="Wrap" Text="{Binding Note}"
+                                 IsVisible="{Binding HasNote}"/>
+
+                      <TextBox Text="{Binding Text}" IsVisible="{Binding IsText}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+            </StackPanel>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="26,18,26,24"
+                      HorizontalAlignment="Right">
+            <Button Classes="ghost" Content="Close" Command="{Binding DismissModConfigCommand}"/>
+            <Button Classes="primary" Content="Save" Command="{Binding SaveModConfigCommand}"
+                    IsVisible="{Binding !ModConfigIsEmpty}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- ============ Deleting one thing out of the list ============ -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsDeleteContentOpen}"
+            IsVisible="{Binding IsDeleteContentOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsDeleteContentOpen}" Width="440">
+        <StackPanel Margin="26" Spacing="10">
+          <TextBlock Text="{Binding DeleteContentPrompt}" Classes="h2"/>
+          <TextBlock Text="{Binding DeleteContentDetail}" Classes="sub" TextWrapping="Wrap"/>
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Classes="ghost" Content="Keep it" Command="{Binding DismissDeleteContentCommand}"/>
+            <Button Classes="primary danger" Content="Delete"
+                    Command="{Binding ConfirmDeleteContentCommand}"/>
+          </StackPanel>
+        </StackPanel>
       </Border>
     </Border>
 

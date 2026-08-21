@@ -746,7 +746,11 @@ public partial class InstancesViewModel : ViewModelBase
             // something to replace it with, so a rescan does not blink the table away.
             Mods.Clear();
             foreach (var (entry, entryKind) in found)
-                Mods.Add(new ModRowViewModel(entry) { CanToggle = entryKind != ModKind.World });
+                Mods.Add(new ModRowViewModel(entry)
+                {
+                    CanToggle = entryKind != ModKind.World,
+                    Kind = entryKind,
+                });
 
             // After the folder is on screen, not before: hashing every jar and asking two web
             // services about them is not something to keep a list waiting for.
@@ -1912,6 +1916,224 @@ public partial class InstancesViewModel : ViewModelBase
     /// </summary>
     [RelayCommand]
     private void Clone() => OpenDuplicate(Selected);
+
+    // ---- Configuring and deleting one thing in the list, from its own menu ----
+
+    [ObservableProperty] public partial bool IsModConfigOpen { get; set; }
+    [ObservableProperty] public partial bool IsModConfigClosing { get; set; }
+    [ObservableProperty] public partial string ModConfigTitle { get; set; } = "";
+    [ObservableProperty] public partial string? ModConfigStatus { get; set; }
+
+    /// <summary>False for JSON, which comes back without whatever comments it went in with.</summary>
+    [ObservableProperty] public partial bool ModConfigLosesComments { get; set; }
+
+    /// <summary>Forge splits its settings across common, client and server; this is the picker.</summary>
+    public ObservableCollection<string> ModConfigFiles { get; } = [];
+    [ObservableProperty] public partial string? ModConfigFile { get; set; }
+
+    public ObservableCollection<ConfigSettingRow> ModConfigSettings { get; } = [];
+
+    private ModConfig? _openConfig;
+
+    /// <summary>Stops the file picker reacting while it is being repopulated.</summary>
+    private bool _loadingConfigFiles;
+
+    public bool HasModConfigChoice => ModConfigFiles.Count > 1;
+    public bool ModConfigIsEmpty => ModConfigSettings.Count == 0;
+    public bool HasModConfigStatus => ModConfigStatus is { Length: > 0 };
+
+    partial void OnModConfigStatusChanged(string? value) => OnPropertyChanged(nameof(HasModConfigStatus));
+
+    partial void OnModConfigFileChanged(string? value)
+    {
+        if (_loadingConfigFiles || value is not { Length: > 0 }) return;
+        ShowConfigFile(value);
+    }
+
+    /// <summary>
+    /// Opens the settings a mod keeps in its own config file.
+    ///
+    /// Worth saying what this is and is not, because the obvious comparison is ModMenu and this is
+    /// not that. ModMenu runs inside the game and asks each mod for a Minecraft screen to draw; a
+    /// launcher is a different program in a different runtime and cannot render one. What it can
+    /// do is edit the file those screens save to, which is the same state the game reads at
+    /// startup — the same destination, reached by the other door.
+    /// </summary>
+    [RelayCommand]
+    private void OpenModConfig(ModRowViewModel? row)
+    {
+        if (row is null || Selected is not { } instance) return;
+
+        _openConfig = null;
+        ModConfigSettings.Clear();
+        ModConfigStatus = null;
+        ModConfigTitle = row.Name;
+
+        var folder = _launcher.Paths.InstanceDir(instance.Folder);
+        var files = ModConfig.FilesFor(folder, row.Entry);
+
+        _loadingConfigFiles = true;
+        ModConfigFiles.Clear();
+        foreach (var file in files) ModConfigFiles.Add(file);
+        ModConfigFile = files.Count > 0 ? files[0] : null;
+        _loadingConfigFiles = false;
+
+        if (files.Count == 0)
+        {
+            // Not a failure, and worth saying why rather than showing an empty form: a mod with
+            // nothing to configure has written nothing, and one that has never been run has not
+            // written it yet.
+            ModConfigStatus = row.IsWorld
+                ? "Worlds have no settings file to edit. Their options live inside the world itself."
+                : $"No config file for {row.Name} under this instance's config folder. Mods write "
+                  + "one the first time they run, so launching once may be all it needs.";
+        }
+        else
+        {
+            ShowConfigFile(files[0]);
+        }
+
+        DismissSheets();
+        IsModConfigClosing = false;
+        IsModConfigOpen = true;
+
+        OnPropertyChanged(nameof(HasModConfigChoice));
+        OnPropertyChanged(nameof(ModConfigIsEmpty));
+    }
+
+    private void ShowConfigFile(string path)
+    {
+        ModConfigSettings.Clear();
+        ModConfigStatus = null;
+
+        _openConfig = ModConfig.Open(path);
+
+        if (_openConfig is null)
+        {
+            ModConfigStatus = "That file has nothing in it this can show as settings.";
+        }
+        else
+        {
+            foreach (var setting in _openConfig.Settings) ModConfigSettings.Add(new ConfigSettingRow(setting));
+        }
+
+        ModConfigLosesComments = _openConfig is { KeepsComments: false };
+
+        OnPropertyChanged(nameof(ModConfigIsEmpty));
+    }
+
+    [RelayCommand]
+    private void SaveModConfig()
+    {
+        if (_openConfig is null) return;
+
+        var changed = ModConfigSettings
+            .Where(row => row.Changed)
+            .ToDictionary(row => row.Key, row => row.Current);
+
+        if (changed.Count == 0)
+        {
+            ModConfigStatus = "Nothing changed.";
+            return;
+        }
+
+        try
+        {
+            _openConfig.Save(changed);
+
+            // Read back rather than assumed: what is on screen after a save should be what is in
+            // the file, including any value the file's own format nudged on the way in.
+            ShowConfigFile(_openConfig.Path);
+
+            ModConfigStatus = changed.Count == 1
+                ? "Saved. The game reads this at startup, so it applies next launch."
+                : $"Saved {changed.Count} settings. The game reads these at startup.";
+        }
+        catch (Exception e)
+        {
+            ModConfigStatus = "Couldn't save: " + e.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DismissModConfigAsync()
+    {
+        if (IsModConfigClosing) return;
+
+        IsModConfigClosing = true;
+        await Task.Delay(ModalSlideMilliseconds);
+
+        IsModConfigOpen = false;
+        IsModConfigClosing = false;
+        _openConfig = null;
+        ModConfigSettings.Clear();
+    }
+
+    // ---- Deleting one ----
+
+    [ObservableProperty] public partial bool IsDeleteContentOpen { get; set; }
+    [ObservableProperty] public partial string DeleteContentPrompt { get; set; } = "";
+    [ObservableProperty] public partial string DeleteContentDetail { get; set; } = "";
+
+    private ModRowViewModel? _deletingContent;
+
+    /// <summary>
+    /// Asks first, always.
+    ///
+    /// A mod can be downloaded again in a minute; a world cannot be got back at all, and the two
+    /// sit in the same list a right-click apart. Rather than confirm only the dangerous one, both
+    /// ask — a habit of pressing through a prompt that only sometimes appears is exactly how the
+    /// world goes.
+    /// </summary>
+    [RelayCommand]
+    private void AskDeleteContent(ModRowViewModel? row)
+    {
+        if (row is null) return;
+
+        _deletingContent = row;
+
+        DeleteContentPrompt = $"Delete {row.Name}?";
+        DeleteContentDetail = row.IsWorld
+            ? "This deletes the world folder and everything in it. There is no undo, and Asobu keeps no copy."
+            : "This deletes the file from this instance. You can add it again from Modrinth or CurseForge.";
+
+        IsDeleteContentOpen = true;
+    }
+
+    [RelayCommand]
+    private void DismissDeleteContent()
+    {
+        IsDeleteContentOpen = false;
+        _deletingContent = null;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmDeleteContentAsync()
+    {
+        if (_deletingContent is not { } row || Selected is not { } instance) return;
+
+        IsDeleteContentOpen = false;
+        _deletingContent = null;
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (Directory.Exists(row.Path)) Directory.Delete(row.Path, recursive: true);
+                else if (File.Exists(row.Path)) File.Delete(row.Path);
+            });
+
+            Mods.Remove(row);
+            OnPropertyChanged(nameof(HasNoMods));
+            OnPropertyChanged(nameof(ContentCountLabel));
+        }
+        catch (Exception e)
+        {
+            Error = $"Couldn't delete {row.Name}: {e.Message}";
+        }
+
+        await LoadModsAsync(instance);
+    }
 
     // ---- Duplicating an instance, possibly onto a different version or loader ----
 
