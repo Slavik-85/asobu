@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
@@ -827,57 +827,56 @@
       </Border>
     </Border>
 
-    <!-- ============ Delete confirmation ============ -->
-    <!-- Outside the instance sheet on purpose: the context menu can ask to delete a card without
-         that sheet ever being open. -->
-    <!-- ================= Version conflicts ================= -->
-    <!-- Raised after the game closes, never during: swapping a mod under someone mid-session is
-         the worst possible moment, and doing it without asking is worse still. -->
-    <!-- ============ Dependencies the loader could not find ============ -->
-    <!-- A missing dependency is the one crash cause with an obvious fix, so it is offered rather
-         than described. Nothing is fetched until it is asked for. -->
-    <Border Classes="modalScrim" Classes.open="{Binding IsDependencyPromptOpen}"
-            Classes.closing="{Binding IsDependencyPromptClosing}"
-            IsVisible="{Binding IsDependencyPromptOpen}">
-      <Border Classes="modalCard" Classes.open="{Binding IsDependencyPromptOpen}"
-              Classes.closing="{Binding IsDependencyPromptClosing}" Width="520" MaxHeight="560">
+    <!-- ============ What the last session complained about ============ -->
+    <!-- One sheet for all three kinds of trouble. They arrive together — a mod set that will not
+         start usually has a missing dependency and a version disagreement at once — and answering
+         them one modal at a time meant relaunching into the same wall to hear about the next. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsProblemsPromptOpen}"
+            Classes.closing="{Binding IsProblemsPromptClosing}"
+            IsVisible="{Binding IsProblemsPromptOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsProblemsPromptOpen}"
+              Classes.closing="{Binding IsProblemsPromptClosing}" Width="540" MaxHeight="580">
         <Grid RowDefinitions="Auto,*,Auto">
 
           <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
-            <TextBlock Text="{Binding DependencyQuestion}" Classes="h2" TextWrapping="Wrap"/>
+            <TextBlock Text="{Binding ProblemsQuestion}" Classes="h2" TextWrapping="Wrap"/>
             <TextBlock Classes="sub" TextWrapping="Wrap"
-                       Text="Minecraft named these on the way out. Asobu can fetch them for this instance."/>
+                       Text="Minecraft said so on the way out. Asobu can put it right from here."/>
           </StackPanel>
 
           <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
                         Margin="26,18,26,0">
-            <ItemsControl ItemsSource="{Binding MissingMods}">
+            <ItemsControl ItemsSource="{Binding Problems}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                   <StackPanel Spacing="8"/>
                 </ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:InstancesViewModel+DependencyRow">
+                <DataTemplate x:DataType="vm:InstancesViewModel+ProblemRow">
                   <Border Classes="versionRow">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                       <StackPanel Grid.Column="0" Spacing="3">
                         <TextBlock Text="{Binding Headline}" FontSize="13.5" FontWeight="Medium"
                                    TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Detail}" Classes="label" TextWrapping="Wrap"/>
                         <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
                                    Foreground="{DynamicResource Accent}"
-                                   IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
+                                   IsVisible="{Binding HasNotice}"/>
                       </StackPanel>
 
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="86">
-                        <Button Classes="primary" Content="Get it" HorizontalAlignment="Stretch"
-                                IsVisible="{Binding IsPending}"
-                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).InstallDependencyCommand}"
+                      <!-- The label comes from the row, so one template covers a swap, a
+                           download and a mod being turned off. -->
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="92">
+                        <Button Classes="primary" Content="{Binding ActionLabel}"
+                                HorizontalAlignment="Stretch" IsVisible="{Binding CanFix}"
+                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).FixCommand}"
                                 CommandParameter="{Binding}"/>
-                        <TextBlock Text="Fetching&#x2026;" Classes="label" HorizontalAlignment="Center"
-                                   IsVisible="{Binding IsInstalling}"/>
-                        <TextBlock Text="Added" Classes="label" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource Accent}" IsVisible="{Binding IsInstalled}"/>
+                        <TextBlock Text="{Binding BusyLabel}" Classes="label"
+                                   HorizontalAlignment="Center" IsVisible="{Binding IsFixing}"/>
+                        <TextBlock Text="{Binding DoneLabel}" Classes="label"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Accent}" IsVisible="{Binding IsDone}"/>
                       </StackPanel>
                     </Grid>
                   </Border>
@@ -886,10 +885,11 @@
             </ItemsControl>
           </ScrollViewer>
 
-          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
-                      Margin="26,18,26,24">
-            <Button Classes="ghost" Content="Not now" Command="{Binding DismissDependenciesCommand}"/>
-            <Button Classes="primary" Content="Get them all" Command="{Binding InstallAllDependenciesCommand}"/>
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="26,18,26,24"
+                      HorizontalAlignment="Right">
+            <Button Classes="ghost" Content="Leave it" Command="{Binding DismissProblemsCommand}"/>
+            <Button Classes="primary" Content="Fix everything"
+                    Command="{Binding FixEverythingCommand}"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -978,67 +978,9 @@
       </Border>
     </Border>
 
-    <Border Classes="modalScrim" Classes.open="{Binding IsConflictPromptOpen}"
-            Classes.closing="{Binding IsConflictPromptClosing}"
-            IsVisible="{Binding IsConflictPromptOpen}">
-      <Border Classes="modalCard" Classes.open="{Binding IsConflictPromptOpen}"
-              Classes.closing="{Binding IsConflictPromptClosing}" Width="520" MaxHeight="560">
-        <Grid RowDefinitions="Auto,*,Auto">
-
-          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
-            <TextBlock Text="{Binding ConflictQuestion}" Classes="h2" TextWrapping="Wrap"/>
-            <TextBlock Classes="sub" TextWrapping="Wrap"
-                       Text="Minecraft said so on the way out. Asobu can fetch the builds they asked for."/>
-          </StackPanel>
-
-          <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
-                        Margin="26,18,26,0">
-            <ItemsControl ItemsSource="{Binding Conflicts}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Spacing="8"/>
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:InstancesViewModel+ConflictRow">
-                  <Border Classes="versionRow">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                      <StackPanel Grid.Column="0" Spacing="3">
-                        <TextBlock Text="{Binding Headline}" FontSize="13.5" FontWeight="Medium"
-                                   TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding Detail}" Classes="label"/>
-                        <TextBlock Text="{Binding Notice}" Classes="label" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource Accent}"
-                                   IsVisible="{Binding HasNotice}"/>
-                      </StackPanel>
-
-                      <StackPanel Grid.Column="1" VerticalAlignment="Center" MinWidth="90">
-                        <Button Classes="primary" Content="Swap" HorizontalAlignment="Stretch"
-                                IsVisible="{Binding CanSwap}"
-                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).SwapCommand}"
-                                CommandParameter="{Binding}"/>
-                        <TextBlock Text="Swapping&#x2026;" Classes="label" HorizontalAlignment="Center"
-                                   IsVisible="{Binding IsSwapping}"/>
-                        <TextBlock Text="Swapped" Classes="label" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource Accent}"
-                                   IsVisible="{Binding IsSwapped}"/>
-                      </StackPanel>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-
-          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="26,18,26,24"
-                      HorizontalAlignment="Right">
-            <Button Classes="ghost" Content="Leave them" Command="{Binding DismissConflictsCommand}"/>
-            <Button Classes="primary" Content="Swap all" Command="{Binding SwapAllCommand}"/>
-          </StackPanel>
-        </Grid>
-      </Border>
-    </Border>
-
+    <!-- ============ Delete confirmation ============ -->
+    <!-- Outside the instance sheet on purpose: the context menu can ask to delete a card without
+         that sheet ever being open. -->
     <Border Classes="modalScrim" Classes.open="{Binding IsDeleteConfirmOpen}"
             Classes.closing="{Binding IsDeleteConfirmClosing}" IsVisible="{Binding IsDeleteConfirmOpen}">
       <Border Classes="modalCard" Classes.open="{Binding IsDeleteConfirmOpen}"

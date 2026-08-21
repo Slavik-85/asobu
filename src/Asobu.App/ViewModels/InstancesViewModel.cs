@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -2200,28 +2200,43 @@ public partial class InstancesViewModel : ViewModelBase
 
             // A non-zero exit after the game was up means a crash, not a normal quit — unless
             // someone ended it themselves, which exits the same way and is not news.
-            if (exitCode != 0 && !_killed) _ = ExplainCrashAsync(instance, exitCode);
+            var crashed = exitCode != 0 && !_killed;
 
             _killed = false;
 
-            CheckForConflicts(instance);
-            CheckForMissingDependencies(instance);
+            _ = ReviewSessionAsync(instance, exitCode, crashed);
         });
+    }
+
+    /// <summary>
+    /// Everything that happens after the game closes: say what went wrong, then offer to fix it.
+    ///
+    /// One path rather than two so the crash is analysed once. The analysis walks every jar in
+    /// the instance for its metadata, and the verdict on screen and the rows in the sheet want
+    /// the same answer — reading it twice would double the most expensive thing either does.
+    /// </summary>
+    private async Task ReviewSessionAsync(Instance instance, int exitCode, bool crashed)
+    {
+        var analysis = crashed ? await ExplainCrashAsync(instance, exitCode) : null;
+
+        await CheckForProblemsAsync(instance, analysis);
     }
 
     /// <summary>
     /// Reads the session that just ended and says what went wrong, rather than telling someone to
     /// go and look. The same analysis the crash reports page runs — a crash is the moment it is
     /// worth having, and making people find it afterwards wastes the one thing it is good at.
+    ///
+    /// Returns what it found so the sheet can offer to act on it without doing the work again.
     /// </summary>
-    private async Task ExplainCrashAsync(Instance instance, int exitCode)
+    private async Task<CrashAnalysis?> ExplainCrashAsync(Instance instance, int exitCode)
     {
         var fallback = $"Minecraft exited with code {exitCode}. Check the crash reports.";
 
         if (_launcher.LatestLogFor(instance) is not { Length: > 0 } path)
         {
             Error = fallback;
-            return;
+            return null;
         }
 
         try
@@ -2238,7 +2253,10 @@ public partial class InstancesViewModel : ViewModelBase
                 return CrashAnalyzer.Analyze(text, mods);
             });
 
-            if (Selected?.Id != instance.Id) return;
+            // Someone has moved on to another instance. The verdict belongs to this one and
+            // would be nonsense over there, but the analysis is still worth handing back: the
+            // sheet checks the same thing before it opens.
+            if (Selected?.Id != instance.Id) return analysis;
 
             // "No crash in this log" is a finding about the log, not about the session. Shown as
             // a verdict it reads as an error message insisting nothing is wrong, which is worse
@@ -2246,10 +2264,13 @@ public partial class InstancesViewModel : ViewModelBase
             Error = analysis.Cause == CrashCause.Clean ? fallback
                 : analysis.HasVerdict ? $"{analysis.Headline}. {analysis.Advice}"
                 : fallback;
+
+            return analysis;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             Error = fallback;
+            return null;
         }
     }
 
@@ -2565,266 +2586,310 @@ public partial class InstancesViewModel : ViewModelBase
         if (Selected is { } instance) await LoadModsAsync(instance);
     }
 
-    // ---- Dependencies the loader said were missing ----
+    // ---- Everything the last session complained about ----
 
-    /// <summary>One mod the loader asked for and could not find, and what became of fetching it.</summary>
-    public partial class DependencyRow(MissingDependency missing) : ViewModelBase
+    /// <summary>What kind of trouble a row describes, and therefore what putting it right means.</summary>
+    public enum ProblemKind
     {
-        public MissingDependency Missing { get; } = missing;
+        /// <summary>A mod is at a build another mod refuses to sit with. Swap it.</summary>
+        Conflict,
 
-        public string Headline => Missing.Headline;
+        /// <summary>A mod the loader asked for and could not find. Fetch it.</summary>
+        Missing,
 
-        [ObservableProperty] public partial bool IsInstalling { get; set; }
-        [ObservableProperty] public partial bool IsInstalled { get; set; }
-        [ObservableProperty] public partial string? Notice { get; set; }
-
-        public bool IsPending => !IsInstalled && !IsInstalling;
-
-        partial void OnIsInstalledChanged(bool value) => OnPropertyChanged(nameof(IsPending));
-
-        partial void OnIsInstallingChanged(bool value) => OnPropertyChanged(nameof(IsPending));
+        /// <summary>The mod a crash points at. Turn it off.</summary>
+        BadMod,
     }
-
-    public ObservableCollection<DependencyRow> MissingMods { get; } = [];
-
-    [ObservableProperty] public partial bool IsDependencyPromptOpen { get; set; }
-    [ObservableProperty] public partial bool IsDependencyPromptClosing { get; set; }
-
-    public string DependencyQuestion => MissingMods.Count == 1
-        ? "A mod is missing something it needs"
-        : $"{MissingMods.Count} mods are missing something they need";
-
-    private Instance? _dependencyInstance;
 
     /// <summary>
-    /// Reads the session that just ended for dependencies the loader could not find, and offers
-    /// to fetch them. A missing dependency is the one crash cause with an obvious fix, and
-    /// leaving someone to work out which of forty mods wanted "cloth-config" is the opposite of
-    /// what the launcher is for.
+    /// One thing that went wrong, whichever of the three kinds it is, and what has been done
+    /// about it.
+    ///
+    /// One row type rather than three because they are one question on screen: something is
+    /// wrong, here is the button that fixes it. The kinds differ in what the button does and what
+    /// it is called, which is a switch in two places rather than three of everything.
     /// </summary>
-    private void CheckForMissingDependencies(Instance instance)
+    public partial class ProblemRow : ViewModelBase
     {
-        // The conflict prompt gets first refusal: a wrong version and an absent mod read alike
-        // in a log, and two sheets over one launch is one too many.
-        if (IsConflictPromptOpen) return;
-
-        if (_launcher.LatestLogFor(instance) is not { Length: > 0 } path) return;
-
-        IReadOnlyList<MissingDependency> found;
-
-        try
+        private ProblemRow(ProblemKind kind, string headline, string detail)
         {
-            found = MissingDependencies.Find(File.ReadAllText(path));
-        }
-        catch (IOException)
-        {
-            return;
+            Kind = kind;
+            Headline = headline;
+            Detail = detail;
         }
 
-        if (found.Count == 0) return;
+        public static ProblemRow For(ModConflict conflict) =>
+            new(ProblemKind.Conflict, conflict.Headline, conflict.Detail) { Conflict = conflict };
 
-        MissingMods.Clear();
-        foreach (var missing in found) MissingMods.Add(new DependencyRow(missing));
+        public static ProblemRow For(MissingDependency missing) =>
+            new(ProblemKind.Missing, missing.Headline, "Not installed") { Missing = missing };
 
-        _dependencyInstance = instance;
-        OnPropertyChanged(nameof(DependencyQuestion));
-
-        IsDependencyPromptClosing = false;
-        IsDependencyPromptOpen = true;
-    }
-
-    [RelayCommand]
-    private async Task InstallDependencyAsync(DependencyRow? row)
-    {
-        if (row is null || _dependencyInstance is not { } instance || row.IsInstalling) return;
-
-        row.IsInstalling = true;
-        row.Notice = null;
-
-        try
-        {
-            var found = await _launcher.FindDependencyAsync(instance, row.Missing);
-
-            if (found is null)
+        public static ProblemRow For(CrashSuspect suspect) =>
+            new(ProblemKind.BadMod, $"{suspect.Name} looks like the cause", suspect.ConfidenceLabel)
             {
-                row.Notice = $"Neither shop has a mod called {row.Missing.Name}.";
-                return;
-            }
+                Suspect = suspect,
+            };
 
-            var result = await _launcher.InstallModAsync(instance, found);
+        public ProblemKind Kind { get; }
+        public string Headline { get; }
+        public string Detail { get; }
 
-            row.IsInstalled = result.Installed;
+        public ModConflict? Conflict { get; private init; }
+        public MissingDependency? Missing { get; private init; }
+        public CrashSuspect? Suspect { get; private init; }
 
-            row.Notice = result.Installed
-                ? $"Added {result.FileName}"
-                : result.Reason
-                  ?? (result.Blocked
-                      ? "The author allows downloads from their page only."
-                      : $"No build for {instance.LoaderName} {instance.MinecraftVersion}.");
-        }
-        catch (Exception ex)
+        /// <summary>
+        /// Every name this row's mod goes by, for keeping two findings about one mod off the
+        /// screen. Both the id and the display name, because the three finders do not agree on
+        /// which they report — a crash names "Sodium" where the loader said "sodium".
+        /// </summary>
+        public IReadOnlyList<string> Names => Kind switch
         {
-            row.Notice = ex.Message;
-        }
-        finally
+            ProblemKind.Conflict => [Conflict!.ModId, Conflict.ModName],
+            ProblemKind.Missing => [Missing!.Id, Missing.Name],
+            _ => [Suspect!.Name, Suspect.FileName],
+        };
+
+        public string ActionLabel => Kind switch
         {
-            row.IsInstalling = false;
-        }
+            ProblemKind.Conflict => "Swap",
+            ProblemKind.Missing => "Get it",
+            _ => "Turn off",
+        };
 
-        if (!MissingMods.All(dependency => dependency.IsInstalled)) return;
+        public string BusyLabel => Kind switch
+        {
+            ProblemKind.Conflict => "Swapping…",
+            ProblemKind.Missing => "Fetching…",
+            _ => "Turning off…",
+        };
 
-        await LoadModsAsync(instance);
-        await Task.Delay(SwapSettleMilliseconds);
-        await DismissDependenciesAsync();
-    }
+        public string DoneLabel => Kind switch
+        {
+            ProblemKind.Conflict => "Swapped",
+            ProblemKind.Missing => "Added",
+            _ => "Off",
+        };
 
-    [RelayCommand]
-    private async Task InstallAllDependenciesAsync()
-    {
-        foreach (var row in MissingMods.Where(dependency => dependency.IsPending).ToList())
-            await InstallDependencyAsync(row);
-    }
-
-    [RelayCommand]
-    private async Task DismissDependenciesAsync()
-    {
-        if (IsDependencyPromptClosing) return;
-
-        IsDependencyPromptClosing = true;
-        await Task.Delay(ModalSlideMilliseconds);
-
-        IsDependencyPromptOpen = false;
-        IsDependencyPromptClosing = false;
-        _dependencyInstance = null;
-    }
-
-    // ---- Version conflicts the loader reported ----
-
-    /// <summary>One mod asking for a different build of another, and what has been done about it.</summary>
-    public partial class ConflictRow(ModConflict conflict) : ViewModelBase
-    {
-        public ModConflict Conflict { get; } = conflict;
-
-        public string Headline => Conflict.Headline;
-        public string Detail => Conflict.Detail;
-
-        [ObservableProperty] public partial bool IsSwapping { get; set; }
-        [ObservableProperty] public partial bool IsSwapped { get; set; }
+        [ObservableProperty] public partial bool IsFixing { get; set; }
+        [ObservableProperty] public partial bool IsDone { get; set; }
         [ObservableProperty] public partial string? Notice { get; set; }
 
-        public bool CanSwap => !IsSwapping && !IsSwapped;
+        public bool CanFix => !IsFixing && !IsDone;
         public bool HasNotice => Notice is { Length: > 0 };
 
-        partial void OnIsSwappingChanged(bool value) => OnPropertyChanged(nameof(CanSwap));
-        partial void OnIsSwappedChanged(bool value) => OnPropertyChanged(nameof(CanSwap));
+        partial void OnIsFixingChanged(bool value) => OnPropertyChanged(nameof(CanFix));
+        partial void OnIsDoneChanged(bool value) => OnPropertyChanged(nameof(CanFix));
         partial void OnNoticeChanged(string? value) => OnPropertyChanged(nameof(HasNotice));
     }
 
-    public ObservableCollection<ConflictRow> Conflicts { get; } = [];
+    public ObservableCollection<ProblemRow> Problems { get; } = [];
 
-    [ObservableProperty] public partial bool IsConflictPromptOpen { get; set; }
-    [ObservableProperty] public partial bool IsConflictPromptClosing { get; set; }
+    [ObservableProperty] public partial bool IsProblemsPromptOpen { get; set; }
+    [ObservableProperty] public partial bool IsProblemsPromptClosing { get; set; }
 
-    private Instance? _conflictInstance;
+    private Instance? _problemsInstance;
 
-    public string ConflictQuestion => Conflicts.Count == 1
-        ? "One mod wants a different version of another"
-        : $"{Conflicts.Count} mods want different versions of others";
+    public string ProblemsQuestion => Problems.Count == 1
+        ? Problems[0].Kind switch
+        {
+            ProblemKind.Conflict => "One mod wants a different version of another",
+            ProblemKind.Missing => "A mod is missing something it needs",
+            _ => "One mod looks like the cause",
+        }
+        : $"{Problems.Count} things went wrong in that session";
+
+    /// <summary>A beat to see the last row land before the sheet takes itself away.</summary>
+    private const int SwapSettleMilliseconds = 850;
 
     /// <summary>
-    /// Reads the log the run just wrote and offers to put right what the loader complained about.
-    /// Asked after the game closes rather than acted on quietly: swapping a mod under someone is
-    /// not a thing to do without saying so, and mid-session is the worst possible moment.
+    /// Reads the log the session just wrote and offers to put right everything it complained
+    /// about, in one sheet.
+    ///
+    /// One sheet because they arrive together and they are one thought: a mod set that will not
+    /// start usually has a missing dependency and a version disagreement at the same time, and
+    /// answering them one modal at a time — which is what this did before, with the second
+    /// suppressed while the first was open — meant relaunching into the same wall to be told
+    /// about the next one.
+    ///
+    /// Asked after the game closes rather than acted on quietly: changing someone's mods without
+    /// saying so is not on, and mid-session is the worst possible moment for it.
     /// </summary>
-    private void CheckForConflicts(Instance instance)
+    private async Task CheckForProblemsAsync(Instance instance, CrashAnalysis? analysis)
     {
-        if (_launcher.LatestLogFor(instance) is not { } path) return;
+        if (_launcher.LatestLogFor(instance) is not { Length: > 0 } path) return;
 
-        IReadOnlyList<ModConflict> found;
-
-        try
+        // One read of the log, off the UI thread. Each finder used to open the file for itself,
+        // which on a long session is the same megabytes read twice while the window is meant to
+        // be repainting.
+        var found = await Task.Run(async () =>
         {
-            found = ModConflicts.Find(File.ReadAllText(path));
-        }
-        catch (IOException)
+            var rows = new List<ProblemRow>();
+
+            try
+            {
+                var log = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+
+                rows.AddRange(ModConflicts.Find(log).Select(ProblemRow.For));
+                rows.AddRange(MissingDependencies.Find(log).Select(ProblemRow.For));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return rows;
+            }
+
+            // Only when the analyser blames a mod outright. An out-of-memory kill or a graphics
+            // fault has no mod to turn off, and offering to turn one off anyway would be a guess
+            // wearing a fix's clothes.
+            if (analysis is { Cause: CrashCause.Mod })
+            {
+                // Every mod the crash named, or — when it named none — the single likeliest of
+                // the ones that merely turned up in the stack trace. One, because past the first
+                // the ranking is guesswork and a list of six mods to turn off is not a fix, it is
+                // the log again with buttons. Each row says which of the two it is.
+                var named = analysis.Suspects.Where(suspect => suspect.NamedDirectly).ToList();
+
+                rows.AddRange((named.Count > 0 ? named : analysis.Suspects.Take(1)).Select(ProblemRow.For));
+            }
+
+            return rows;
+        });
+
+        // Two findings about one mod is one problem described twice, and offering both invites
+        // fixing it twice. Order decides which survives: a conflict names the build to move to,
+        // which beats a dependency row, which beats "this one looks suspicious".
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        Problems.Clear();
+
+        foreach (var row in found)
         {
-            return;
+            if (row.Names.Any(seen.Contains)) continue;
+
+            foreach (var name in row.Names) seen.Add(name);
+            Problems.Add(row);
         }
 
-        if (found.Count == 0) return;
+        if (Problems.Count == 0) return;
 
-        Conflicts.Clear();
-        foreach (var conflict in found) Conflicts.Add(new ConflictRow(conflict));
+        _problemsInstance = instance;
+        OnPropertyChanged(nameof(ProblemsQuestion));
 
-        _conflictInstance = instance;
-        OnPropertyChanged(nameof(ConflictQuestion));
-
-        IsConflictPromptClosing = false;
-        IsConflictPromptOpen = true;
+        IsProblemsPromptClosing = false;
+        IsProblemsPromptOpen = true;
     }
 
     [RelayCommand]
-    private async Task SwapAsync(ConflictRow? row)
+    private async Task FixAsync(ProblemRow? row)
     {
-        if (row is null || _conflictInstance is not { } instance || row.IsSwapping) return;
+        if (row is null || _problemsInstance is not { } instance || row.IsFixing) return;
 
-        row.IsSwapping = true;
+        row.IsFixing = true;
         row.Notice = null;
 
         try
         {
-            var result = await _launcher.SwapModAsync(instance, row.Conflict);
+            var (done, notice) = await ApplyAsync(instance, row);
 
-            row.IsSwapped = result.Swapped;
-            row.Notice = result.Swapped
-                ? result.Reason ?? $"Now {result.Installed}"
-                : result.Reason;
+            row.IsDone = done;
+            row.Notice = notice;
         }
-        catch (Exception ex)
+        catch (Exception e)
         {
-            row.Notice = ex.Message;
+            row.Notice = e.Message;
         }
         finally
         {
-            row.IsSwapping = false;
+            row.IsFixing = false;
         }
 
         // Nothing left to decide once every row is dealt with, so the sheet goes rather than
         // waiting to be dismissed. A row that failed keeps it open, which is the point: that one
         // still needs reading.
-        if (!Conflicts.All(conflict => conflict.IsSwapped)) return;
+        if (!Problems.All(problem => problem.IsDone)) return;
 
         await LoadModsAsync(instance);
 
-        // Long enough to read "Swapped" and the file that replaced it. Closing the instant the
-        // last one lands would make the answer flash past.
+        // Long enough to read the last answer. Closing the instant it lands would flash it past.
         await Task.Delay(SwapSettleMilliseconds);
 
-        await DismissConflictsAsync();
+        await DismissProblemsAsync();
     }
 
-    /// <summary>A beat to see the last row land before the sheet takes itself away.</summary>
-    private const int SwapSettleMilliseconds = 850;
-
-    [RelayCommand]
-    private async Task SwapAllAsync()
+    /// <summary>Doing the thing the row's button says, which is the only place the kinds differ.</summary>
+    private async Task<(bool Done, string? Notice)> ApplyAsync(Instance instance, ProblemRow row)
     {
-        foreach (var row in Conflicts.Where(row => row.CanSwap).ToList())
-            await SwapAsync(row);
+        switch (row.Kind)
+        {
+            case ProblemKind.Conflict:
+            {
+                var result = await _launcher.SwapModAsync(instance, row.Conflict!);
+
+                return (result.Swapped, result.Swapped
+                    ? result.Reason ?? $"Now {result.Installed}"
+                    : result.Reason);
+            }
+
+            case ProblemKind.Missing:
+            {
+                var found = await _launcher.FindDependencyAsync(instance, row.Missing!);
+
+                if (found is null) return (false, $"Neither shop has a mod called {row.Missing!.Name}.");
+
+                var result = await _launcher.InstallModAsync(instance, found);
+
+                return (result.Installed, result.Installed
+                    ? $"Added {result.FileName}"
+                    : result.Reason
+                      ?? (result.Blocked
+                          ? "The author allows downloads from their page only."
+                          : $"No build for {instance.LoaderName} {instance.MinecraftVersion}."));
+            }
+
+            default:
+            {
+                // Turned off, never deleted. The accusation is a heuristic and says as much on
+                // screen; a mod that was only renamed can be turned back on by someone who
+                // disagrees, where a deleted one has to be found and downloaded again.
+                var directory = ModScanner.ModsDirectory(_launcher.Paths, instance.Folder);
+
+                var mod = await Task.Run(() => ModScanner.Scan(directory).FirstOrDefault(candidate =>
+                    string.Equals(candidate.FileName, row.Suspect!.FileName, StringComparison.OrdinalIgnoreCase)));
+
+                if (mod is null) return (false, $"{row.Suspect!.Name} is no longer in this instance.");
+                if (!mod.Enabled) return (true, "Already turned off.");
+
+                ModScanner.SetEnabled(mod, false);
+
+                return (true, $"Turned off {mod.FileName}. You can turn it back on from Mods.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The one-click answer, and the reason the sheet is worth having at all: everything it
+    /// found, put right, without reading a line of it.
+    /// </summary>
+    [RelayCommand]
+    private async Task FixEverythingAsync()
+    {
+        foreach (var row in Problems.Where(row => row.CanFix).ToList())
+            await FixAsync(row);
     }
 
     [RelayCommand]
-    private async Task DismissConflictsAsync()
+    private async Task DismissProblemsAsync()
     {
-        if (IsConflictPromptClosing) return;
+        if (IsProblemsPromptClosing) return;
 
-        IsConflictPromptClosing = true;
+        IsProblemsPromptClosing = true;
         await Task.Delay(ModalSlideMilliseconds);
 
-        IsConflictPromptOpen = false;
-        IsConflictPromptClosing = false;
-        _conflictInstance = null;
+        IsProblemsPromptOpen = false;
+        IsProblemsPromptClosing = false;
+        _problemsInstance = null;
     }
+
 
     // ---- Mods with a newer build ----
 

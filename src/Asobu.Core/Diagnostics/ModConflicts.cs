@@ -117,6 +117,12 @@ public sealed record ModConflict(
         { Exactly: { Length: > 0 } exact } => exact,
         { AtLeast: { Length: > 0 } floor, Below: { Length: > 0 } ceiling } => $"{floor} up to {ceiling}",
         { AtLeast: { Length: > 0 } floor } => $"{floor} or later",
+
+        // An exclusive floor, which is what every breakage produces. Without this case they all
+        // fell through to "a different version" below — so a screen of them said the same thing
+        // on every row, and the one number the loader actually gave us was thrown away.
+        { Above: { Length: > 0 } exclusive } => $"later than {exclusive}",
+
         { Below: { Length: > 0 } ceiling } => $"anything below {ceiling}",
         _ => "a different version",
     };
@@ -172,7 +178,14 @@ public static partial class ModConflicts
                 Bound(match.Groups["wanted"].Value),
                 match.Value.Trim())
             {
-                Alternative = breakages.GetValueOrDefault(name),
+                // The other end of this same disagreement, found by matching the mod Fabric wants
+                // replaced against the breakage that explains why. Matched on the target rather
+                // than the objector: the suggestion names the mod that has to move, and it is the
+                // one that objected which becomes the alternative.
+                Alternative = breakages
+                    .FirstOrDefault(b => b.Target.ModId.Equals(id, StringComparison.OrdinalIgnoreCase)
+                                      || b.Target.ModName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    ?.Objector,
             });
         }
 
@@ -182,16 +195,24 @@ public static partial class ModConflicts
         // Only where the loader suggested nothing: a breakage already carried as an alternative
         // above is the same disagreement, and listing it again would offer two rows for one
         // problem — and invite someone to fix it twice, from both ends.
+        // Every mod already spoken for by a row above, from either end. A breakage whose target is
+        // the subject of a suggested fix is that same fix seen from the other side.
         var carried = found
-            .Select(conflict => conflict.Alternative?.ModId)
+            .SelectMany(conflict => new[] { conflict.ModId, conflict.Alternative?.ModId })
             .Where(id => id is { Length: > 0 })
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToHashSet(StringComparer.OrdinalIgnoreCase!);
 
-        foreach (var (by, target) in breakages)
+        foreach (var breakage in breakages)
         {
+            var target = breakage.Target;
             if (carried.Contains(target.ModId) || !seen.Add(target.ModId)) continue;
 
-            found.Add(new ModConflict(by, target.ModId, target.ModName, null, target.Wanted, by));
+            found.Add(new ModConflict(
+                breakage.Objector.ModName, target.ModId, target.ModName, null, target.Wanted,
+                breakage.Objector.ModName)
+            {
+                Alternative = breakage.Objector,
+            });
         }
 
         foreach (Match match in Quilt().Matches(log))
@@ -298,26 +319,36 @@ public static partial class ModConflicts
     private static partial Regex Fabric();
 
     /// <summary>
-    /// Every "X is incompatible with version V or earlier of mod 'Y', yet a conflicting version
-    /// is present" in the log, keyed by X — the mod that declared the incompatibility.
+    /// One "X is incompatible with version V or earlier of mod 'Y', yet a conflicting version is
+    /// present" line, with both ends of it kept.
     ///
-    /// What it yields is the fix from the other end: Y has to be strictly above V. That is the
-    /// half Fabric's own suggestion never states, since it only ever proposes changing X.
+    /// Both are needed because the two ways out of one disagreement point in opposite directions:
+    /// <see cref="Target"/> is Y moving past V, which is the fix Fabric states, and
+    /// <see cref="Objector"/> is X moving instead, which is the fix it never mentions because it
+    /// only ever proposes changing one of the pair.
     /// </summary>
-    private static Dictionary<string, ModSwapTarget> Breakages(string log)
+    private sealed record Breakage(ModSwapTarget Objector, ModSwapTarget Target);
+
+    private static List<Breakage> Breakages(string log)
     {
-        var found = new Dictionary<string, ModSwapTarget>(StringComparer.OrdinalIgnoreCase);
+        var found = new List<Breakage>();
 
         foreach (Match match in FabricBreakage().Matches(log))
         {
             var by = match.Groups["by"].Value.Trim();
+            var byId = match.Groups["byId"].Value.Trim();
             var id = match.Groups["id"].Value.Trim();
             var name = match.Groups["name"].Value.Trim();
             var ceiling = match.Groups["ceiling"].Value.Trim();
 
             if (by.Length == 0 || id.Length == 0 || ceiling.Length == 0) continue;
 
-            found.TryAdd(by, new ModSwapTarget(id, name, new VersionBound(null, null, null) { Above = ceiling }));
+            found.Add(new Breakage(
+                // No bound for the objector: the log says which version of it refuses to sit with
+                // what, never which version of it would. Any means the newest build that fits the
+                // instance, which is the best guess available and usually the right one.
+                new ModSwapTarget(byId.Length > 0 ? byId : by, by, VersionBound.Any),
+                new ModSwapTarget(id, name, new VersionBound(null, null, null) { Above = ceiling })));
         }
 
         return found;
@@ -328,7 +359,7 @@ public static partial class ModConflicts
     /// below that version is refused, so the mod has to go strictly past it.
     /// </summary>
     [GeneratedRegex(
-        @"Mod '(?<by>[^']+)' \([^)]+\)[^\n]*? is incompatible with version (?<ceiling>\S+) or earlier "
+        @"Mod '(?<by>[^']+)' \((?<byId>[^)]+)\)[^\n]*? is incompatible with version (?<ceiling>\S+) or earlier "
         + @"of mod '(?<name>[^']+)' \((?<id>[^)]+)\), yet a conflicting version is present",
         RegexOptions.IgnoreCase)]
     private static partial Regex FabricBreakage();
