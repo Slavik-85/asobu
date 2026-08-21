@@ -15,6 +15,13 @@ public sealed record ModEntry(
     byte[]? IconPng)
 {
     public string SizeLabel => Format.Bytes(Size);
+
+    /// <summary>
+    /// True when the jar said what it is called. False means the name above was worked out from
+    /// the file name, which is the case a catalogue title can improve on — and the only way to
+    /// tell the two apart, since both arrive as an ordinary string.
+    /// </summary>
+    public bool Declared { get; init; }
 }
 
 /// <summary>
@@ -332,7 +339,10 @@ public static class ModScanner
                 string.IsNullOrWhiteSpace(modId) ? null : modId,
                 info.Length,
                 enabled,
-                icon));
+                icon)
+            {
+                Declared = !string.IsNullOrWhiteSpace(name),
+            });
         }
         catch (Exception e) when (e is InvalidDataException or JsonException or IOException)
         {
@@ -411,7 +421,10 @@ public static class ModScanner
             string.IsNullOrWhiteSpace(modId) ? null : modId,
             size,
             enabled,
-            icon);
+            icon)
+        {
+            Declared = !string.IsNullOrWhiteSpace(displayName),
+        };
     }
 
     /// <summary>

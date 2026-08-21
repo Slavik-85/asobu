@@ -733,12 +733,19 @@ public partial class InstancesViewModel : ViewModelBase
             var kinds = kind == ModKind.Any ? ModContent.Local : [kind];
             var folder = instance.Folder;
 
-            var found = await Task.Run(() => kinds
-                .Select(one => (Kind: one, Directory: ModScanner.ContentDirectory(_launcher.Paths, folder, one)))
-                .Where(pair => pair.Directory is not null)
-                .SelectMany(pair => ModScanner.Scan(pair.Directory!, pair.Kind)
-                    .Select(entry => (Entry: entry, pair.Kind)))
-                .ToList());
+            var found = await Task.Run(() =>
+            {
+                // What the shops called these files, for the ones whose jars never say. Read once
+                // for the whole scan rather than per file.
+                var credits = ModCredits.For(_launcher.Paths, instance);
+
+                return kinds
+                    .Select(one => (Kind: one, Directory: ModScanner.ContentDirectory(_launcher.Paths, folder, one)))
+                    .Where(pair => pair.Directory is not null)
+                    .SelectMany(pair => ModScanner.Scan(pair.Directory!, pair.Kind)
+                        .Select(entry => (Entry: credits.Dress(entry), pair.Kind)))
+                    .ToList();
+            });
 
             // Superseded, or the dropdown moved on while a large folder was being read.
             if (load != _modsLoad || Selected?.Id != instance.Id || Kind != kind) return;

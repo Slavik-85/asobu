@@ -428,6 +428,12 @@ public sealed class AsobuLauncher
 
             RetirePreviousCopy(previous, landed, entry.Kind);
 
+            // What the shop called it, kept beside the instance. Some jars carry no name of their
+            // own — Essential's Forge build has no manifest at all — and this is the only moment
+            // the launcher will ever know what the project is actually called.
+            ModCredits.Record(Paths, instance, download.FileName,
+                new ModCredit(listing.Title, listing.Author, listing.ProviderName));
+
             // Dependencies go to mods/ whatever needed them: what a shader pack or a resource
             // pack cannot run without is a loader mod — Iris, or the mod whose blocks it retextures.
             var carried = await CarryDependenciesAsync(
@@ -476,6 +482,10 @@ public sealed class AsobuLauncher
                 : new ModInstallResult(null, null, Reason: "That world's archive had no level.dat in it.");
 
         RetirePreviousCopy(previous, landed, kind);
+
+        if (project is { } listed)
+            ModCredits.Record(Paths, instance, version.FileName,
+                new ModCredit(listed.Title, listed.Author, version.Provider.ToString()));
 
         var source = ModSources.FirstOrDefault(s => s.Provider == version.Provider);
 

@@ -41,8 +41,9 @@ public sealed class ModMetadataCache
     ///
     /// 2: Forge and NeoForge manifests, which used to fall back to the file name.
     /// 3: a readable name for the jars that declare none, rather than the file name whole.
+    /// 4: whether the jar named itself, which decides if a catalogue title may improve on it.
     /// </summary>
-    private const int Generation = 3;
+    private const int Generation = 4;
 
     public ModMetadataCache(AsobuPaths paths)
     {
@@ -139,13 +140,13 @@ public sealed class ModMetadataCache
     /// path and enabled flag, which belong to the file on disk rather than to what is inside it,
     /// and storing them would mean a rename invalidated a perfectly good answer.
     /// </summary>
-    private sealed record Entry(string Name, string Author, string? ModId, byte[]? IconPng)
+    private sealed record Entry(string Name, string Author, string? ModId, byte[]? IconPng, bool Declared)
     {
-        public static Entry From(ModEntry mod) => new(mod.Name, mod.Author, mod.ModId, mod.IconPng);
+        public static Entry From(ModEntry mod) => new(mod.Name, mod.Author, mod.ModId, mod.IconPng, mod.Declared);
 
         /// <summary>
         /// Filled in with the file's own facts by the caller — this half only knows the contents.
         /// </summary>
-        public ModEntry ToMod() => new("", "", Name, Author, ModId, 0, true, IconPng);
+        public ModEntry ToMod() => new("", "", Name, Author, ModId, 0, true, IconPng) { Declared = Declared };
     }
 }
