@@ -294,6 +294,110 @@ public partial class InstancesView : UserControl
             vm.OpenSettingsForCommand.Execute(instance);
     }
 
+    // ---- Dragging a group band into a different place ----
+
+    /// <summary>
+    /// In-process only: the name never leaves the launcher, so there is nothing to serialise and
+    /// nothing another application could be handed if somebody drags a band out of the window.
+    /// </summary>
+    private static readonly DataFormat<string> GroupBandFormat =
+        DataFormat.CreateInProcessFormat<string>("asobu-group-band");
+
+    private async void GroupGrip_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { Tag: InstanceGroup group } || !group.CanReorder) return;
+
+        // Or the press bubbles on to the header button and folds the band away under the pointer.
+        e.Handled = true;
+
+        var carried = new DataTransfer();
+        carried.Add(DataTransferItem.Create(GroupBandFormat, group.Name));
+
+        try
+        {
+            await DragDrop.DoDragDropAsync(e, carried, DragDropEffects.Move);
+        }
+        catch (Exception)
+        {
+            // A drag that the platform refuses to start is not worth interrupting anyone over.
+        }
+        finally
+        {
+            // Whatever happened — dropped, cancelled, or dragged out of the window entirely —
+            // the lines have to go. There is no drop handler on the paths that end elsewhere.
+            ClearDropLines();
+        }
+    }
+
+    private void GroupBand_DragOver(object? sender, DragEventArgs e)
+    {
+        if (!TargetOf(sender, e, out var band, out var above) || band is null)
+        {
+            // Cleared here as well, so dragging back over the band you lifted does not leave the
+            // line it was last showing somewhere else on the page.
+            e.DragEffects = DragDropEffects.None;
+            ClearDropLines();
+            return;
+        }
+
+        e.DragEffects = DragDropEffects.Move;
+
+        ClearDropLines();
+        band.ShowDropAbove = above;
+        band.ShowDropBelow = !above;
+    }
+
+    private void GroupBand_DragLeave(object? sender, DragEventArgs e)
+    {
+        if (sender is Control { DataContext: InstanceGroup band })
+        {
+            band.ShowDropAbove = false;
+            band.ShowDropBelow = false;
+        }
+    }
+
+    private void GroupBand_Drop(object? sender, DragEventArgs e)
+    {
+        ClearDropLines();
+
+        if (!TargetOf(sender, e, out var band, out var above) || band is null) return;
+        if (e.DataTransfer.TryGetValue(GroupBandFormat) is not { } dragged) return;
+
+        (DataContext as InstancesViewModel)?.MoveGroup(dragged, band.Name, above);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// The band under the pointer and which half of it, or nothing if this is not a drop the
+    /// library will take — a band being dragged over itself included, which would be a move to
+    /// where it already is.
+    /// </summary>
+    private static bool TargetOf(object? sender, DragEventArgs e, out InstanceGroup? band, out bool above)
+    {
+        band = null;
+        above = false;
+
+        if (sender is not Control { DataContext: InstanceGroup hovered } control) return false;
+        if (e.DataTransfer.TryGetValue(GroupBandFormat) is not { } dragged) return false;
+        if (!hovered.CanReorder) return false;
+        if (hovered.Name.Equals(dragged, StringComparison.OrdinalIgnoreCase)) return false;
+
+        band = hovered;
+        above = e.GetPosition(control).Y < control.Bounds.Height / 2;
+        return true;
+    }
+
+    private void ClearDropLines()
+    {
+        if (DataContext is not InstancesViewModel vm) return;
+
+        foreach (var band in vm.InstanceGroups)
+        {
+            band.ShowDropAbove = false;
+            band.ShowDropBelow = false;
+        }
+    }
+
     private void CardDuplicate_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is MenuItem { Tag: Instance instance } && DataContext is InstancesViewModel vm)

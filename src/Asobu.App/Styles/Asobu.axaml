@@ -1672,6 +1672,38 @@
     <Setter Property="Foreground" Value="{DynamicResource Text}"/>
   </Style>
 
+  <!-- The handle a band is dragged by. Out of sight until the header is hovered: it is something
+       to reach for rather than something to look at, and a permanent grip on every band would
+       clutter a page whose entire job is showing instances.
+
+       Background has to be set to something, transparent included — a Border with no brush at
+       all is not hit-testable, and the press that starts the drag would land on the header. -->
+  <Style Selector="Border.groupGrip">
+    <Setter Property="Padding" Value="1,3"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Cursor" Value="SizeAll"/>
+    <Setter Property="Opacity" Value="0"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.groupHeader:pointerover Border.groupGrip">
+    <Setter Property="Opacity" Value="1"/>
+  </Style>
+  <Style Selector="Border.groupGrip Path">
+    <Setter Property="Stroke" Value="{DynamicResource TextMuted}"/>
+  </Style>
+
+  <!-- Where the dragged band would land. -->
+  <Style Selector="Border.dropLine">
+    <Setter Property="Height" Value="2"/>
+    <Setter Property="CornerRadius" Value="1"/>
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+  </Style>
+
   <!-- One chevron that turns, rather than swapping two glyphs: the rotation is the affordance,
        and it means collapsed and expanded can never drift out of sync. -->
   <Style Selector="Path.groupChevron">

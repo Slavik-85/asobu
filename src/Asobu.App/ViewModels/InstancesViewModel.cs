@@ -73,7 +73,19 @@ public partial class InstanceGroup(string name, bool canDelete) : ViewModelBase
 
     /// <summary>False for the Ungrouped band, which isn't a group anyone made.</summary>
     public bool CanDelete { get; } = canDelete;
+
+    /// <summary>
+    /// False for Pinned alone. Pinned always leads, so there is nowhere to drag it to and no
+    /// sense in offering — a pin means "keep this at the top", which an order it can be moved
+    /// out of would quietly contradict.
+    /// </summary>
+    public bool CanReorder { get; } = !Instance.PinnedGroup.Equals(name, StringComparison.OrdinalIgnoreCase);
+
     public ObservableCollection<Instance> Items { get; } = [];
+
+    /// <summary>Where a band being dragged would land. Set only while one is over this one.</summary>
+    [ObservableProperty] public partial bool ShowDropAbove { get; set; }
+    [ObservableProperty] public partial bool ShowDropBelow { get; set; }
 
     [ObservableProperty] public partial bool IsExpanded { get; set; } = true;
 
@@ -411,18 +423,19 @@ public partial class InstancesViewModel : ViewModelBase
         {
             var current = SelectedGroupFilter;
 
-            // Same order as the bands themselves, so the toolbar reads down the page.
-            var named = _all
-                .Select(i => i.Group)
-                .Where(g => !string.IsNullOrWhiteSpace(g))
+            // Same order as the bands themselves, so the toolbar reads down the page — including
+            // once bands have been dragged about, which is why Ungrouped is worked out alongside
+            // the rest rather than pushed in at a fixed place.
+            var bands = _all
+                .Select(i => string.IsNullOrWhiteSpace(i.Group) ? UngroupedFilter : i.Group!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(g => Rank(g!))
+                .OrderBy(Placement)
+                .ThenBy(Rank)
                 .ThenBy(g => g, StringComparer.OrdinalIgnoreCase);
 
             Groups.Clear();
             Groups.Add(AllGroupsFilter);
-            if (_all.Any(i => string.IsNullOrWhiteSpace(i.Group))) Groups.Add(UngroupedFilter);
-            foreach (var group in named) Groups.Add(group!);
+            foreach (var group in bands) Groups.Add(group);
 
             SelectedGroupFilter = Groups.Contains(current) ? current : AllGroupsFilter;
         }
@@ -475,14 +488,16 @@ public partial class InstancesViewModel : ViewModelBase
     {
         var collapsed = _launcher.Settings.CollapsedGroups;
 
-        // Pinned first, then Ungrouped, then named groups alphabetically. Pinned has to lead:
+        // Pinned first, then whatever order the bands have been dragged into, then — for bands
+        // nobody has moved — Ungrouped and the named groups alphabetically. Pinned has to lead:
         // sorted as an ordinary name it would land under U for Ungrouped, which is the opposite
         // of what pinning something is for. Order within a band is whatever the toolbar asked
         // for, since Items is already sorted.
         var banded = Items
             .GroupBy(i => string.IsNullOrWhiteSpace(i.Group) ? UngroupedFilter : i.Group!,
                      StringComparer.OrdinalIgnoreCase)
-            .OrderBy(g => Rank(g.Key))
+            .OrderBy(g => Placement(g.Key))
+            .ThenBy(g => Rank(g.Key))
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
 
         InstanceGroups.Clear();
@@ -503,6 +518,66 @@ public partial class InstancesViewModel : ViewModelBase
         group.Equals(Instance.PinnedGroup, StringComparison.OrdinalIgnoreCase) ? 0
         : group.Equals(UngroupedFilter, StringComparison.OrdinalIgnoreCase) ? 1
         : 2;
+
+    /// <summary>
+    /// Where a band sits in the order somebody dragged it into, if they have.
+    ///
+    /// Pinned is pushed ahead of everything by construction. A band nobody has moved sorts last
+    /// here and falls through to <see cref="Rank"/> behind those that have been — so the very
+    /// first drag moves one band and leaves every other one where it was.
+    /// </summary>
+    private int Placement(string group)
+    {
+        if (group.Equals(Instance.PinnedGroup, StringComparison.OrdinalIgnoreCase)) return int.MinValue;
+
+        var index = _launcher.Settings.GroupOrder
+            .FindIndex(name => name.Equals(group, StringComparison.OrdinalIgnoreCase));
+
+        return index >= 0 ? index : int.MaxValue;
+    }
+
+    /// <summary>
+    /// Drops one band above or below another and remembers the arrangement.
+    ///
+    /// The stored order is written out whole rather than patched, because from the first drag
+    /// onwards it is the order — so it has to begin as the one that was actually on screen,
+    /// rather than as a single pair of names with everything else left to chance.
+    ///
+    /// Built from every band that exists rather than from the ones currently shown: a search
+    /// hides the bands nothing matches in, and taking the visible ones for the whole list would
+    /// quietly forget where the hidden ones belonged.
+    /// </summary>
+    public void MoveGroup(string dragged, string target, bool above)
+    {
+        if (dragged.Equals(target, StringComparison.OrdinalIgnoreCase)) return;
+
+        var order = _all
+            .Select(i => string.IsNullOrWhiteSpace(i.Group) ? UngroupedFilter : i.Group!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(name => !name.Equals(Instance.PinnedGroup, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(Placement)
+            .ThenBy(Rank)
+            .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var from = order.FindIndex(name => name.Equals(dragged, StringComparison.OrdinalIgnoreCase));
+        if (from < 0) return;
+
+        order.RemoveAt(from);
+
+        // Looked up after the removal rather than before it, which is what saves an off-by-one:
+        // lifting a band out from above the target shifts the target up by one.
+        var anchor = order.FindIndex(name => name.Equals(target, StringComparison.OrdinalIgnoreCase));
+        if (anchor < 0) return;
+
+        order.Insert(above ? anchor : anchor + 1, dragged);
+
+        _launcher.Settings.GroupOrder = order;
+        _launcher.SaveSettings();
+
+        RebuildInstanceGroups();
+        RefreshGroups();
+    }
 
     /// <summary>
     /// Empties a group without touching the instances in it — they fall back to Ungrouped. A

@@ -62,6 +62,19 @@ public sealed class LauncherSettings
     /// </summary>
     public List<string> CollapsedGroups { get; set; } = [];
 
+    /// <summary>
+    /// The order the library's group bands are shown in, once somebody has dragged one. Empty
+    /// until then, which is what keeps the old arrangement — Ungrouped, then alphabetical — for
+    /// anyone who never reorders anything.
+    ///
+    /// Pinned is never in here. It is always the first band and cannot be dragged, a pin being
+    /// a request to be at the top rather than a group somebody made.
+    ///
+    /// Names that no longer match a band are harmless and are left alone: emptying a group and
+    /// filling it again later should not cost it its place.
+    /// </summary>
+    public List<string> GroupOrder { get; set; } = [];
+
     /// <summary>Which account the Play button uses.</summary>
     public string? ActiveAccountUuid { get; set; }
 
