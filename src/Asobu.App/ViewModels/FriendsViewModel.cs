@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Asobu.App.Controls;
 using Asobu.Core;
@@ -50,11 +51,13 @@ public partial class FriendsViewModel : ViewModelBase
     private readonly Action _goAccounts;
 
     /// <summary>
-    /// Keeps presence honest while the launcher sits open on some other page: every tick tells
-    /// the server we're alive and hears who else is. Started after the first successful
-    /// connection and never stopped — a tick while signed out just does nothing.
+    /// Stops the watch when there is nothing left to watch for: the account changed, or the
+    /// launcher is closing.
     /// </summary>
-    private readonly DispatcherTimer _heartbeat;
+    private CancellationTokenSource? _watching;
+
+    /// <summary>The revision the list on screen was true at. The watch waits for anything newer.</summary>
+    private long _revision;
 
     /// <summary>What the list currently shows, so an unchanged answer doesn't rebuild it.</summary>
     private string _shown = "";
@@ -64,9 +67,6 @@ public partial class FriendsViewModel : ViewModelBase
         _launcher = launcher;
         _accounts = accounts;
         _goAccounts = goAccounts;
-
-        _heartbeat = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
-        _heartbeat.Tick += (_, _) => _ = RefreshAsync(quiet: true);
     }
 
     public ObservableCollection<FriendRow> Friends { get; } = [];
@@ -92,6 +92,69 @@ public partial class FriendsViewModel : ViewModelBase
 
     partial void OnIsConnectedChanged(bool value) => OnPropertyChanged(nameof(IsEmpty));
 
+    /// <summary>
+    /// Watches for changes until told to stop.
+    ///
+    /// One request at a time, held open by the server until something happens or about twenty
+    /// seconds pass. A friend request therefore appears on the other screen in the time it takes
+    /// to travel there, rather than whenever a timer next happened to fire.
+    /// </summary>
+    private void StartWatching()
+    {
+        if (_watching is { IsCancellationRequested: false }) return;
+
+        var stopping = new CancellationTokenSource();
+        _watching = stopping;
+
+        _ = Task.Run(async () =>
+        {
+            while (!stopping.IsCancellationRequested)
+            {
+                try
+                {
+                    var snapshot = await _launcher.Friends
+                        .WatchAsync(_revision, stopping.Token)
+                        .ConfigureAwait(false);
+
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        _revision = snapshot.Revision;
+                        Show(snapshot);
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (FriendsAuthException)
+                {
+                    // The session aged out. Stop rather than spin; opening the page reconnects.
+                    await Dispatcher.UIThread.InvokeAsync(() => IsConnected = false);
+                    return;
+                }
+                catch (Exception)
+                {
+                    // Offline, or the server is restarting. Wait before asking again so a
+                    // network that is down is not hammered by a launcher left open.
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(15), stopping.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                }
+            }
+        });
+    }
+
+    private void StopWatching()
+    {
+        _watching?.Cancel();
+        _watching = null;
+    }
+
     /// <summary>Every visit to the page lands here: connect if needed, then bring the list up to date.</summary>
     public void Opened()
     {
@@ -111,11 +174,11 @@ public partial class FriendsViewModel : ViewModelBase
         if (!await _launcher.Friends.TryResumeAsync(account).ConfigureAwait(false)) return;
 
         // This is called from the startup warm-up's worker thread, and everything from here on
-        // is UI state — the timer, the flags, the rows.
+        // is UI state: the watch, the flags, the rows.
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             IsConnected = true;
-            _heartbeat.Start();
+            StartWatching();
             return RefreshAsync(quiet: true);
         });
     }
@@ -123,6 +186,10 @@ public partial class FriendsViewModel : ViewModelBase
     /// <summary>The active account changed under us; whatever was shown belongs to someone else.</summary>
     public void OnAccountChanged()
     {
+        // Whatever the old account was watching for is no longer anybody's business here.
+        StopWatching();
+        _revision = 0;
+
         IsConnected = false;
         ConnectionError = null;
         Notice = null;
@@ -162,7 +229,7 @@ public partial class FriendsViewModel : ViewModelBase
                     await _launcher.Friends.ConnectAsync(session);
                 }
                 IsConnected = true;
-                _heartbeat.Start();
+                StartWatching();
             }
             catch (FriendsException e)
             {
@@ -189,7 +256,9 @@ public partial class FriendsViewModel : ViewModelBase
 
         try
         {
-            Show(await _launcher.Friends.GetFriendsAsync());
+            var snapshot = await _launcher.Friends.GetFriendsAsync();
+            _revision = snapshot.Revision;
+            Show(snapshot);
         }
         catch (FriendsAuthException)
         {

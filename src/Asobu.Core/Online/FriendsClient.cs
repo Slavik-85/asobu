@@ -12,7 +12,8 @@ public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffse
 public sealed record FriendsSnapshot(
     IReadOnlyList<Friend> Friends,
     IReadOnlyList<Friend> Incoming,
-    IReadOnlyList<Friend> Outgoing)
+    IReadOnlyList<Friend> Outgoing,
+    long Revision = 0)
 {
     public static readonly FriendsSnapshot Empty = new([], [], []);
 }
@@ -122,7 +123,27 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
         var reply = await SendAsync<SnapshotReply>(HttpMethod.Get, "friends", null, cancellationToken)
             .ConfigureAwait(false);
 
-        return new FriendsSnapshot(reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? []);
+        return new FriendsSnapshot(
+            reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? [], reply.Revision);
+    }
+
+    /// <summary>
+    /// The same list, but the server holds the request until something actually changes.
+    ///
+    /// This is what makes a friend request appear on the other screen while it is open. Polling
+    /// asks over and over to be told nothing has happened and is still slower; this asks once
+    /// and is answered the instant there is something to say. A quiet spell ends with an answer
+    /// anyway after about twenty seconds, which doubles as the heartbeat that keeps presence
+    /// fresh, so nothing else has to run on a timer.
+    /// </summary>
+    public async Task<FriendsSnapshot> WatchAsync(long since, CancellationToken cancellationToken = default)
+    {
+        var reply = await SendAsync<SnapshotReply>(
+                HttpMethod.Get, $"friends/watch?since={since}", null, cancellationToken)
+            .ConfigureAwait(false);
+
+        return new FriendsSnapshot(
+            reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? [], reply.Revision);
     }
 
     public Task AddAsync(string name, CancellationToken cancellationToken = default) =>
@@ -199,5 +220,6 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     private sealed record OkReply(bool Ok);
     private sealed record ErrorReply(string? Error);
 
-    private sealed record SnapshotReply(List<Friend>? Friends, List<Friend>? Incoming, List<Friend>? Outgoing);
+    private sealed record SnapshotReply(
+        List<Friend>? Friends, List<Friend>? Incoming, List<Friend>? Outgoing, long Revision);
 }

@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -68,6 +69,22 @@ type Server struct {
 	pending map[string]pendingAuth
 
 	limiter limiter
+
+	// Bumped whenever anything a friends list shows changes. A watcher tells us the revision
+	// it last saw; anything newer means it has something to collect.
+	revision uint64
+
+	// Closed and replaced on every bump, which is how one change wakes every waiter at once
+	// without keeping a list of them. Waiters take a copy of the channel before releasing the
+	// lock, so a bump landing in between still wakes them rather than being missed.
+	changed chan struct{}
+}
+
+// bump wakes every watcher. Called with the lock held, after a change worth telling anyone about.
+func (s *Server) bump() {
+	s.revision++
+	close(s.changed)
+	s.changed = make(chan struct{})
 }
 
 type pendingAuth struct {
@@ -317,6 +334,13 @@ func (s *Server) authed(w http.ResponseWriter, r *http.Request) *User {
 		return nil
 	}
 
+	// Coming back from offline is news to whoever has you on their list. Every other presence
+	// tick is not: a launcher left open would otherwise wake every watcher once a minute for
+	// nothing.
+	if time.Since(user.LastSeen) >= onlineWindow {
+		s.bump()
+	}
+
 	// Presence rides on every authenticated call; the session slides with use.
 	user.LastSeen = time.Now()
 	session.Expires = time.Now().Add(tokenLife)
@@ -494,11 +518,16 @@ func (s *Server) wire(uuid string) wireFriend {
 }
 
 func (s *Server) handleFriendsList(w http.ResponseWriter, r *http.Request) {
-	me := s.authed(w, r)
-	if me == nil {
-		return
+	if me := s.authed(w, r); me != nil {
+		s.writeFriends(w, me)
 	}
+}
 
+// writeFriends sends one person's whole social picture, and the revision it was true at.
+//
+// Split out so the watching form can authenticate once and answer once: going through the
+// handler again would charge that caller's rate limit twice for a single request.
+func (s *Server) writeFriends(w http.ResponseWriter, me *User) {
 	friends, incoming, outgoing := []wireFriend{}, []wireFriend{}, []wireFriend{}
 	for _, f := range s.state.Friends {
 		switch {
@@ -512,7 +541,52 @@ func (s *Server) handleFriendsList(w http.ResponseWriter, r *http.Request) {
 			outgoing = append(outgoing, s.wire(f.To))
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"friends": friends, "incoming": incoming, "outgoing": outgoing})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"friends":  friends,
+		"incoming": incoming,
+		"outgoing": outgoing,
+		"revision": s.revision,
+	})
+}
+
+// How long a watch waits before answering anyway. Comfortably inside both this server's write
+// timeout and Caddy's, so a quiet period ends with an answer rather than a dropped connection.
+const watchWait = 20 * time.Second
+
+// handleFriendsWatch answers as soon as anything changes, or after a quiet spell.
+//
+// This is what makes a friend request appear on the other screen without anyone reopening
+// anything. The alternative was polling faster, which is the same request over and over to be
+// told nothing has happened, and still slower than this.
+func (s *Server) handleFriendsWatch(w http.ResponseWriter, r *http.Request) {
+	me := s.authed(w, r)
+	if me == nil {
+		return
+	}
+
+	since, _ := strconv.ParseUint(r.URL.Query().Get("since"), 10, 64)
+
+	// Waits only while the caller is exactly up to date. Behind means there is news to hand
+	// over now; ahead means this server has restarted since they last asked, and its counter
+	// began again at zero. Waiting in that second case would leave them holding a number this
+	// server will not reach for a long time, hearing nothing in the meantime.
+	if s.revision == since {
+		// Taken before the lock is released, so a change landing in the gap still wakes this.
+		changed := s.changed
+
+		func() {
+			s.mu.Unlock()
+			defer s.mu.Lock()
+
+			select {
+			case <-changed:
+			case <-time.After(watchWait):
+			case <-r.Context().Done():
+			}
+		}()
+	}
+
+	s.writeFriends(w, me)
 }
 
 func (s *Server) handleFriendRequest(w http.ResponseWriter, r *http.Request) {
@@ -551,6 +625,7 @@ func (s *Server) handleFriendRequest(w http.ResponseWriter, r *http.Request) {
 		// A request from someone who already asked us is both sides saying yes.
 		if !existing.Accepted && existing.From == target.UUID {
 			existing.Accepted = true
+			s.bump()
 			s.saveNow()
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -569,6 +644,7 @@ func (s *Server) handleFriendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.state.Friends = append(s.state.Friends, &Friendship{From: me.UUID, To: target.UUID, Since: time.Now()})
+	s.bump()
 	s.saveNow()
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -590,6 +666,7 @@ func (s *Server) handleFriendAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.Accepted = true
+	s.bump()
 	s.saveNow()
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
@@ -603,6 +680,7 @@ func (s *Server) handleFriendRemove(w http.ResponseWriter, r *http.Request) {
 	other := strings.ToLower(r.PathValue("uuid"))
 	if f, i := s.between(me.UUID, other); f != nil {
 		s.state.Friends = append(s.state.Friends[:i], s.state.Friends[i+1:]...)
+		s.bump()
 		s.saveNow()
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -620,7 +698,7 @@ func main() {
 		statePath = "state.json"
 	}
 
-	s := &Server{path: statePath, pending: map[string]pendingAuth{}}
+	s := &Server{path: statePath, pending: map[string]pendingAuth{}, changed: make(chan struct{})}
 	s.load()
 	go s.flushLoop()
 
@@ -641,6 +719,7 @@ func main() {
 	mux.HandleFunc("POST /v1/auth/begin", locked(s.handleAuthBegin))
 	mux.HandleFunc("POST /v1/auth/complete", locked(s.handleAuthComplete))
 	mux.HandleFunc("GET /v1/friends", locked(s.handleFriendsList))
+	mux.HandleFunc("GET /v1/friends/watch", locked(s.handleFriendsWatch))
 	mux.HandleFunc("POST /v1/friends/requests", locked(s.handleFriendRequest))
 	mux.HandleFunc("POST /v1/friends/accept", locked(s.handleFriendAccept))
 	mux.HandleFunc("DELETE /v1/friends/{uuid}", locked(s.handleFriendRemove))
