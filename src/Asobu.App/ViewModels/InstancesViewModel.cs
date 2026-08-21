@@ -1911,11 +1911,25 @@ public partial class InstancesViewModel : ViewModelBase
         IsDuplicateClosing = false;
         IsDuplicateOpen = true;
 
-        _ = LoadDuplicateVersionsAsync(source);
-        _ = LoadDuplicateLoadersAsync(source.MinecraftVersion);
+        _ = LoadDuplicateChoicesAsync(source);
 
         OnPropertyChanged(nameof(DuplicateMovesMods));
         OnPropertyChanged(nameof(CanDuplicate));
+    }
+
+    /// <summary>
+    /// Fills both boxes, versions first.
+    ///
+    /// In that order rather than at once, because the loaders that exist are a question about a
+    /// version, and asking it while the version list is still settling means asking about a
+    /// version that is briefly nothing. Run side by side, that raced: filling the version list
+    /// drops the selection for an instant, and the loader fetch coming back during that instant
+    /// decided the user had navigated away and left its box empty.
+    /// </summary>
+    private async Task LoadDuplicateChoicesAsync(Instance source)
+    {
+        await LoadDuplicateVersionsAsync(source);
+        await LoadDuplicateLoadersAsync(DuplicateVersion ?? source.MinecraftVersion);
     }
 
     /// <summary>
@@ -1938,17 +1952,26 @@ public partial class InstancesViewModel : ViewModelBase
             if (!releases.Contains(source.MinecraftVersion, StringComparer.OrdinalIgnoreCase))
                 releases.Insert(0, source.MinecraftVersion);
 
+            // Emptying the list takes the box's selection with it, the item it was holding having
+            // left. Put it back afterwards, or the user is shown an empty Minecraft box for an
+            // instance that plainly has a version, and a Duplicate button that refuses to press.
+            var wanted = DuplicateVersion ?? source.MinecraftVersion;
+
             _loadingDuplicateLoaders = true;
             DuplicateVersions.Clear();
             foreach (var version in releases) DuplicateVersions.Add(version);
+            DuplicateVersion = wanted;
             _loadingDuplicateLoaders = false;
         }
         catch (Exception)
         {
             // Offline. The version it is already on is the only one that can be offered, which
             // still allows a plain copy.
+            _loadingDuplicateLoaders = true;
             DuplicateVersions.Clear();
             DuplicateVersions.Add(source.MinecraftVersion);
+            DuplicateVersion = source.MinecraftVersion;
+            _loadingDuplicateLoaders = false;
         }
     }
 
@@ -3507,15 +3530,14 @@ public partial class InstancesViewModel : ViewModelBase
         ApplyFilter();
     }
 
+    /// <summary>
+    /// The same sheet the Duplicate button on the instance itself opens, rather than a copy made
+    /// on the spot. Right-clicking a card is the quicker way to reach it, not a different thing
+    /// to do — and a copy that appeared with no say in its name or version was the older, worse
+    /// half of that pair.
+    /// </summary>
     [RelayCommand]
-    private void CloneFor(Instance? instance)
-    {
-        if (instance is null) return;
-
-        var clone = _launcher.Instances.Clone(instance);
-        Reload();
-        Selected = _all.FirstOrDefault(i => i.Id == clone.Id);
-    }
+    private void CloneFor(Instance? instance) => OpenDuplicate(instance);
 
     [RelayCommand]
     private void OpenEditFor(Instance? instance)
