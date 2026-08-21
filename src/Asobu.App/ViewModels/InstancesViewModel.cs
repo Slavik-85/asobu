@@ -2250,7 +2250,7 @@ public partial class InstancesViewModel : ViewModelBase
                 var mods = ModScanner.Scan(directory);
                 var text = await CrashReports.ReadAsync(path);
 
-                return CrashAnalyzer.Analyze(text, mods);
+                return CrashAnalyzer.Analyze(text, mods, exitCode);
             });
 
             // Someone has moved on to another instance. The verdict belongs to this one and
@@ -2261,8 +2261,8 @@ public partial class InstancesViewModel : ViewModelBase
             // "No crash in this log" is a finding about the log, not about the session. Shown as
             // a verdict it reads as an error message insisting nothing is wrong, which is worse
             // than the plain exit code it replaced.
-            Error = analysis.Cause == CrashCause.Clean ? fallback
-                : analysis.HasVerdict ? $"{analysis.Headline}. {analysis.Advice}"
+            Error = analysis.HasVerdict && analysis.Cause != CrashCause.Clean
+                ? $"{analysis.Headline}. {analysis.Advice}"
                 : fallback;
 
             return analysis;

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Asobu.Core.Mods;
 
 namespace Asobu.Core.Diagnostics;
@@ -28,6 +28,12 @@ public enum CrashCause
     WrongBuild,
     OutOfMemory,
     Graphics,
+
+    /// <summary>
+    /// The operating system stopped the process. No crash report exists for these — the JVM never
+    /// got to write one — so the exit code is the whole of the evidence.
+    /// </summary>
+    NativeFault,
     Java,
     CorruptFiles,
     /// <summary>The game shut down normally. Not every log in the list is a crash.</summary>
@@ -95,8 +101,18 @@ public static partial class CrashAnalyzer
         "loader", "mixin", "mixins", "java", "kotlin", "scala", "release", "beta", "alpha",
     };
 
-    public static CrashAnalysis Analyze(string? report, IReadOnlyList<ModEntry> installedMods)
+    /// <param name="exitCode">
+    /// What the process died with. Worth having because the most violent crashes leave the least
+    /// evidence: a native fault kills the JVM outright, so no crash report is written, the log
+    /// simply stops, and the number is the only thing that survives.
+    /// </param>
+    public static CrashAnalysis Analyze(string? report, IReadOnlyList<ModEntry> installedMods, int exitCode = 0)
     {
+        // Before the log is even looked at. A process killed by the operating system left a log
+        // that ends mid-sentence and looks perfectly healthy, so every check below would call it
+        // clean and send somebody to read crash reports that were never written.
+        if (NativeFault(exitCode) is { } fault) return Killed(fault, report);
+
         if (string.IsNullOrWhiteSpace(report)) return CrashAnalysis.None;
 
         // A launch log for a session that quit normally sits in the same list as real crashes,
@@ -139,6 +155,81 @@ public static partial class CrashAnalyzer
             "Turn it off and launch again. If the crash goes away you've found it; if not, turn it back on and try the next one.",
             suspects);
     }
+
+    /// <summary>
+    /// What the operating system killed the process for, or null for an ordinary exit.
+    ///
+    /// Only the codes worth telling somebody apart. Everything else is left to the log, which
+    /// for a normal crash has far more to say than a number does.
+    /// </summary>
+    private static string? NativeFault(int exitCode) => (uint)exitCode switch
+    {
+        0xC0000005 => "tried to read memory that wasn't its own",
+        0xC00000FD => "ran out of stack",
+        0xC000001D => "was handed an instruction its processor doesn't have",
+        0xC0000409 => "overran a buffer and was stopped",
+        0xC0000374 => "corrupted its own memory",
+        _ => null,
+    };
+
+    /// <summary>
+    /// The verdict for a process the operating system stopped.
+    ///
+    /// Nearly always the graphics driver, and the log says which one even though it says nothing
+    /// about the crash — the game prints its adapter at startup. Naming it turns "exited with
+    /// code -1073741819" into something somebody can act on.
+    /// </summary>
+    private static CrashAnalysis Killed(string fault, string? report)
+    {
+        if (report is not null && GraphicsDevice(report) is { } device)
+        {
+            return new CrashAnalysis(CrashCause.Graphics, $"{device.Name} stopped the game",
+                $"The game {fault} and Windows ended it. That is a graphics driver fault rather than anything "
+                + "in the game, which is why no crash report was written."
+                + (device.Driver is { Length: > 0 } driver ? $" Yours is {driver}. " : " ")
+                + "Update it from the manufacturer's own site rather than Windows Update, which is often "
+                + "years behind. Turning off shaders and any performance mods is worth trying meanwhile.",
+                []);
+        }
+
+        // No adapter in the log, so the advice cannot name one. Still worth saying why there is
+        // no crash report to read, which is the question somebody actually has.
+        return new CrashAnalysis(CrashCause.NativeFault, "The game was stopped by Windows",
+            $"It {fault}, which ends the game outright — no crash report is written, which is why "
+            + "there isn't one. Almost always a graphics driver. Updating yours is the first thing to try.",
+            []);
+    }
+
+    /// <summary>The adapter the game reported at startup, which is in every log whether it crashed or not.</summary>
+    private static (string Name, string? Driver)? GraphicsDevice(string report)
+    {
+        if (GraphicsDevicePattern().Match(report) is not { Success: true } device) return null;
+
+        var driver = GraphicsDriverPattern().Match(report);
+
+        var full = device.Groups["name"].Value.Trim();
+        var name = TrailingVendorPattern().Replace(full, "");
+
+        return (name.Length > 0 ? name : full, driver.Success ? driver.Groups["v"].Value : null);
+    }
+
+    /// <summary>
+    /// "Using graphics device: Intel(R) UHD Graphics (Intel)" — vanilla writes this every launch.
+    ///
+    /// Read to the end of the line rather than to the first bracket. The first bracket in that
+    /// example sits inside "Intel(R)", so stopping there names the card "Intel"; the trailing
+    /// vendor in brackets is taken off afterwards instead.
+    /// </summary>
+    [GeneratedRegex(@"Using graphics device: (?<name>[^\r\n]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex GraphicsDevicePattern();
+
+    /// <summary>The " (Intel)" a card's name ends with, which only repeats what the name says.</summary>
+    [GeneratedRegex(@"\s*\([^()]*\)\s*$")]
+    private static partial Regex TrailingVendorPattern();
+
+    /// <summary>Sodium's probe, which is the only line carrying the driver's own version.</summary>
+    [GeneratedRegex(@"openglIcdVersion=(?<v>[\d.]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex GraphicsDriverPattern();
 
     /// <summary>
     /// A mod calling something that is not there.

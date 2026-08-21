@@ -296,6 +296,73 @@ public class DiagnosticsTests
         return lines;
     }
 
+    /// <summary>
+    /// The shape of the log a native fault leaves: a perfectly ordinary launch that simply
+    /// stops. Every mod loaded, the game started, somebody played for six minutes — and then
+    /// nothing. Lines taken from the report this was written for.
+    /// </summary>
+    private const string NativeFaultLog = """
+        [10:53:28] [Render thread/INFO] [net.minecraft.client.Minecraft]: Using graphics device: Intel(R) UHD Graphics (Intel)
+        [10:53:33] [Render thread/INFO] [Sodium-GlSurface]: OpenGL Vendor: Intel
+        [10:53:12] [main/INFO] [Sodium-GraphicsAdapterProbe]: Found graphics adapter: AdapterInfo{vendor=INTEL, description='Intel(R) UHD Graphics', openglIcdVersion=31.0.101.4255}
+        [10:54:21] [Server thread/INFO] [net.minecraft.server.players.PlayerList]: Bellixix logged in with entity id 4
+        [11:00:40] [Server thread/WARN] [net.minecraft.server.MinecraftServer]: Can't keep up! Is the server overloaded?
+        """;
+
+    /// <summary>0xC0000005, which is how Windows says a process touched memory that was not its own.</summary>
+    private const int AccessViolation = -1073741819;
+
+    [Fact]
+    public void Crash_ExplainsANativeFaultInsteadOfCallingTheLogClean()
+    {
+        // Without the exit code this log is a clean one: nothing in it went wrong, because the
+        // process died before it could write anything down. "No crash in this log" was the old
+        // answer, followed by an invitation to read crash reports that were never written.
+        var analysis = CrashAnalyzer.Analyze(NativeFaultLog, [], AccessViolation);
+
+        Assert.NotEqual(CrashCause.Clean, analysis.Cause);
+        Assert.True(analysis.HasVerdict);
+    }
+
+    [Fact]
+    public void Crash_NamesTheGraphicsCardAndItsDriver()
+    {
+        var analysis = CrashAnalyzer.Analyze(NativeFaultLog, [], AccessViolation);
+
+        Assert.Equal(CrashCause.Graphics, analysis.Cause);
+        Assert.Contains("Intel(R) UHD Graphics", analysis.Headline);
+
+        // The driver version is the one number that makes "update your driver" actionable.
+        Assert.Contains("31.0.101.4255", analysis.Advice);
+    }
+
+    [Fact]
+    public void Crash_SaysWhyThereIsNoCrashReport()
+    {
+        // The actual question somebody has when the launcher points them at a folder that is
+        // empty.
+        Assert.Contains("no crash report", CrashAnalyzer.Analyze(NativeFaultLog, [], AccessViolation).Advice);
+    }
+
+    [Fact]
+    public void Crash_StillManagesSomethingWithNoAdapterInTheLog()
+    {
+        var analysis = CrashAnalyzer.Analyze("nothing useful here at all", [], AccessViolation);
+
+        Assert.True(analysis.HasVerdict);
+        Assert.Contains("no crash report", analysis.Advice);
+    }
+
+    [Fact]
+    public void Crash_LeavesAnOrdinaryExitCodeToTheLog()
+    {
+        // An exit code that is not a native fault must not hijack the analysis — a mod crash
+        // exits non-zero too, and the log is far better evidence than the number.
+        var analysis = CrashAnalyzer.Analyze(WrongBuildCrash, [CornerEntity], exitCode: 1);
+
+        Assert.Equal(CrashCause.WrongBuild, analysis.Cause);
+    }
+
     [Theory]
     // A game version in front of the mod's own is not part of it.
     [InlineData("mc26.2-0.9.1-fabric", "0.9.0", true)]
