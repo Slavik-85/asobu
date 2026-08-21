@@ -1,9 +1,10 @@
 """Builds Asobu's icon and installer splash.
 
-The icon is artwork: asobu-source.png beside this file is drawn by hand, and everything here
-does is resample it into the sizes Windows and Linux each want. The splash is still generated,
-using the same background and pink as the welcome the installer hands over to, and the mark it
-draws is the same rounded square and offset play triangle the sidebar draws.
+The icon is artwork: asobu-source.png beside this file is drawn by hand, and all this script
+does with it is resample it into the sizes Windows and Linux each want. The splash is composed
+here -- the same artwork over the same two lines the launcher opens with, in the launcher's own
+background and pink, so installing Asobu and first running it read as one continuous thing
+rather than two screens that happen to share a colour.
 
     python assets/make-brand-assets.py
 
@@ -22,9 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCE = os.path.join(HERE, "asobu-source.png")
 
 # Straight out of Styles/Asobu.axaml.
-ACCENT = (196, 67, 112)        # Accent, light theme — reads on both light and dark desktops
 ACCENT_DARK = (255, 158, 192)  # Accent, dark theme
-ON_ACCENT = (255, 255, 255)
 BG_DARK = (22, 17, 20)         # Bg, dark theme
 TEXT_MUTED = (156, 140, 147)   # TextMuted, dark theme
 
@@ -32,33 +31,16 @@ FONT_SEMIBOLD = "C:/Windows/Fonts/seguisb.ttf"
 FONT_REGULAR = "C:/Windows/Fonts/segoeui.ttf"
 
 
-def draw_mark(size, fill=ACCENT, supersample=8):
-    """The launcher's own logo: a rounded square with a play triangle, drawn big and scaled down.
+def artwork():
+    """The icon, cropped to what is actually inked.
 
-    Supersampled because at 16 pixels a directly-drawn rounded corner is a staircase, and the
-    triangle's diagonal is the whole shape.
+    The file is a square canvas with the gamepad sitting in the middle of it, so cropping to the
+    opaque pixels is what lets a caller place the mark by what shows rather than by the empty
+    room around it.
     """
-    big = size * supersample
-    image = Image.new("RGBA", (big, big), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-
-    # The sidebar uses a 32px box with a 10px radius.
-    radius = int(big * (10 / 32))
-    draw.rounded_rectangle([0, 0, big - 1, big - 1], radius=radius, fill=fill + (255,))
-
-    # And a 9x11 triangle, nudged 3px right of centre so it reads as centred: a triangle's
-    # visual weight sits left of its bounding box.
-    width = big * (9 / 32)
-    height = big * (11 / 32)
-    left = (big - width) / 2 + big * (2.2 / 32)
-    top = (big - height) / 2
-
-    draw.polygon(
-        [(left, top), (left + width, top + height / 2), (left, top + height)],
-        fill=ON_ACCENT + (255,),
-    )
-
-    return image.resize((size, size), Image.Resampling.LANCZOS)
+    with Image.open(SOURCE) as art:
+        art = art.convert("RGBA")
+        return art.crop(art.getchannel("A").getbbox())
 
 
 def build_icon():
@@ -69,7 +51,7 @@ def build_icon():
         # Lanczos rather than nearest. The source is drawn at 256 rather than being a small grid
         # blown up, so there is no block size to line up with, and point sampling would just
         # throw away fifteen pixels in sixteen by the time it reached 16x16.
-        frames = [art.convert("RGBA").resize((s, s), Image.LANCZOS) for s in sizes]
+        frames = [art.convert("RGBA").resize((s, s), Image.Resampling.LANCZOS) for s in sizes]
 
     out = os.path.join(HERE, "asobu.ico")
     frames[-1].save(out, format="ICO", sizes=[(s, s) for s in sizes], append_images=frames[:-1])
@@ -110,6 +92,14 @@ def build_splash():
     name_font = ImageFont.truetype(FONT_SEMIBOLD, 62)
     sub_font = ImageFont.truetype(FONT_REGULAR, 14)
 
+    hello_y = 78
+
+    # The icon above the greeting, sized by its width and centred in the room the greeting
+    # leaves above itself. Nothing else moves: the space was already there.
+    mark = artwork()
+    mark = mark.resize((88, round(88 * mark.height / mark.width)), Image.Resampling.LANCZOS)
+    mark_at = ((width - mark.width) // 2, (hello_y - mark.height) // 2)
+
     def centred(draw, text, font, y, fill):
         box = draw.textbbox((0, 0), text, font=font)
         draw.text(((width - (box[2] - box[0])) / 2 - box[0], y), text, font=font, fill=fill)
@@ -131,8 +121,12 @@ def build_splash():
         frame.paste(glow, (0, 0), glow)
         frame.paste(name_layer, (0, 0), name_layer)
 
+        # After the glow rather than before it: the halo reaches up this far, and the icon is
+        # meant to sit in front of it rather than be washed through by it.
+        frame.paste(mark, mark_at, mark)
+
         draw = ImageDraw.Draw(frame)
-        centred(draw, "Welcome to", hello_font, 78, TEXT_MUTED)
+        centred(draw, "Welcome to", hello_font, hello_y, TEXT_MUTED)
         # Kept well clear of the bottom: Velopack draws a progress bar over this image
         # while installing and while updating, and it draws it along the lower edge.
         centred(draw, "Just a moment…", sub_font, 208, TEXT_MUTED)
