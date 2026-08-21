@@ -2906,20 +2906,36 @@ public partial class InstancesViewModel : ViewModelBase
 
                 if (mod is null) return (false, $"{row.Suspect!.Name} is no longer in this instance.");
 
+                // This build has now demonstrably crashed, so it is never offered again. Written
+                // down before anything is fetched: the whole failure this prevents is swapping
+                // between two broken builds forever, and that needs the note to survive the
+                // crash that follows.
+                if (!instance.CrashedBuilds.Contains(mod.FileName, StringComparer.OrdinalIgnoreCase))
+                {
+                    instance.CrashedBuilds.Add(mod.FileName);
+                    _launcher.Instances.Save(instance);
+                }
+
+                var tried = instance.CrashedBuilds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 // Any build that runs here will do — this is not a disagreement about versions,
                 // it is a mod compiled for another game entirely as far as the JVM is concerned.
                 var swap = await _launcher.SwapModAsync(instance, new ModConflict(
                     "Minecraft " + instance.MinecraftVersion, mod.ModId ?? mod.Name, mod.Name,
-                    Present: null, VersionBound.Any, Evidence: row.Detail));
+                    Present: null, VersionBound.Any, Evidence: row.Detail), tried);
 
-                if (swap.Swapped) return (true, $"Now {swap.Installed}, built for {instance.MinecraftVersion}.");
+                if (swap.Swapped) return (true, $"Now {swap.Installed}. Launch again to see whether it runs.");
 
-                // No build for this instance. The mod cannot run here at all, and the game will
-                // not start while it is in the folder, so turning it off is the remaining answer
-                // — done rather than merely suggested, and said plainly.
+                // Nothing untried left that claims to run here. The game will not start while the
+                // mod is in the folder, so turning it off is the remaining answer — done rather
+                // than suggested, and said plainly along with how many builds it took to find out.
                 if (mod.Enabled) ModScanner.SetEnabled(mod, false);
 
-                return (true, $"Its author has no build for {instance.MinecraftVersion}, so it is turned off.");
+                var count = instance.CrashedBuilds.Count;
+
+                return (true, count > 1
+                    ? $"{count} builds tried, none run on {instance.MinecraftVersion}. Turned off."
+                    : $"No build runs on {instance.MinecraftVersion}. Turned off.");
             }
 
             case ProblemKind.Memory:

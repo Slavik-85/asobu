@@ -208,6 +208,17 @@ public sealed class Instance : INotifyPropertyChanged
         MinMemoryMb is not null || MaxMemoryMb is not null ||
         JavaSelection is not null || ExtraJvmArguments is not null;
 
+    /// <summary>
+    /// Builds of mods that crashed this instance, by file name.
+    ///
+    /// Kept so an automatic fix cannot offer back something already known not to work. Without it
+    /// a mod with two builds, both tagged for this version and neither actually running on it,
+    /// swaps from one to the other and back for as long as anybody keeps pressing — which is
+    /// exactly what happened. Remembered on the instance rather than in the session, because each
+    /// crash is a new session.
+    /// </summary>
+    public List<string> CrashedBuilds { get; set; } = [];
+
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastPlayed { get; set; }
     public long PlaytimeSeconds

@@ -805,13 +805,20 @@ public sealed class AsobuLauncher
     /// there it is an ordinary version list, filtered to what this instance runs and to what the
     /// complaint will accept, newest first.
     /// </summary>
+    /// <param name="excluding">
+    /// File names never to install, whatever the catalogue says about them. Builds already known
+    /// to crash this instance go here: a shop's version tags are the author's claim about what a
+    /// build runs on, and a crash is proof against it.
+    /// </param>
     public async Task<ModSwapResult> SwapModAsync(
         Instance instance,
         ModConflict conflict,
+        IReadOnlySet<string>? excluding = null,
         CancellationToken cancellationToken = default)
     {
         var first = await SwapOneAsync(
-            instance, conflict.ModId, conflict.ModName, conflict.Wanted, cancellationToken).ConfigureAwait(false);
+                instance, conflict.ModId, conflict.ModName, conflict.Wanted, excluding, cancellationToken)
+            .ConfigureAwait(false);
 
         if (first.Swapped || conflict.Alternative is not { } other) return first;
 
@@ -820,7 +827,8 @@ public sealed class AsobuLauncher
         // the loader only ever suggests moving one — refusing here would leave an instance
         // unlaunchable over a fix that was available all along.
         var second = await SwapOneAsync(
-            instance, other.ModId, other.ModName, other.Wanted, cancellationToken).ConfigureAwait(false);
+                instance, other.ModId, other.ModName, other.Wanted, excluding, cancellationToken)
+            .ConfigureAwait(false);
 
         return second.Swapped
             ? second
@@ -835,6 +843,7 @@ public sealed class AsobuLauncher
         string modId,
         string modName,
         VersionBound wantedBound,
+        IReadOnlySet<string>? excluding,
         CancellationToken cancellationToken)
     {
         var directory = ModScanner.ModsDirectory(Paths, instance.Folder);
@@ -861,6 +870,12 @@ public sealed class AsobuLauncher
             // just refused to start with, so offering it back is offering nothing — a bound like
             // "any 0.9.x" means "some 0.9.x that works", and this one demonstrably does not.
             .Where(version => !string.Equals(version.FileName, installed.FileName, StringComparison.OrdinalIgnoreCase))
+
+            // And never one that has already crashed this instance. The shops say which game
+            // versions a build supports, but that is the author's claim rather than a fact — a
+            // build tagged for 1.21.8 that dies on 1.21.8 has settled the question, and without
+            // this the search comes straight back to it.
+            .Where(version => excluding is null || !excluding.Contains(version.FileName))
 
             // A release ahead of a prerelease, then newest first. Ordered by the published
             // version string rather than by date: a mod can publish a fix for an older branch
