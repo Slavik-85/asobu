@@ -1361,7 +1361,7 @@
                 <TextBlock Text="Or import via a code" Classes="h1" TextAlignment="Center"
                            TextWrapping="Wrap" MaxWidth="250"/>
                 <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="250"
-                           Text="A CurseForge profile code, or a link to a modpack on CurseForge or Modrinth."/>
+                           Text="An Asobu share code from a friend, a CurseForge profile code, or a link to a modpack on CurseForge or Modrinth."/>
               </StackPanel>
               <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <TextBox Classes="field" PlaceholderText="Paste a code or link" Text="{Binding ImportCode}"/>
