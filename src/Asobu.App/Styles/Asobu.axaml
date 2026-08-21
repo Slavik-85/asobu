@@ -2425,6 +2425,17 @@
   <Style Selector="Button.iconGhost:pressed">
     <Setter Property="RenderTransform" Value="none"/>
   </Style>
+  <!-- Every icon in one of these buttons is a stroked outline rather than a filled shape: an X
+       is two lines and encloses no area, so a fill draws nothing. A stroke with no brush also
+       draws nothing, which is how three of these came to be invisible while the tooltip still
+       appeared over them. Set here rather than on each Path so leaving it off is not possible. -->
+  <Style Selector="Button.iconGhost Path">
+    <Setter Property="Stroke" Value="{DynamicResource TextMuted}"/>
+  </Style>
+  <!-- Follows the background up. A muted icon over a lit panel reads as disabled. -->
+  <Style Selector="Button.iconGhost:pointerover Path">
+    <Setter Property="Stroke" Value="{DynamicResource Text}"/>
+  </Style>
 
   <!-- The one piece of chrome that only exists when there is news. Accent-filled so it
        reads as an offer rather than as navigation, and it lives in the sidebar rather than
@@ -2838,6 +2849,11 @@
   </Style>
   <Style Selector="Button.viewerIcon:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentHover}"/>
+  </Style>
+  <!-- Same omission as the ghost buttons had, and just as invisible: this one is an accent disc
+       with nothing drawn on it. On accent rather than muted, since that is what it sits on. -->
+  <Style Selector="Button.viewerIcon Path">
+    <Setter Property="Stroke" Value="{DynamicResource OnAccent}"/>
   </Style>
   <Style Selector="Button.viewerIcon:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentHover}"/>

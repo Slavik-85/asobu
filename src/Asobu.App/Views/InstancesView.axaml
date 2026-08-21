@@ -1050,7 +1050,7 @@
           <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
                   Margin="0,10,10,0" ToolTip.Tip="Close"
                   Command="{Binding CloseLiveLogCommand}">
-            <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+            <Path Data="M6 6 L18 18 M18 6 L6 18"
                   StrokeThickness="1.8" StrokeLineCap="Round"
                   Width="13" Height="13" Stretch="Uniform"/>
           </Button>
@@ -1122,7 +1122,7 @@
         <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
                 Margin="0,12,12,0" ToolTip.Tip="Close"
                 Command="{Binding CloseAddContentCommand}">
-          <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+          <Path Data="M6 6 L18 18 M18 6 L6 18"
                 StrokeThickness="1.8" StrokeLineCap="Round"
                 Width="13" Height="13" Stretch="Uniform"/>
         </Button>
@@ -1225,7 +1225,7 @@
 
           <Button Classes="iconGhost" HorizontalAlignment="Right" VerticalAlignment="Top"
                   Margin="0,-20,-24,0" ToolTip.Tip="Close" Command="{Binding CloseShareCommand}">
-            <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+            <Path Data="M6 6 L18 18 M18 6 L6 18"
                   StrokeThickness="1.8" StrokeLineCap="Round" Width="13" Height="13" Stretch="Uniform"/>
           </Button>
         </Panel>
@@ -1423,7 +1423,7 @@
                   Margin="0,-20,-24,0" ToolTip.Tip="Close"
                   Command="{Binding CloseNewFlowCommand}"
                   IsVisible="{Binding !IsFlowWorkingVisible}">
-            <Path Data="M6 6 L18 18 M18 6 L6 18" Stroke="{DynamicResource TextMuted}"
+            <Path Data="M6 6 L18 18 M18 6 L6 18"
                   StrokeThickness="1.8" StrokeLineCap="Round"
                   Width="13" Height="13" Stretch="Uniform"/>
           </Button>
