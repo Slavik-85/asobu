@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Asobu.Core;
+using Asobu.Core.Accounts;
 using Asobu.Core.Diagnostics;
 using Asobu.Core.Instances;
 using Asobu.Core.Java;
@@ -2597,6 +2598,11 @@ public partial class InstancesViewModel : ViewModelBase
             if (described.Files.Count == 0)
                 ShareNotice = "This instance has no mods or packs, so the code carries only its version and loader.";
 
+            // Publishing needs a session on the Asobu network, and somebody who has never opened
+            // Friends does not have one. That is not a reason to turn them away — it is a request
+            // to go and get one, which is what this does.
+            if (!_launcher.Friends.IsConnected) await EnsureNetworkAsync();
+
             var code = await _launcher.Shares.PublishAsync(described);
 
             ShareCodeText = code.Code;
@@ -2605,7 +2611,25 @@ public partial class InstancesViewModel : ViewModelBase
         }
         catch (FriendsAuthException)
         {
-            ShareError = "Sharing by code needs a Microsoft account. Sign in from Accounts, then try again.";
+            // The stored session had aged out. Get another and try the once — beyond that it is
+            // a real refusal rather than a stale token.
+            try
+            {
+                await EnsureNetworkAsync();
+
+                var code = await _launcher.Shares.PublishAsync(
+                    await Task.Run(() => _launcher.Shares.DescribeAsync(instance)));
+
+                ShareCodeText = code.Code;
+                ShareExpiry = code.ExpiryLabel;
+                ShareWasReused = code.Reused;
+            }
+            catch (Exception retry)
+            {
+                ShareError = retry is FriendsAuthException
+                    ? "Couldn't sign in to the Asobu network to publish this. Try again in a moment."
+                    : retry.Message;
+            }
         }
         catch (FriendsException e)
         {
@@ -2619,6 +2643,43 @@ public partial class InstancesViewModel : ViewModelBase
         {
             IsSharePublishing = false;
         }
+    }
+
+    /// <summary>
+    /// Gets this account onto the Asobu network, whichever kind it is.
+    ///
+    /// Sharing a code needs an identity to hang it on, and until now the only way to have one was
+    /// to have opened the friends page first — so somebody signed in with Microsoft, who had never
+    /// pressed the friends button, was told sharing "needs a Microsoft account" while looking at
+    /// their Microsoft account. The session was missing, not the account.
+    ///
+    /// An offline account gets one the same way it does on the friends page. Worth knowing that
+    /// this puts it on the network under its name and tag, which is what makes a code publishable
+    /// — a share itself carries neither: reading one hands back the instance and nothing about
+    /// who shared it.
+    /// </summary>
+    private async Task EnsureNetworkAsync()
+    {
+        if (_accounts.Active is not { } account)
+            throw new FriendsException("Add an account before sharing.");
+
+        if (await _launcher.Friends.TryResumeAsync(account)) return;
+
+        if (account.Kind == AccountKind.Offline)
+        {
+            var identity = await _launcher.Friends.JoinOfflineAsync(
+                account, MachineId.ForNetwork(_launcher.Paths));
+
+            account.NetworkUuid = identity.Uuid;
+            account.NetworkTag = identity.Tag;
+            _accounts.SaveAccounts();
+            return;
+        }
+
+        // The Minecraft token this refreshes goes to Mojang and nowhere else, exactly as it does
+        // when joining any server.
+        var session = await _launcher.ResolveSessionAsync(account);
+        await _launcher.Friends.ConnectAsync(session);
     }
 
     /// <summary>Back to the two doors, so the other one can be taken.</summary>
