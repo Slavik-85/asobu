@@ -445,6 +445,15 @@ public sealed class AsobuLauncher
         // it here would delete what was just fetched.
         if (string.Equals(previous.Path, landed, StringComparison.OrdinalIgnoreCase)) return;
 
+        // Only ever a file in the folder being installed into. The copy is looked up across all
+        // of an instance's content folders, so a project that ships both a mod and a resource
+        // pack under one name can match the jar in mods/ while a pack is being put into
+        // resourcepacks/ — and retiring that would delete a mod nobody touched.
+        if (!string.Equals(
+                Path.GetDirectoryName(previous.Path), Path.GetDirectoryName(landed),
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
         try
         {
             File.Delete(previous.Path);

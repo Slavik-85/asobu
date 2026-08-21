@@ -83,6 +83,27 @@ public class ReplaceOnInstallTests : IDisposable
     }
 
     [Fact]
+    public void NeverReachesOutOfTheFolderBeingInstalledInto()
+    {
+        // The copy is looked up across every content folder, so a project shipping both a mod and
+        // a resource pack under one name can match the jar in mods/ while the pack is going into
+        // resourcepacks/. Retiring that would delete a mod nobody touched.
+        var mods = Directory.CreateDirectory(Path.Combine(_folder, "mods")).FullName;
+        var packs = Directory.CreateDirectory(Path.Combine(_folder, "resourcepacks")).FullName;
+
+        var theMod = Path.Combine(mods, "faithful-1.21.jar");
+        File.WriteAllText(theMod, "a mod nobody touched");
+
+        var landed = Path.Combine(packs, "Faithful-32x-1.21.zip");
+        File.WriteAllText(landed, "the pack being installed");
+
+        Run(Entry(theMod), landed, ModKind.ResourcePack);
+
+        Assert.True(File.Exists(theMod));
+        Assert.True(File.Exists(landed));
+    }
+
+    [Fact]
     public void DoesNothingWhenThereWasNoPreviousCopy()
     {
         var landed = File_("sodium-0.9.2.jar");
