@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy — Asobu</title>
-<meta name="description" content="Asobu collects nothing. No accounts, no analytics, no servers. Here is exactly what the launcher stores and where.">
+<title>Privacy · Asobu</title>
+<meta name="description" content="Asobu has no analytics and no tracking. Here is exactly what the launcher stores, who it talks to, and what the friends network knows about you.">
 <link rel="stylesheet" href="style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>">
 </head>
@@ -37,125 +37,153 @@
     <div class="wrap prose">
       <h1>Privacy</h1>
       <p class="lede">
-        Asobu collects no analytics and has no tracking of any kind. This page describes exactly what
-        the launcher stores, who it talks to, and what the planned online features will and will not
-        involve.
+        Asobu has no analytics and no tracking of any kind. This page says exactly what the launcher
+        stores on your computer, which services it talks to, and what the friends network knows about
+        you if you use it.
       </p>
 
       <div class="note">
-        <p><strong>Short version:</strong> as it ships today, Asobu has no backend at all — everything stays on your own computer. Friends and world sharing will need a server, and when they arrive they will be opt-in and will never carry your worlds or game files.</p>
+        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. Friends is the only feature with a server behind it, and it never sees your worlds, your files, or your password.</p>
       </div>
 
       <h2>What we collect</h2>
       <p>
-        Nothing. Asobu has no telemetry, no crash reporting service, no analytics and no update pings.
-        The developer of Asobu receives no information about you, your machine, or your usage — and that
-        will remain true whether or not you use the online features described below.
+        No analytics, no crash reporting service, no profiling. Nobody is measuring which buttons you
+        press or how long you play. The only personal information stored anywhere outside your computer
+        is the Minecraft username and UUID of people who use friends, described below.
       </p>
 
       <h2>Microsoft sign-in</h2>
       <p>
-        To play online you sign in with a Microsoft account. Asobu uses Microsoft's standard OAuth 2.0
-        authorization code flow with PKCE, opened in your own web browser.
+        To play online you sign in with a Microsoft account. Asobu uses Microsoft's device code flow,
+        which means the launcher shows you a short code and sends you to Microsoft's own page to enter it.
       </p>
       <ul>
-        <li><strong>Asobu never sees your password.</strong> You type it into Microsoft's own sign-in page. The launcher only ever receives a token afterwards.</li>
-        <li><strong>Tokens are stored by the operating system.</strong> Your refresh token is held in Windows Credential Manager, encrypted with DPAPI. Asobu does not write it to a plain-text file or log.</li>
-        <li><strong>Tokens are only sent to Microsoft and Mojang.</strong> They are exchanged with Xbox Live and Minecraft services to verify that you own Minecraft: Java Edition and to obtain your profile name and UUID, which the game requires to start.</li>
-        <li><strong>Nothing is sent to us.</strong> There is no Asobu server involved at any point in sign-in.</li>
+        <li><strong>Asobu never sees your password.</strong> You type it into Microsoft's sign-in page. The launcher only receives a token afterwards.</li>
+        <li><strong>Tokens are encrypted on your disk.</strong> Your refresh token is sealed with Windows DPAPI under your user account, in a file only that account can read. Copying it to another machine yields nothing.</li>
+        <li><strong>Tokens go to Microsoft and Mojang, nowhere else.</strong> They are exchanged with Xbox Live and Minecraft services to verify you own Minecraft: Java Edition and to get your profile name and UUID, which the game needs to start.</li>
+        <li><strong>Signing in does not involve any Asobu server.</strong> Not even when you use friends, which is explained below.</li>
       </ul>
       <p>
-        Signing out through Asobu removes the cached token from Windows Credential Manager. You can also
-        revoke Asobu's access at any time from your
-        <a href="https://account.live.com/consent/Manage">Microsoft account privacy settings</a>.
+        Microsoft's consent screen currently says "Minecraft Launcher" rather than Asobu. Mojang only
+        permits approved applications to sign people in to Minecraft, so until Asobu's own registration
+        is approved it uses the official launcher's public application id.
+      </p>
+      <p>
+        Signing out through Asobu deletes the stored token. You can also revoke access at any time from
+        your <a href="https://account.live.com/consent/Manage">Microsoft account privacy settings</a>.
       </p>
 
-      <h2>Planned online features</h2>
+      <h2>Friends</h2>
       <p>
-        These have not shipped yet. They are documented here in advance so there are no surprises, and
-        this section will be updated to describe the shipped behaviour when they arrive. Both are
-        <strong>opt-in</strong> — the launcher installs and plays Minecraft without them, and without
-        ever contacting an Asobu server.
-      </p>
-
-      <h3 style="margin-top:1.8rem">Friends</h3>
-      <p>
-        A friends list needs an identity, so Asobu will run a small service that knows who you are.
-        Two deliberate choices about how it works:
+        Friends is the one feature with a server behind it. It runs at
+        <code>api.asobu.cc</code> on a small machine in Frankfurt, Germany.
       </p>
       <ul>
         <li>
-          <strong>Our server never receives your Microsoft or Minecraft tokens.</strong> Identity is
-          proved using the same handshake Minecraft servers use: your launcher tells Mojang it is joining,
-          and our server asks Mojang to confirm it. Mojang tells us your username and UUID — we never
-          see, hold, or ask for a credential.
+          <strong>It never receives your Microsoft or Minecraft token.</strong> Identity is proved with
+          the same handshake Minecraft servers use. Your launcher tells Mojang it is joining, the Asobu
+          server asks Mojang to confirm it, and Mojang replies with your username and UUID. No credential
+          of yours passes through us, and nobody can claim to be you without Mojang saying so.
         </li>
         <li>
-          <strong>What it would store:</strong> your Minecraft username and UUID, the friends you add,
-          and whether you are currently online. That is the whole point of a friends list, and it is all
-          of it.
+          <strong>What it stores:</strong> your Minecraft username and UUID, who your friends are,
+          pending friend requests, when you were last seen, and a hashed copy of your session token.
+          That is the entire contents of the database.
+        </li>
+        <li>
+          <strong>Your friends can see when you were last online.</strong> That is what a friends list is
+          for, but it is worth saying plainly.
+        </li>
+        <li>
+          <strong>Nothing contacts it until you use it.</strong> Open the launcher, play Minecraft, never
+          touch the friends button, and no request ever reaches an Asobu server.
+        </li>
+        <li>
+          <strong>There is no way to delete your account yet.</strong> This is a real gap and it is being
+          worked on. Until then, opening an issue on GitHub gets your row removed by hand.
         </li>
       </ul>
 
-      <h3 style="margin-top:1.8rem">Opening a world to friends</h3>
+      <h2>Updates</h2>
       <p>
-        Asobu will let you open a singleplayer world to friends. Importantly, <strong>your computer is
-        the server</strong> — the world runs on your machine exactly as it does now.
+        Asobu asks GitHub whether a newer version exists when it starts, and downloads it in the
+        background if so. That request tells GitHub your IP address and which version you are running,
+        the same as any download would. It carries nothing else, and no Asobu server is involved.
+      </p>
+
+      <h2>Opening a world to friends</h2>
+      <p>
+        This has not shipped. It is described here in advance so there are no surprises when it does, and
+        this section will be rewritten to describe the real thing once it exists. When it arrives,
+        <strong>your computer is the server</strong> and the world runs on your machine exactly as it
+        does now.
       </p>
       <ul>
-        <li><strong>Worlds never touch our infrastructure.</strong> We do not host, store, back up or have any access to your saves.</li>
-        <li><strong>Our server only makes the introduction.</strong> It passes the connection details between the two PCs so they can talk directly, then gets out of the way.</li>
+        <li><strong>Worlds never touch our infrastructure.</strong> We will not host, store, back up or have any access to your saves.</li>
+        <li><strong>Our server only makes the introduction.</strong> It passes connection details between the two PCs so they can talk directly, then gets out of the way.</li>
         <li><strong>Relay fallback.</strong> Some home networks refuse a direct connection. In that case the game traffic can be relayed through our server so the session still works. Relayed traffic is passed through, not inspected or stored.</li>
       </ul>
 
-      <h2>Third parties Asobu contacts</h2>
-      <p>Asobu makes network requests only to the services needed to sign in and to download the game:</p>
+      <h2>Services Asobu contacts</h2>
       <ul>
-        <li><strong>Microsoft</strong> — sign-in and Xbox Live authentication.</li>
-        <li><strong>Mojang / Minecraft services</strong> — verifying game ownership, and downloading Minecraft, its libraries, assets and the Java runtime.</li>
-        <li><strong>Mod hosts</strong> — where you choose to download a mod, that download comes directly from its host.</li>
-        <li><strong>Asobu's own service</strong> — only if you opt into friends or world sharing, as described above. Never otherwise.</li>
+        <li><strong>Microsoft and Xbox Live</strong> for signing in.</li>
+        <li><strong>Mojang and Minecraft services</strong> for verifying you own the game, and for downloading Minecraft, its libraries, assets and the Java runtime.</li>
+        <li><strong>Modrinth and CurseForge</strong> when you browse or install mods. Mod files download directly from whoever hosts them.</li>
+        <li><strong>Mod loader projects</strong> such as Fabric, Quilt, Forge and NeoForge, when an instance needs one.</li>
+        <li><strong>GitHub</strong> for the update check described above.</li>
+        <li><strong>api.asobu.cc</strong> only once you have used friends.</li>
       </ul>
       <p>
-        Each of those services sees an ordinary download or sign-in request from your computer, exactly as
-        the official Minecraft launcher would produce, and is governed by its own privacy policy.
+        Each of those sees an ordinary request from your computer, much like the official Minecraft
+        launcher would produce, and each is governed by its own privacy policy.
       </p>
 
       <h2>What is stored on your computer</h2>
-      <p>By default Asobu keeps its files in <code>%APPDATA%\Asobu</code>:</p>
+      <p>
+        An installed Asobu keeps everything in one folder inside its own install directory, so an update
+        replaces the program without touching your data. Running from a source build instead, it uses
+        <code>%APPDATA%\.asobu</code>.
+      </p>
       <ul>
-        <li><strong>Instances</strong> — your worlds, mods, configuration and screenshots.</li>
-        <li><strong>Cache</strong> — Minecraft versions, libraries, assets and Java runtimes, shared between instances.</li>
-        <li><strong>Logs</strong> — the game's own output from each session, so crashes can be diagnosed. These stay on your disk and are never uploaded.</li>
-        <li><strong>accounts.json</strong> — the display name and UUID of accounts you have added, so the launcher can list them. <em>No tokens or passwords are stored in this file.</em></li>
-        <li><strong>settings.json</strong> — your preferences, such as memory allocation and Java choice.</li>
+        <li><strong>Instances</strong> with your worlds, mods, configuration and screenshots.</li>
+        <li><strong>Cache</strong> holding Minecraft versions, libraries, assets and Java runtimes, shared between instances.</li>
+        <li><strong>Logs</strong> from each session, so crashes can be explained. They stay on your disk and are never uploaded.</li>
+        <li><strong>accounts.json</strong> with the display name and UUID of accounts you have added. No tokens or passwords are in this file.</li>
+        <li><strong>tokens.dat</strong> holding your encrypted Microsoft refresh token, sealed with DPAPI.</li>
+        <li><strong>settings.json</strong> with your preferences, such as memory allocation and Java choice.</li>
       </ul>
       <p>
-        In portable mode this all lives in a <code>data</code> folder next to the executable instead.
-        Deleting the folder removes everything Asobu has stored.
+        Mod icons and artwork are cached in your system temp folder so they are not fetched twice. That
+        cache is capped and expires on its own, and losing it costs one re-download.
+      </p>
+      <p>
+        In portable mode all of this lives in a <code>data</code> folder next to the executable. Deleting
+        the folder removes everything Asobu has stored locally.
       </p>
 
       <h2>Children</h2>
       <p>
-        Asobu does not knowingly collect information from anyone, of any age, because it collects no
-        information at all. Microsoft account rules, including family and child-account restrictions,
-        are enforced by Microsoft during sign-in.
+        Asobu collects nothing from anyone through the launcher itself. If you use friends, the server
+        stores the Minecraft username and UUID that Mojang provides, regardless of the age of the account
+        holder. Microsoft account rules, including family and child-account restrictions, are enforced by
+        Microsoft during sign-in.
       </p>
 
       <h2>Changes</h2>
       <p>
-        This page is updated before a feature ships, not after. Anything that transmits data will be
-        opt-in, and the project is open source, so everything described here can be checked against the
-        code rather than taken on trust.
+        This page is updated when behaviour changes, and it describes what the code does rather than what
+        was intended. The project is open source, so anything here can be checked against the source
+        instead of taken on trust.
       </p>
 
       <h2>Contact</h2>
       <p>
-        Questions, or a privacy problem to report? Open an issue on
+        Questions, a privacy problem, or a request to delete your friends data? Open an issue on
         <a href="https://github.com/Slavik-85/asobu/issues">GitHub</a>.
       </p>
 
-      <p style="color:var(--muted);font-size:0.9rem;margin-top:2.5rem">Last updated: 19 August 2026</p>
+      <p style="color:var(--muted);font-size:0.9rem;margin-top:2.5rem">Last updated: 21 August 2026</p>
     </div>
   </section>
 </main>
