@@ -43,7 +43,7 @@
       </p>
 
       <div class="note">
-        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. Friends is the only feature with a server behind it, and it never sees your worlds, your files, or your password.</p>
+        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. The Asobu server is only involved in friends and share codes, and it never sees your worlds, your game files, or your password.</p>
       </div>
 
       <h2>What we collect</h2>
@@ -89,7 +89,7 @@
         <li>
           <strong>What it stores:</strong> your Minecraft username and UUID, who your friends are,
           pending friend requests, when you were last seen, and a hashed copy of your session token.
-          That is the entire contents of the database.
+          Share codes are kept here too, described below.
         </li>
         <li>
           <strong>Your friends can see when you were last online.</strong> That is what a friends list is
@@ -102,6 +102,34 @@
         <li>
           <strong>There is no way to delete your account yet.</strong> This is a real gap and it is being
           worked on. Until then, opening an issue on GitHub gets your row removed by hand.
+        </li>
+      </ul>
+
+      <h2>Share codes</h2>
+      <p>
+        An instance can be shared as a code, which needs an account to create but not to use. What the
+        server keeps is a list of what the instance contains, never the files themselves.
+      </p>
+      <ul>
+        <li>
+          <strong>What a code holds:</strong> the instance name, its Minecraft version and mod loader,
+          and a list of your mods and packs identified by hash. There are no download addresses in it,
+          because whoever imports the code looks each hash up at Modrinth or CurseForge and downloads
+          from there.
+        </li>
+        <li>
+          <strong>Your worlds and settings are not in it.</strong> Only mods, resource packs, shaders
+          and data packs travel. Saves and the config folder stay on your machine, so a code cannot
+          carry a world or a server password you forgot was in there.
+        </li>
+        <li>
+          <strong>Seven days, then it is deleted.</strong> Not archived or hidden, removed. Sharing the
+          same instance again before then gives back the same code with another week on it, and you can
+          withdraw one early.
+        </li>
+        <li>
+          <strong>Anyone holding the code can read it.</strong> That is what it is for. Treat a code
+          like a link: whoever you send it to can pass it on.
         </li>
       </ul>
 
@@ -132,7 +160,7 @@
         <li><strong>Modrinth and CurseForge</strong> when you browse or install mods. Mod files download directly from whoever hosts them.</li>
         <li><strong>Mod loader projects</strong> such as Fabric, Quilt, Forge and NeoForge, when an instance needs one.</li>
         <li><strong>GitHub</strong> for the update check described above.</li>
-        <li><strong>api.asobu.cc</strong> only once you have used friends.</li>
+        <li><strong>api.asobu.cc</strong> once you have used friends, or when you make or open a share code.</li>
       </ul>
       <p>
         Each of those sees an ordinary request from your computer, much like the official Minecraft
