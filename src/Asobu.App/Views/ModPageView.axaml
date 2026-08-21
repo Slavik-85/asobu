@@ -184,11 +184,11 @@
                                     IsVisible="{Binding CanDownload}"
                                     Command="{Binding $parent[ItemsControl].((vm:ModPageViewModel)DataContext).DownloadVersionCommand}"
                                     CommandParameter="{Binding}"/>
+                            <!-- No "Added" state: the button comes straight back, because moving
+                                 between builds is what this table is for. What happened is said
+                                 in the row's notice instead. -->
                             <TextBlock Text="Adding&#x2026;" Classes="label" HorizontalAlignment="Center"
                                        IsVisible="{Binding IsInstalling}"/>
-                            <TextBlock Text="Added" Classes="label" HorizontalAlignment="Center"
-                                       Foreground="{DynamicResource Accent}"
-                                       IsVisible="{Binding IsInstalled}"/>
                           </StackPanel>
                         </Grid>
                       </Border>

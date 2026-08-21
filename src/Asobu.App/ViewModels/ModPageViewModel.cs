@@ -128,17 +128,26 @@ public partial class ModVersionRow(ModVersion version) : ViewModelBase
     public bool IsRelease => Version.Channel == ModChannel.Release;
     public bool IsBeta => Version.Channel == ModChannel.Beta;
     public bool IsAlpha => Version.Channel == ModChannel.Alpha;
-    public bool CanDownload => Version.CanDownload && !IsInstalling && !IsInstalled;
+
+    /// <summary>
+    /// Every build stays installable, including one that was just installed and the one the
+    /// instance is already on.
+    ///
+    /// This table is how somebody moves between builds — down to an older one when the newest
+    /// broke something, back up again afterwards — so a row that spends itself on first use is a
+    /// row that has to be reloaded to be used again. Installing replaces whichever build was
+    /// there, so pressing these in turn walks the instance from one to another rather than
+    /// piling them up.
+    /// </summary>
+    public bool CanDownload => Version.CanDownload && !IsInstalling;
 
     [ObservableProperty] public partial bool IsInstalling { get; set; }
-    [ObservableProperty] public partial bool IsInstalled { get; set; }
     [ObservableProperty] public partial string? Notice { get; set; }
 
     public bool HasNotice => Notice is { Length: > 0 };
 
     partial void OnNoticeChanged(string? value) => OnPropertyChanged(nameof(HasNotice));
     partial void OnIsInstallingChanged(bool value) => OnPropertyChanged(nameof(CanDownload));
-    partial void OnIsInstalledChanged(bool value) => OnPropertyChanged(nameof(CanDownload));
 }
 
 /// <summary>
@@ -326,6 +335,23 @@ public partial class ModPageViewModel(
         Refresh();
 
         _ = LoadAsync(mod, request.Token);
+        _ = MarkIfAlreadyInstalledAsync(Card, target);
+    }
+
+    /// <summary>
+    /// Turns the page's Download button into an Added badge when the instance this page was
+    /// opened for already has the mod.
+    ///
+    /// The mod, not the build — which is why this touches the card at the top and never the
+    /// versions table below it. "Do you have Sodium" and "do you have this exact Sodium" are
+    /// different questions, and only the first has an answer that should stop a button working.
+    /// </summary>
+    private async Task MarkIfAlreadyInstalledAsync(ModCard card, Instance? target)
+    {
+        if (target is null) return;
+
+        if (await Task.Run(() => InstalledMods.For(launcher.Paths, target).Has(card.Mod)))
+            card.IsInstalled = true;
     }
 
     [RelayCommand]
@@ -696,8 +722,9 @@ public partial class ModPageViewModel(
 
             if (result.Installed)
             {
-                row.IsInstalled = true;
-
+                // The row goes straight back to offering itself. Nothing is marked as done,
+                // because "done" is not a state a build can be in when the next one down the
+                // table is a click away.
                 row.Notice = result.Dependencies.Count == 0
                     ? $"Added {result.FileName} to {instance.Name}"
                     : $"Added {result.FileName} to {instance.Name}, with {result.Dependencies.Count} " +
