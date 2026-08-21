@@ -129,9 +129,16 @@
       </p>
       <ul>
         <li>
-          <strong>Nothing is stored.</strong> A message sits in the server's memory from the moment you
-          send it until your friend's launcher collects it, and then it is gone. It is never written to a
-          disk, never part of a backup, and never in the file the rest of the friends data lives in.
+          <strong>Nothing is stored on the server.</strong> A message sits in its memory from the moment
+          you send it until your friend's launcher collects it, and then it is gone. It is never written
+          to a disk there, never part of a backup, and never in the file the rest of the friends data
+          lives in.
+        </li>
+        <li>
+          <strong>Your own copy is kept on your computer.</strong> So that a conversation is still there
+          when you reopen the launcher. Seven days or 500 MB, whichever comes first, then the oldest go.
+          That copy never leaves your machine, and it is described under what is stored on your computer,
+          below.
         </li>
         <li>
           <strong>There is no history to ask for.</strong> Your conversation exists only in the two
@@ -255,6 +262,7 @@
         <li><strong>Instances</strong> with your worlds, mods, configuration and screenshots.</li>
         <li><strong>Cache</strong> holding Minecraft versions, libraries, assets and Java runtimes, shared between instances.</li>
         <li><strong>Logs</strong> from each session, so crashes can be explained. They stay on your disk and are never uploaded.</li>
+        <li><strong>Chat history</strong> under <code>chat/</code>, one folder per account, so a conversation is still there when you reopen the launcher. It is written in the clear: messages are encrypted so the server cannot read them, and once decrypted on your own machine they are ordinary text and pictures that anything running as you can read — the same as any other chat program's cache. Nothing older than seven days is kept, and the whole archive stays under 500 MB by dropping the oldest first. Deleting the folder loses the history and nothing else.</li>
         <li><strong>accounts.json</strong> with the display name and UUID of accounts you have added. No tokens or passwords are in this file.</li>
         <li><strong>tokens.dat</strong> holding your Microsoft refresh token — sealed with DPAPI on Windows, and on Linux readable by your user only.</li>
         <li><strong>settings.json</strong> with your preferences, such as memory allocation and Java choice.</li>

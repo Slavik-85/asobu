@@ -21,6 +21,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
 	"math/big"
 	"net/http"
 	"strings"
@@ -196,6 +197,80 @@ func (s *Server) handleOfflineJoin(w http.ResponseWriter, r *http.Request) {
 	s.state.OfflineIPs[ipKey] = append(s.state.OfflineIPs[ipKey], uuid)
 
 	s.issueOffline(w, user)
+}
+
+// How long an offline account may go unseen before the network forgets it.
+//
+// Six weeks, and it is measured from the last time the launcher spoke rather than from when the
+// account was made — so an account in use never ages, and one nobody has opened since the spring
+// stops sitting in other people's lists. A Mojang account is never swept: Mojang vouches for it,
+// so it is theirs whether they visit or not, and their friends list should be waiting for them.
+const offlineLife = 45 * 24 * time.Hour
+
+// sweepOffline forgets offline accounts nobody has used in a month and a half.
+//
+// Everything of theirs goes at once, which is the point: leaving the friendships behind would
+// leave a name in somebody's list that can never come back online, and leaving the ledger entry
+// behind would keep a slot spent on an account that no longer exists. Called with the lock held.
+func (s *Server) sweepOffline(now time.Time) bool {
+	var gone []string
+	for uuid, u := range s.state.Users {
+		if u.Tag != "" && now.Sub(u.LastSeen) > offlineLife {
+			gone = append(gone, uuid)
+		}
+	}
+	if len(gone) == 0 {
+		return false
+	}
+
+	forgotten := map[string]bool{}
+	for _, uuid := range gone {
+		forgotten[uuid] = true
+		delete(s.state.Users, uuid)
+		delete(s.inbox, uuid)
+	}
+
+	// Both sides of every friendship, so they leave the other person's list rather than becoming
+	// a row pointing at nobody — which is what wire() renders as a friend called "?".
+	kept := s.state.Friends[:0]
+	for _, f := range s.state.Friends {
+		if !forgotten[f.From] && !forgotten[f.To] {
+			kept = append(kept, f)
+		}
+	}
+	s.state.Friends = kept
+
+	for hash, session := range s.state.Tokens {
+		if forgotten[session.UUID] {
+			delete(s.state.Tokens, hash)
+		}
+	}
+
+	// And the slots they were holding, freed for whoever is at that machine or address now.
+	forgetOrigins(s.state.OfflineHWIDs, forgotten)
+	forgetOrigins(s.state.OfflineIPs, forgotten)
+
+	log.Printf("swept %d offline account(s) unseen for %s", len(gone), offlineLife)
+
+	s.bump()
+	return true
+}
+
+// forgetOrigins drops swept accounts from one ledger, and drops keys left holding nothing.
+func forgetOrigins(ledger map[string][]string, forgotten map[string]bool) {
+	for key, uuids := range ledger {
+		kept := uuids[:0]
+		for _, uuid := range uuids {
+			if !forgotten[uuid] {
+				kept = append(kept, uuid)
+			}
+		}
+		if len(kept) == 0 {
+			delete(ledger, key)
+		} else {
+			ledger[key] = kept
+		}
+	}
 }
 
 // issueOffline hands back a session, the same shape the Mojang route ends with plus the tag.

@@ -250,6 +250,13 @@ func (s *Server) flushLoop() {
 		// And messages nobody came for.
 		s.dropStaleMessages(now)
 
+		// And offline accounts nobody has been for a month and a half. Written straight out
+		// rather than left to the next flush: this removes people from other people's friends
+		// lists, which is not a change to discover after a crash.
+		if s.sweepOffline(now) {
+			s.saveNow()
+		}
+
 		// And the rate-limit table, which otherwise keeps a row for every caller ever seen.
 		s.limiter.forget(5 * time.Minute)
 
@@ -802,6 +809,14 @@ func main() {
 		changed: make(chan struct{}),
 	}
 	s.load()
+
+	// Before anything is served, rather than thirty seconds into it. A server that has been down
+	// for a while comes back with accounts that aged out while it was off, and the first friends
+	// list it answers should not still be showing them.
+	if s.sweepOffline(time.Now()) {
+		s.saveNow()
+	}
+
 	go s.flushLoop()
 
 	// One lock around every handler. ponytail: a mutex over a map is the whole concurrency

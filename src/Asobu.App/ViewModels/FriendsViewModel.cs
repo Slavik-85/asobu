@@ -87,6 +87,9 @@ public partial class FriendsViewModel : ViewModelBase
     private readonly AccountsViewModel _accounts;
     private readonly Action _goAccounts;
 
+    /// <summary>Chat history on this computer. Never sent anywhere; see ChatArchive.</summary>
+    private readonly ChatArchive _archive;
+
     /// <summary>
     /// Stops the watch when there is nothing left to watch for: the account changed, or the
     /// launcher is closing.
@@ -104,6 +107,7 @@ public partial class FriendsViewModel : ViewModelBase
         _launcher = launcher;
         _accounts = accounts;
         _goAccounts = goAccounts;
+        _archive = new ChatArchive(launcher.Paths);
     }
 
     public ObservableCollection<FriendRow> Friends { get; } = [];
@@ -353,6 +357,19 @@ public partial class FriendsViewModel : ViewModelBase
                 return new ChatLine("[a picture that couldn't be opened]", mine, at);
             }
         }
+
+        /// <summary>The same, for a picture coming back off the disk rather than off the wire.</summary>
+        public static ChatLine ForImageFile(string path, bool mine, DateTimeOffset at)
+        {
+            try
+            {
+                return new ChatLine("", mine, at) { Picture = new Bitmap(path) };
+            }
+            catch (Exception)
+            {
+                return new ChatLine("[a picture that couldn't be opened]", mine, at);
+            }
+        }
     }
 
     /// <summary>
@@ -421,9 +438,18 @@ public partial class FriendsViewModel : ViewModelBase
         if (MessageCrypto.Unseal(_chatKey, theirs, message.Box) is not { } payload)
             return Note("[couldn't be decrypted — they may have changed keys]");
 
-        return payload.Kind == ChatKind.Image
-            ? ChatLine.ForImage(payload.Content, mine: false, message.At)
-            : new ChatLine(payload.AsText(), mine: false, message.At);
+        // Kept here rather than at the caller: this is the one place that knows whether what
+        // arrived was words or a picture, and the notes above about keys are not messages —
+        // they are this launcher talking to itself, and archiving them would be odd.
+        if (payload.Kind == ChatKind.Image)
+        {
+            _archive.AppendPicture(ArchiveKey, message.From, message.At, mine: false, payload.Content);
+            return ChatLine.ForImage(payload.Content, mine: false, message.At);
+        }
+
+        var said = payload.AsText();
+        _archive.Append(ArchiveKey, message.From, message.At, mine: false, said);
+        return new ChatLine(said, mine: false, message.At);
     }
 
     /// <summary>The longest a message may be, matched to what the server will carry once sealed.</summary>
@@ -484,10 +510,50 @@ public partial class FriendsViewModel : ViewModelBase
         OnPropertyChanged(nameof(TotalUnreadLabel));
     }
 
-    private ObservableCollection<ChatLine> ConversationFor(string uuid) =>
-        _conversations.TryGetValue(uuid, out var existing)
-            ? existing
-            : _conversations[uuid] = [];
+    /// <summary>
+    /// Which folder this account's history lives in. The network identity where there is one, so
+    /// that two offline accounts with the same name on one computer do not share a history — they
+    /// are different people, whatever they called themselves.
+    /// </summary>
+    private string ArchiveKey => _accounts.Active is { } account
+        ? account.NetworkUuid is { Length: > 0 } network ? network : account.Uuid
+        : "none";
+
+    /// <summary>
+    /// The conversation with someone, read back off the disk the first time it is asked for.
+    ///
+    /// Read once and then held: the collection is what the screen is bound to, and re-reading it
+    /// on every open would throw away the lines that arrived while it was closed.
+    /// </summary>
+    private ObservableCollection<ChatLine> ConversationFor(string uuid)
+    {
+        if (_conversations.TryGetValue(uuid, out var existing)) return existing;
+
+        var conversation = new ObservableCollection<ChatLine>();
+        foreach (var line in _archive.Read(ArchiveKey, uuid)) conversation.Add(Restore(line));
+
+        return _conversations[uuid] = conversation;
+    }
+
+    /// <summary>
+    /// Applies the week and the half-gigabyte, off the UI thread and once per session.
+    ///
+    /// Once is enough: the only thing that grows the archive is this launcher writing to it, and
+    /// a week's worth of somebody's chatting is not going to cross half a gigabyte between one
+    /// sign-in and the next. The key is read here rather than inside, because by the time the
+    /// work runs the account may have been switched underneath it.
+    /// </summary>
+    private void PruneArchive()
+    {
+        var key = ArchiveKey;
+        _ = Task.Run(() => _archive.Prune(key));
+    }
+
+    /// <summary>One archived line as something the screen can show.</summary>
+    private ChatLine Restore(ArchivedLine line) =>
+        line.Picture is { Length: > 0 } name && _archive.PicturePath(ArchiveKey, name) is { } path
+            ? ChatLine.ForImageFile(path, line.Mine, line.At)
+            : new ChatLine(line.Text ?? "", line.Mine, line.At);
 
     [RelayCommand]
     private void OpenChat(FriendRow? row)
@@ -589,7 +655,9 @@ public partial class FriendsViewModel : ViewModelBase
 
             var box = MessageCrypto.Seal(_chatKey, theirs, ChatPayload.OfImage(jpeg));
 
-            ConversationFor(friend.Uuid).Add(ChatLine.ForImage(jpeg, mine: true, DateTimeOffset.UtcNow));
+            var sentAt = DateTimeOffset.UtcNow;
+        ConversationFor(friend.Uuid).Add(ChatLine.ForImage(jpeg, mine: true, sentAt));
+        _archive.AppendPicture(ArchiveKey, friend.Uuid, sentAt, mine: true, jpeg);
             OnPropertyChanged(nameof(ConversationIsEmpty));
 
             await _launcher.Friends.SayAsync(friend.Uuid, box);
@@ -640,7 +708,9 @@ public partial class FriendsViewModel : ViewModelBase
         // On screen before it is on the wire. Chat that waits for a round trip before showing
         // what you typed feels broken on a slow connection, and this one cannot be un-said
         // anyway — the server has no record to correct.
-        ConversationFor(friend.Uuid).Add(new ChatLine(text, mine: true, DateTimeOffset.UtcNow));
+        var saidAt = DateTimeOffset.UtcNow;
+        ConversationFor(friend.Uuid).Add(new ChatLine(text, mine: true, saidAt));
+        _archive.Append(ArchiveKey, friend.Uuid, saidAt, mine: true, text);
         Draft = "";
         ChatError = null;
         OnPropertyChanged(nameof(ConversationIsEmpty));
@@ -698,6 +768,7 @@ public partial class FriendsViewModel : ViewModelBase
             IsConnected = true;
             StartWatching();
             await EnsureChatKeyAsync();
+            PruneArchive();
 
             Notice = $"You're on the network as {identity.Handle}. That's what friends type to find you.";
             NoticeIsGood = true;
@@ -764,6 +835,7 @@ public partial class FriendsViewModel : ViewModelBase
                 IsConnected = true;
                 StartWatching();
                 await EnsureChatKeyAsync();
+                PruneArchive();
             }
             catch (FriendsException e)
             {
