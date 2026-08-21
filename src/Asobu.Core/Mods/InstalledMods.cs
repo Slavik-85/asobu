@@ -65,6 +65,70 @@ public sealed class InstalledMods
     public bool Has(CatalogueMod mod) => Find(mod) is not null;
 
     /// <summary>
+    /// The installed file that looks like an older build of <paramref name="fileName"/>, or null
+    /// when there is no such file or no telling which it is.
+    ///
+    /// For dependencies, which arrive as a provider id and a file name and nothing else — there
+    /// is no project name to match on the way there is for a search result, so the file name is
+    /// all there is to go on.
+    ///
+    /// Deliberately gives up when two files could be it. A duplicate is a mess the loader will
+    /// complain about; deleting the wrong mod is somebody's afternoon.
+    /// </summary>
+    public static ModEntry? OlderBuildOf(string fileName, IEnumerable<ModEntry> installed)
+    {
+        if (ProjectStem(fileName) is not { } stem) return null;
+
+        ModEntry? found = null;
+
+        foreach (var entry in installed)
+        {
+            // The same build, already there. Nothing to replace, and saying otherwise would
+            // have the caller delete what it just downloaded.
+            if (string.Equals(entry.FileName, fileName, StringComparison.OrdinalIgnoreCase)) return null;
+
+            if (!string.Equals(ProjectStem(entry.FileName), stem, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // A second candidate means the stem is not telling them apart. Leave both alone.
+            if (found is not null) return null;
+
+            found = entry;
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The part of a file name that names the project rather than the build: everything up to
+    /// the first piece that begins with a digit.
+    ///
+    ///     fabric-api-0.115.0+1.21.1.jar  →  fabric-api
+    ///     sodium-fabric-0.9.1.jar        →  sodium-fabric
+    ///
+    /// Crude, and only used where nothing better exists. It errs towards keeping too much of the
+    /// name, which costs a duplicate rather than a wrongly deleted mod: "sodium" and
+    /// "sodium-extra" stay two projects, as they should.
+    /// </summary>
+    public static string? ProjectStem(string fileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName);
+
+        // "+1.21.1" is build metadata rather than part of the name, and splitting on it first
+        // keeps a stem from swallowing the game version behind it.
+        if (name.IndexOf('+') is >= 0 and var plus) name = name[..plus];
+
+        var pieces = name.Split('-', '_');
+        var kept = pieces.TakeWhile(piece => piece.Length > 0 && !char.IsDigit(piece[0])).ToList();
+
+        if (kept.Count == 0) return null;
+
+        var stem = string.Join('-', kept);
+
+        return stem.Length >= 3 ? stem.ToLowerInvariant() : null;
+    }
+
+    /// <summary>
     /// What a catalogue entry might be known by: the slug from each shop's page, then the title.
     ///
     /// The slug leads because it is the closest thing either shop has to the id a jar declares —

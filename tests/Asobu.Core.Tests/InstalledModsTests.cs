@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Asobu.Core.Mods;
 
 namespace Asobu.Core.Tests;
@@ -117,5 +117,57 @@ public class InstalledModsTests
     public void AnEmptyInstanceHasNothing()
     {
         Assert.False(InstalledMods.Empty.Has(Listed("Sodium", "sodium")));
+    }
+
+    [Theory]
+    [InlineData("fabric-api-0.115.0+1.21.1.jar", "fabric-api")]
+    [InlineData("sodium-fabric-0.9.1.jar", "sodium-fabric")]
+    [InlineData("cloth-config-11.1.118-fabric.jar", "cloth-config")]
+    public void ReadsTheProjectOutOfAFileName(string fileName, string expected)
+    {
+        Assert.Equal(expected, InstalledMods.ProjectStem(fileName));
+    }
+
+    [Fact]
+    public void FindsTheOlderBuildOfADependency()
+    {
+        var installed = new[] { Jar("fabric-api", "fabric-api-0.110.0+1.21") };
+
+        var older = InstalledMods.OlderBuildOf("fabric-api-0.115.0+1.21.1.jar", installed);
+
+        Assert.Equal("fabric-api-0.110.0+1.21.jar", older?.FileName);
+    }
+
+    [Fact]
+    public void DoesNotTreatTheSameBuildAsAnOlderOne()
+    {
+        var installed = new[] { Jar("fabric-api", "fabric-api-0.115.0+1.21.1") };
+
+        // Downloading over itself. Calling this an older build would have the caller delete
+        // the file that was just fetched.
+        Assert.Null(InstalledMods.OlderBuildOf("fabric-api-0.115.0+1.21.1.jar", installed));
+    }
+
+    [Fact]
+    public void KeepsTwoProjectsWithASharedPrefixApart()
+    {
+        var installed = new[] { Jar("sodium", "sodium-fabric-0.9.1") };
+
+        // Sodium Extra is a different mod, and installing it must not remove Sodium.
+        Assert.Null(InstalledMods.OlderBuildOf("sodium-extra-0.6.0.jar", installed));
+    }
+
+    [Fact]
+    public void GivesUpRatherThanGuessBetweenTwoCandidates()
+    {
+        // Both share a stem, so which one is the older build of the incoming file is anyone's
+        // guess — and a wrong guess deletes a mod somebody wanted.
+        var installed = new[]
+        {
+            Jar("create", "create-0.5.1"),
+            Jar("create", "create-0.5.0"),
+        };
+
+        Assert.Null(InstalledMods.OlderBuildOf("create-0.6.0.jar", installed));
     }
 }

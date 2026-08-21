@@ -737,6 +737,12 @@ public sealed class AsobuLauncher
         var seen = new HashSet<string>(required, StringComparer.OrdinalIgnoreCase);
         var pending = new Queue<(string Id, int Depth)>(required.Select(id => (id, 1)));
 
+        // What the mods folder holds before any of this arrives. A dependency that is already
+        // installed at an older build has to be replaced rather than joined, exactly as the mod
+        // that asked for it would be — this is the same duplicate by another road, and the one
+        // nobody clicked for.
+        var already = ModScanner.Scan(directory);
+
         while (pending.Count > 0 && carried.Count < DependencyLimit)
         {
             var (id, depth) = pending.Dequeue();
@@ -751,9 +757,15 @@ public sealed class AsobuLauncher
             // as a mod that does not load, which is what it already would have been.
             if (download?.Url is not { Length: > 0 } url) continue;
 
+            var landed = Path.Combine(directory, download.FileName);
+
             await _downloader.RunAsync(
-                [new DownloadTask(url, Path.Combine(directory, download.FileName), download.Sha1, download.Size)],
+                [new DownloadTask(url, landed, download.Sha1, download.Size)],
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            // A dependency is only ever a mod, so the world guard never applies here — but it
+            // costs nothing to go through the same door as everything else.
+            RetirePreviousCopy(InstalledMods.OlderBuildOf(download.FileName, already), landed, ModKind.Mod);
 
             carried.Add(download.FileName);
 
