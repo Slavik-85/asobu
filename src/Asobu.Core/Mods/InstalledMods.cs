@@ -27,10 +27,48 @@ public sealed class InstalledMods
 
     private InstalledMods(IEnumerable<ModEntry> entries)
     {
-        foreach (var entry in entries)
+        var all = entries.ToList();
+
+        // Two passes, and the order is the point. What a mod calls itself is registered for every
+        // mod first; only then does anything derived from a file name get to claim a key. A jar
+        // named after one project must never answer for another that actually declares that id.
+        foreach (var entry in all)
             foreach (var name in NamesOf(entry))
                 _byName.TryAdd(name, entry);
+
+        foreach (var entry in all)
+            if (FileNameKey(entry) is { } key)
+                _byName.TryAdd(key, entry);
     }
+
+    /// <summary>
+    /// The jar's own file name, with the loader it was built for taken off the end.
+    ///
+    /// The third name a mod goes by, and the one that saves the cases where the other two both
+    /// miss. Advanced XRay declares its id as "xray" and titles itself "Advanced XRay (Fabric)",
+    /// while its page is at advanced-xray — so the id is too short, the title has a loader
+    /// bracketed onto it, and nothing matches. The file is called advanced-xray-fabric-26.2.0.1,
+    /// which is the page's own name with a platform and a version after it.
+    ///
+    /// Only the trailing platform words go. Taking them from anywhere would turn fabric-api into
+    /// api, which is a different thing entirely and probably somebody else's.
+    /// </summary>
+    private static string? FileNameKey(ModEntry entry)
+    {
+        if (ProjectStem(entry.FileName) is not { } stem) return null;
+
+        var pieces = stem.Split('-').ToList();
+        while (pieces.Count > 1 && Platforms.Contains(pieces[^1]))
+            pieces.RemoveAt(pieces.Count - 1);
+
+        return Clean(string.Join('-', pieces));
+    }
+
+    /// <summary>What a jar's name says about where it runs rather than about what it is.</summary>
+    private static readonly HashSet<string> Platforms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fabric", "forge", "neoforge", "quilt", "mc", "client", "server", "mod", "universal",
+    };
 
     public static readonly InstalledMods Empty = new([]);
 

@@ -170,4 +170,53 @@ public class InstalledModsTests
 
         Assert.Null(InstalledMods.OlderBuildOf("create-0.6.0.jar", installed));
     }
+
+    // ---- matching on the jar's own file name ----
+
+    /// <summary>
+    /// The case that sent this looking: Advanced XRay declares its id as "xray" and titles itself
+    /// "Advanced XRay (Fabric)", while its page is at advanced-xray. The id is too short to match,
+    /// the title has a loader bracketed onto it, and the catalogue tile stayed on Add for a mod
+    /// that was plainly already installed. The file name is the third name, and the one that
+    /// carries the page's own.
+    /// </summary>
+    [Fact]
+    public void Matches_on_the_file_name_when_the_id_and_title_both_miss()
+    {
+        var jar = new ModEntry("C:/mods/advanced-xray-fabric-26.2.0.1.jar",
+            "advanced-xray-fabric-26.2.0.1.jar", "Advanced XRay (Fabric)", "someone", "xray", 1024, true, null);
+
+        Assert.NotNull(Index(jar).Find(Listed("Advanced XRay", "advanced-xray")));
+    }
+
+    /// <summary>
+    /// Only trailing platform words come off. Taken from anywhere, fabric-api would become api,
+    /// which is a different project and probably somebody else's.
+    /// </summary>
+    [Fact]
+    public void Does_not_strip_a_platform_word_from_the_front()
+    {
+        var api = new ModEntry("C:/mods/fabric-api-0.158.0+26.2.jar", "fabric-api-0.158.0+26.2.jar",
+            "Fabric API", "someone", "fabric-api", 1024, true, null);
+
+        Assert.NotNull(Index(api).Find(Listed("Fabric API", "fabric-api")));
+        Assert.Null(Index(api).Find(Listed("Some Other API", "api")));
+    }
+
+    /// <summary>
+    /// A name a mod declares outranks one worked out from a file name, whichever order they were
+    /// scanned in — otherwise a jar named after one project could answer for another.
+    /// </summary>
+    [Fact]
+    public void A_declared_id_wins_over_another_jars_file_name()
+    {
+        // This one is called sodium-something but declares itself as an unrelated mod.
+        var impostor = new ModEntry("C:/mods/sodium-extras-1.0.jar", "sodium-extras-1.0.jar",
+            "Sodium Extras", "someone", "sodiumextras", 1024, true, null);
+
+        var real = new ModEntry("C:/mods/rubidium-2.0.jar", "rubidium-2.0.jar",
+            "Sodium", "someone", "sodium", 1024, true, null);
+
+        Assert.Equal("rubidium-2.0.jar", Index(impostor, real).Find(Listed("Sodium", "sodium"))?.FileName);
+    }
 }
