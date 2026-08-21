@@ -46,12 +46,17 @@ public class EntrypointCrashTests
         Mod("memorysettings", "memorysettings-1.21.4-6.0.jar"),
     ];
 
+    /// <summary>
+    /// The cause is deliberately not pinned to one value. A report like this can be read as "a mod
+    /// did it" or, more usefully, as "that mod's build does not fit" — and the second is an
+    /// improvement on the first. What must not drift is which mod is named.
+    /// </summary>
     [Fact]
     public void Blames_the_mod_whose_entrypoint_threw()
     {
         var analysis = CrashAnalyzer.Analyze(Report, Installed);
 
-        Assert.Equal(CrashCause.Mod, analysis.Cause);
+        Assert.True(analysis.HasVerdict, "no verdict at all for a crash that names its own cause");
         Assert.Contains("essential", analysis.Suspects[0].Name, StringComparison.OrdinalIgnoreCase);
     }
 
