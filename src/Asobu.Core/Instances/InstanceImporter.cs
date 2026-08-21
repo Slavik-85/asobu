@@ -170,6 +170,12 @@ public sealed class InstanceImporter(
         code = code.Trim();
         if (code.Length == 0) return ImportOutcome.Failed("Paste a code first.");
 
+        // A share link is a code with an address wrapped round it. Unwrapped here rather than
+        // handled separately, so everything below sees the code someone would have pasted
+        // anyway. Without this the link falls through to the project-link parser, which sees
+        // "share" where it expects "modpacks" and turns it down for the wrong reason.
+        if (ShareCodeFrom(code) is { } shared) code = shared;
+
         // A Modrinth address says outright what it is; no need to ask CurseForge about it.
         if (code.Contains("modrinth.com/", StringComparison.OrdinalIgnoreCase))
         {
@@ -698,6 +704,28 @@ public sealed class InstanceImporter(
                 : $"{missing} files in the pack couldn't be looked up on CurseForge.");
 
         return tasks;
+    }
+
+    /// <summary>
+    /// The code out of a CurseForge share link, or null if this is not one.
+    ///
+    /// Everything after share/ is the code, and the address around it carries nothing the API
+    /// needs. Any query string or fragment a browser tacked on is dropped with it.
+    /// </summary>
+    private static string? ShareCodeFrom(string link)
+    {
+        var marker = link.IndexOf("curseforge.com/", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0) return null;
+
+        var segments = link[(marker + "curseforge.com/".Length)..]
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var share = Array.FindIndex(segments, s => s.Equals("share", StringComparison.OrdinalIgnoreCase));
+        if (share < 0 || share + 1 >= segments.Length) return null;
+
+        var code = segments[share + 1].Split('?', '#')[0].Trim();
+
+        return code.Length > 0 ? code : null;
     }
 
     /// <summary>
