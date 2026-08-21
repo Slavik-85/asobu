@@ -291,10 +291,12 @@ public static partial class CrashAnalyzer
         return new CrashAnalysis(
             CrashCause.DuplicateLibrary,
             "Two copies of the loader's own classes were loaded",
-            $"{scale}which happens when the same library ends up both on the launch classpath and inside "
-            + "Fabric's own loader. Nothing can be cast between the two copies, so mixins and entrypoints all "
-            + "fail at once. None of your mods caused this and turning them off will not help — it is the "
-            + "launcher's classpath. Reinstalling the instance's loader is the thing most likely to clear it.",
+            $"{scale}which means one library was loaded twice and nothing can be cast between the copies. "
+            + "None of your mods caused it and turning them off will not help. The usual reason is that the "
+            + "launcher's files are reachable by two different paths — running Asobu from a sandboxed, "
+            + "portable or redirected folder does this, because the loader decides what to share by comparing "
+            + "paths and two spellings of one folder do not match. Running the installed copy normally is the "
+            + "first thing to try; after that, reinstalling the instance's loader.",
             []);
     }
 
