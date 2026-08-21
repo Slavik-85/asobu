@@ -305,7 +305,13 @@
                 <Grid>
                   <Border Classes="bubble theirs" IsVisible="{Binding Theirs}">
                     <StackPanel Spacing="2">
-                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"/>
+                      <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                           IsVisible="{Binding IsText}"/>
+                      <!-- Corner-clipped so the picture takes the bubble's shape rather than
+                           squaring off inside it. -->
+                      <Border Classes="bubblePicture" IsVisible="{Binding IsPicture}">
+                        <Image Source="{Binding Picture}" Stretch="Uniform"/>
+                      </Border>
                       <TextBlock Text="{Binding TimeLabel}" Classes="label" FontSize="10"
                                  HorizontalAlignment="Right"/>
                     </StackPanel>
@@ -313,7 +319,11 @@
                   <Border Classes="bubble mine" IsVisible="{Binding Mine}">
                     <StackPanel Spacing="2">
                       <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                           IsVisible="{Binding IsText}"
                                            Foreground="{DynamicResource OnAccent}"/>
+                      <Border Classes="bubblePicture" IsVisible="{Binding IsPicture}">
+                        <Image Source="{Binding Picture}" Stretch="Uniform"/>
+                      </Border>
                       <TextBlock Text="{Binding TimeLabel}" FontSize="10"
                                  Opacity="0.7" HorizontalAlignment="Right"
                                  Foreground="{DynamicResource OnAccent}"/>
@@ -331,17 +341,30 @@
                    Foreground="{DynamicResource LogError}" IsVisible="{Binding HasChatError}"/>
 
         <!-- Said before anything is typed rather than after it fails to send. -->
+        <TextBlock Classes="label" Text="Shrinking the picture&#x2026;"
+                   IsVisible="{Binding IsSendingPicture}"/>
+
         <TextBlock Classes="label" TextWrapping="Wrap" IsVisible="{Binding !CanReachThem}"
                    Text="They're on an older Asobu with no encryption key yet. Once they update, you can message them."/>
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+          <Button Grid.Column="0" Classes="iconGhost" VerticalAlignment="Center"
+                  ToolTip.Tip="Send a picture" IsEnabled="{Binding !IsSendingPicture}"
+                  Command="{Binding SendPictureCommand}">
+            <Viewbox Classes="icon">
+              <Path Data="M4 5 H20 V19 H4 Z M4 15 L9 10 L13 14 L16 11 L20 15"
+                    StrokeThickness="1.8" StrokeLineCap="Round" StrokeJoin="Round"
+                    Width="24" Height="24" Stretch="None"/>
+            </Viewbox>
+          </Button>
+
           <!-- Enter sends, the same way it adds a friend one panel over. -->
-          <TextBox Grid.Column="0" Text="{Binding Draft}" PlaceholderText="Say something"
+          <TextBox Grid.Column="1" Text="{Binding Draft}" PlaceholderText="Say something"
                    MaxLength="2000" AcceptsReturn="False">
             <TextBox.KeyBindings>
               <KeyBinding Gesture="Enter" Command="{Binding SendChatCommand}"/>
             </TextBox.KeyBindings>
           </TextBox>
-          <Button Grid.Column="1" Classes="primary" Content="Send" Padding="14,7"
+          <Button Grid.Column="2" Classes="primary" Content="Send" Padding="14,7"
                   IsEnabled="{Binding CanSend}" Command="{Binding SendChatCommand}"/>
         </Grid>
       </StackPanel>

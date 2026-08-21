@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using Asobu.Core;
 using Asobu.Core.Accounts;
@@ -211,5 +211,70 @@ public class MessageCryptoTests : IDisposable
             var box = MessageCrypto.Seal(alice.Key, bob.Public, text);
             Assert.Equal(text, MessageCrypto.Open(bob.Key, alice.Public, box));
         }
+    }
+
+    [Fact]
+    public void APictureSurvivesTheRoundTrip()
+    {
+        var alice = Person("alice");
+        var bob = Person("bob");
+
+        // Bytes that are emphatically not text, including a null and a lone 0xFF — anything
+        // that treated a payload as a string would mangle these.
+        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xFF, 0xD9 };
+
+        var box = MessageCrypto.Seal(alice.Key, bob.Public, ChatPayload.OfImage(jpeg));
+        var opened = MessageCrypto.Unseal(bob.Key, alice.Public, box);
+
+        Assert.NotNull(opened);
+        Assert.Equal(ChatKind.Image, opened!.Kind);
+        Assert.Equal(jpeg, opened.Content);
+    }
+
+    [Fact]
+    public void TheServerCannotTellAPictureFromASentence()
+    {
+        var alice = Person("alice");
+        var bob = Person("bob");
+
+        // The kind byte is inside the encryption. Two messages of the same length come out the
+        // same length, so the relay learns nothing about which is which.
+        var words = MessageCrypto.Seal(alice.Key, bob.Public, ChatPayload.OfText("abcd"));
+        var bytes = MessageCrypto.Seal(alice.Key, bob.Public, ChatPayload.OfImage([1, 2, 3, 4]));
+
+        Assert.Equal(words.Length, bytes.Length);
+    }
+
+    [Fact]
+    public void ReadingAPictureAsTextGivesNothingRatherThanRubbish()
+    {
+        var alice = Person("alice");
+        var bob = Person("bob");
+
+        var box = MessageCrypto.Seal(alice.Key, bob.Public, ChatPayload.OfImage([0xFF, 0xD8, 0xFF]));
+
+        // Open() is the text-only door. A picture must not come back through it as mojibake.
+        Assert.Null(MessageCrypto.Open(bob.Key, alice.Public, box));
+    }
+
+    [Fact]
+    public void AnUnknownKindIsRefusedRatherThanGuessedAt()
+    {
+        // A later Asobu sending something this one has never heard of. Showing nothing beats
+        // rendering a sound file as a sentence.
+        Assert.Null(ChatPayload.FromBytes([9, 1, 2, 3]));
+        Assert.Null(ChatPayload.FromBytes([]));
+    }
+
+    [Fact]
+    public void TextStillRoundTripsThroughThePayload()
+    {
+        var alice = Person("alice");
+        var bob = Person("bob");
+
+        // The envelope is new; the ordinary case must be untouched by it.
+        var box = MessageCrypto.Seal(alice.Key, bob.Public, "still just words");
+
+        Assert.Equal("still just words", MessageCrypto.Open(bob.Key, alice.Public, box));
     }
 }

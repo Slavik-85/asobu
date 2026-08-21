@@ -2745,6 +2745,14 @@
     <Setter Property="HorizontalAlignment" Value="Right"/>
   </Style>
 
+  <!-- A picture in a bubble. Capped so a tall screenshot does not push the whole conversation
+       off screen, and clipped so it takes the bubble's corners rather than squaring off in it. -->
+  <Style Selector="Border.bubblePicture">
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="ClipToBounds" Value="True"/>
+    <Setter Property="MaxHeight" Value="260"/>
+  </Style>
+
   <!-- Small, accent, and beside the name rather than over the avatar: the avatar already carries
        the presence dot, and two badges on one picture is a mess. -->
   <Style Selector="Border.unreadBadge">

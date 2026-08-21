@@ -284,6 +284,31 @@ public partial class FriendsViewModel : ViewModelBase
 
         public bool Theirs => !Mine;
         public string TimeLabel { get; } = at.ToLocalTime().ToString("HH:mm");
+
+        /// <summary>The picture, for a line that is one. Decoded once, when it arrives.</summary>
+        public Bitmap? Picture { get; init; }
+
+        public bool IsPicture => Picture is not null;
+        public bool IsText => Picture is null;
+
+        /// <summary>
+        /// Built here rather than in the view so a picture that will not decode still shows as
+        /// something. A message that arrived and rendered as nothing at all would read as one
+        /// that never came.
+        /// </summary>
+        public static ChatLine ForImage(byte[] jpeg, bool mine, DateTimeOffset at)
+        {
+            try
+            {
+                using var stream = new System.IO.MemoryStream(jpeg);
+
+                return new ChatLine("", mine, at) { Picture = new Bitmap(stream) };
+            }
+            catch (Exception)
+            {
+                return new ChatLine("[a picture that couldn't be opened]", mine, at);
+            }
+        }
     }
 
     /// <summary>
@@ -336,19 +361,25 @@ public partial class FriendsViewModel : ViewModelBase
     partial void OnConversationChanged(ObservableCollection<ChatLine>? value) =>
         OnPropertyChanged(nameof(ConversationIsEmpty));
 
-    /// <summary>What one message turns out to say, or a note in its place when it will not open.</summary>
-    private string Unseal(ChatMessage message)
+    /// <summary>What one message turns out to be, or a note in its place when it will not open.</summary>
+    private ChatLine Unseal(ChatMessage message)
     {
-        if (_chatKey is null) return "[can't read this — no key on this launcher]";
+        ChatLine Note(string what) => new(what, mine: false, message.At);
+
+        if (_chatKey is null) return Note("[can't read this — no key on this launcher]");
 
         var sender = Friends.FirstOrDefault(f =>
             string.Equals(f.Uuid, message.From, StringComparison.OrdinalIgnoreCase));
 
         if (sender?.PublicKey is not { Length: > 0 } theirs)
-            return "[can't read this — no key published for " + message.Name + "]";
+            return Note("[can't read this — no key published for " + message.Name + "]");
 
-        return MessageCrypto.Open(_chatKey, theirs, message.Box)
-               ?? "[couldn't be decrypted — they may have changed keys]";
+        if (MessageCrypto.Unseal(_chatKey, theirs, message.Box) is not { } payload)
+            return Note("[couldn't be decrypted — they may have changed keys]");
+
+        return payload.Kind == ChatKind.Image
+            ? ChatLine.ForImage(payload.Content, mine: false, message.At)
+            : new ChatLine(payload.AsText(), mine: false, message.At);
     }
 
     /// <summary>The longest a message may be, matched to what the server will carry once sealed.</summary>
@@ -453,9 +484,7 @@ public partial class FriendsViewModel : ViewModelBase
             // Only this launcher can. A message that will not open is shown as one that could
             // not be read rather than hidden: silently dropping it would leave one person
             // wondering why the other never replied.
-            var text = Unseal(message);
-
-            ConversationFor(message.From).Add(new ChatLine(text, mine: false, message.At));
+            ConversationFor(message.From).Add(Unseal(message));
 
             if (string.Equals(ChatWith?.Uuid, message.From, StringComparison.OrdinalIgnoreCase))
             {
@@ -471,6 +500,60 @@ public partial class FriendsViewModel : ViewModelBase
         }
 
         RaiseUnread();
+    }
+
+    /// <summary>
+    /// Asks for a picture and sends it. Set by the view, which owns the window a file dialog
+    /// has to hang off.
+    /// </summary>
+    public Func<Task<string?>>? AskForPicture { get; set; }
+
+    [ObservableProperty] public partial bool IsSendingPicture { get; set; }
+
+    [RelayCommand]
+    private async Task SendPictureAsync()
+    {
+        if (ChatWith is not { } friend || AskForPicture is null || IsSendingPicture) return;
+
+        if (_chatKey is null || friend.PublicKey is not { Length: > 0 } theirs)
+        {
+            ChatError = $"{friend.Name} is on a version of Asobu that can't receive encrypted messages yet.";
+            return;
+        }
+
+        var path = await AskForPicture();
+        if (path is null) return;
+
+        IsSendingPicture = true;
+        ChatError = null;
+
+        try
+        {
+            // Shrunk and re-encoded off the UI thread. A phone photo is eight megabytes and
+            // several seconds of work, and the window should not stop for either.
+            var jpeg = await Task.Run(() => ChatImage.Prepare(path));
+
+            if (jpeg is null)
+            {
+                ChatError = "That file couldn't be read as a picture, or wouldn't shrink small enough to send.";
+                return;
+            }
+
+            var box = MessageCrypto.Seal(_chatKey, theirs, ChatPayload.OfImage(jpeg));
+
+            ConversationFor(friend.Uuid).Add(ChatLine.ForImage(jpeg, mine: true, DateTimeOffset.UtcNow));
+            OnPropertyChanged(nameof(ConversationIsEmpty));
+
+            await _launcher.Friends.SayAsync(friend.Uuid, box);
+        }
+        catch (Exception e)
+        {
+            ChatError = e.Message;
+        }
+        finally
+        {
+            IsSendingPicture = false;
+        }
     }
 
     [RelayCommand]

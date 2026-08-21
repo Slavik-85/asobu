@@ -24,14 +24,22 @@ type message struct {
 }
 
 const (
-	// The sealed box, base64. A 2000-character message is at most 8 KB of UTF-8, plus a nonce
-	// and a tag, plus a third again for base64 — this leaves room and still bounds it. The
-	// server can no longer count characters, because it can no longer see any.
-	maxBoxBytes = 12000
+	// The sealed box, base64. Sized for a picture rather than a sentence: the sending launcher
+	// shrinks and re-encodes every image to at most 400 KB, which is about 550 KB once base64
+	// has had it. The server cannot tell a picture from a paragraph — that is the point — so one
+	// ceiling has to cover both.
+	maxBoxBytes = 700_000
 
-	// Messages one person may have waiting. Past this the oldest goes: somebody who has not
-	// opened Asobu in a week should not cost more than the last hundred things said to them.
+	// Messages one person may have waiting. Kept alongside the byte ceiling below rather than
+	// replaced by it: a hundred is the number that stops somebody being buried in text, and
+	// bytes are the number that stops them being buried in pictures.
 	maxWaiting = 100
+
+	// And what those may weigh in total. This is the ceiling that actually binds once images
+	// exist — a hundred messages meant a few hundred kilobytes when they were all sentences and
+	// would mean fifty megabytes if they were all photographs. About ten pictures, or every
+	// sentence anybody will type in ten minutes.
+	maxWaitingBytes = 6 << 20
 
 	// How long an uncollected message waits before it is forgotten. Chat here is for two people
 	// who are both around; one that nobody came for in this long is better re-sent than
@@ -44,10 +52,10 @@ const (
 	// watch down with them, which turns one person's flood into their own outage.
 	messagesPerMinute = 30
 
-	// Messages held for everyone, everywhere. Each ceiling above bounds one conversation; this
-	// bounds the process. At the sizes involved it is a few hundred megabytes before it bites,
-	// which is far past anything real and far short of a machine with 3 GB free falling over.
-	maxHeld = 20000
+	// Held for everyone, everywhere. The ceilings above bound one conversation; this bounds the
+	// process, and is the one that matters on a machine with 3 GB free. Reached only by a great
+	// many people all offline at once with pictures waiting.
+	maxHeldBytes = 192 << 20
 )
 
 // handleChatSend takes one message and leaves it where its recipient will next look.
@@ -70,7 +78,10 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 		To  string `json:"to"`
 		Box string `json:"box"`
 	}
-	if !readBody(w, r, &body) {
+
+	// The one route with a raised ceiling, and only a little above what a box may be — enough
+	// for the JSON around it and not enough to be somewhere to push data.
+	if !readBodyUpTo(w, r, &body, maxBoxBytes+4096) {
 		return
 	}
 
@@ -95,14 +106,21 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.held() >= maxHeld {
+	if s.heldBytes()+len(body.Box) > maxHeldBytes {
 		fail(w, http.StatusServiceUnavailable, "too much in flight, try again shortly")
 		return
 	}
 
+	// Room is made rather than refused: the recipient is behind, and the newest thing said to
+	// them is worth more than the oldest. Both ceilings drop from the front until the new one
+	// fits under each.
 	waiting := s.inbox[body.To]
-	if len(waiting) >= maxWaiting {
-		waiting = waiting[len(waiting)-maxWaiting+1:]
+
+	for len(waiting) >= maxWaiting {
+		waiting = waiting[1:]
+	}
+	for bytesOf(waiting)+len(body.Box) > maxWaitingBytes && len(waiting) > 0 {
+		waiting = waiting[1:]
 	}
 
 	s.inbox[body.To] = append(waiting, message{
@@ -119,11 +137,21 @@ func (s *Server) handleChatSend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// held counts every message waiting anywhere, for the ceiling on the process as a whole.
-func (s *Server) held() int {
+// bytesOf is what one person's waiting messages weigh.
+func bytesOf(waiting []message) int {
+	total := 0
+	for _, m := range waiting {
+		total += len(m.Box)
+	}
+
+	return total
+}
+
+// heldBytes is what every message waiting anywhere weighs, for the ceiling on the process.
+func (s *Server) heldBytes() int {
 	total := 0
 	for _, waiting := range s.inbox {
-		total += len(waiting)
+		total += bytesOf(waiting)
 	}
 
 	return total

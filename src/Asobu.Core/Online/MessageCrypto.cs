@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using Asobu.Core.Accounts;
 
@@ -94,12 +94,20 @@ public sealed class MessageCrypto(TokenVault vault)
     /// Seals a message for one friend. What comes back is base64 of nonce, ciphertext and tag,
     /// which is all the server ever sees.
     /// </summary>
-    public static string Seal(ECDiffieHellman mine, string theirPublicKey, string text)
+    public static string Seal(ECDiffieHellman mine, string theirPublicKey, string text) =>
+        Seal(mine, theirPublicKey, ChatPayload.OfText(text));
+
+    /// <summary>
+    /// Seals whatever kind of thing a message is. The kind travels inside the encryption rather
+    /// than beside it, so the server does not learn that a picture was sent — only that some
+    /// bytes were.
+    /// </summary>
+    public static string Seal(ECDiffieHellman mine, string theirPublicKey, ChatPayload payload)
     {
         var key = SharedKey(mine, theirPublicKey);
 
         var nonce = RandomNumberGenerator.GetBytes(NonceBytes);
-        var plain = Encoding.UTF8.GetBytes(text);
+        var plain = payload.ToBytes();
         var cipher = new byte[plain.Length];
         var tag = new byte[TagBytes];
 
@@ -126,7 +134,11 @@ public sealed class MessageCrypto(TokenVault vault)
     /// way. None of them is worth crashing a chat window over — and AES-GCM refusing to open a
     /// tampered message is exactly the point, so a failure here is the system working.
     /// </summary>
-    public static string? Open(ECDiffieHellman mine, string theirPublicKey, string box)
+    public static string? Open(ECDiffieHellman mine, string theirPublicKey, string box) =>
+        Unseal(mine, theirPublicKey, box) is { Kind: ChatKind.Text } payload ? payload.AsText() : null;
+
+    /// <summary>Opens a message whatever it turns out to be, or null when it will not open.</summary>
+    public static ChatPayload? Unseal(ECDiffieHellman mine, string theirPublicKey, string box)
     {
         byte[] key;
         byte[] raw;
@@ -157,7 +169,7 @@ public sealed class MessageCrypto(TokenVault vault)
             using var gcm = new AesGcm(key, TagBytes);
             gcm.Decrypt(nonce, cipher, tag, plain);
 
-            return Encoding.UTF8.GetString(plain);
+            return ChatPayload.FromBytes(plain);
         }
         catch (CryptographicException)
         {

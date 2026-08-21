@@ -298,8 +298,20 @@ func fail(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
+// What a request body may be, unless a route says otherwise. Every route but one is a handful
+// of short strings, and a caller sending more than this is not doing anything a caller does.
+const maxBodyBytes = 4096
+
 func readBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(v); err != nil {
+	return readBodyUpTo(w, r, v, maxBodyBytes)
+}
+
+// readBodyUpTo is the same with a different ceiling, for the one route that carries a picture.
+// Kept as an explicit argument rather than raising the default: every other route should still
+// refuse anything larger than a sentence, and a single generous limit would quietly extend that
+// permission to all of them.
+func readBodyUpTo(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(v); err != nil {
 		fail(w, http.StatusBadRequest, "bad request body")
 		return false
 	}
