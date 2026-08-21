@@ -69,6 +69,7 @@ public sealed class AsobuLauncher
         CurseForge = new CurseForge(http, () => Settings.CurseForgeApiKey ?? BuildConfig.CurseForgeApiKey);
         ModSources = [Modrinth, CurseForge];
         Mods = new ModCatalogue(Modrinth, CurseForge);
+        OptiFine = new OptiFine(http);
         _downloader = new Downloader(http);
         _forge = new ForgeInstaller(Paths, _downloader);
 
@@ -108,6 +109,12 @@ public sealed class AsobuLauncher
 
     /// <summary>Both providers as one catalogue, which is how the browser asks.</summary>
     public ModCatalogue Mods { get; }
+
+    /// <summary>
+    /// OptiFine, which lives on its own website and nowhere else. Only reached where Embeddium
+    /// has nothing — the old Forge versions where it is the only thing that does the job.
+    /// </summary>
+    public OptiFine OptiFine { get; }
     public InstanceStore Instances { get; }
 
     /// <summary>Makes instances out of pack files, other launchers' folders, and shared codes.</summary>
@@ -150,6 +157,36 @@ public sealed class AsobuLauncher
         await EnsureModsAsync(instance, progress, cancellationToken).ConfigureAwait(false);
 
         return version;
+    }
+
+    /// <summary>
+    /// Fetches OptiFine, which takes two requests and has no checksum to check against.
+    ///
+    /// No hash and no size, because the site publishes neither — so unlike every other download
+    /// here this one is taken on trust that it came from optifine.net over TLS. Worth knowing,
+    /// and worth being the only one: it is the reason this is reached for last rather than first.
+    /// </summary>
+    private async Task EnsureOptiFineAsync(
+        Instance instance,
+        string directory,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var build = await OptiFine.GetLatestAsync(instance.MinecraftVersion, cancellationToken)
+            .ConfigureAwait(false);
+
+        // No build for this version is a fact about OptiFine, not a launch failure — the same
+        // answer the Modrinth path gives when a mod has nothing.
+        if (build is null) return;
+
+        var url = await OptiFine.GetDownloadUrlAsync(build, cancellationToken).ConfigureAwait(false);
+        if (url is null) return;
+
+        progress?.Report(new InstallProgress($"Installing {build.FileName}", 0));
+
+        await _downloader.RunAsync(
+            [new DownloadTask(url, Path.Combine(directory, build.FileName))],
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -232,6 +269,14 @@ public sealed class AsobuLauncher
         if (Directory.EnumerateFiles(directory)
             .Any(f => Path.GetFileName(f).StartsWith(project, StringComparison.OrdinalIgnoreCase)))
             return;
+
+        // Fully qualified: the property below is called OptiFine too, and the type is what carries
+        // the constant.
+        if (project.Equals(global::Asobu.Core.Mods.OptiFine.Marker, StringComparison.OrdinalIgnoreCase))
+        {
+            await EnsureOptiFineAsync(instance, directory, progress, cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         var file = await Modrinth
             .GetLatestAsync(project, instance.MinecraftVersion, instance.Loader, cancellationToken)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Collections.ObjectModel;
@@ -90,6 +90,16 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
     [ObservableProperty] public partial bool IncludePerformanceMod { get; set; }
     [ObservableProperty] public partial string PerformanceModName { get; set; } = "Sodium";
     [ObservableProperty] public partial bool CanUsePerformanceMod { get; set; }
+
+    /// <summary>
+    /// Whether the box currently offers OptiFine rather than one of the two on Modrinth. Kept
+    /// rather than worked out again at save time: by then the loader and version may have moved,
+    /// and what somebody ticked is what should be recorded.
+    /// </summary>
+    private bool _performanceIsOptiFine;
+
+    /// <summary>Read once. OptiFine's list is one page and changes a few times a year.</summary>
+    private IReadOnlyList<string>? _optiFineVersions;
     [ObservableProperty] public partial string PerformanceModNote { get; set; } = "";
 
     public bool HasNoSelection => SelectedVersion is null;
@@ -189,7 +199,9 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
             row.Id,
             loader,
             LoaderVersion,
-            IncludePerformanceMod && CanUsePerformanceMod ? Modrinth.PerformanceModFor(loader) : null));
+            IncludePerformanceMod && CanUsePerformanceMod
+                ? _performanceIsOptiFine ? OptiFine.Marker : Modrinth.PerformanceModFor(loader)
+                : null));
     }
 
     /// <summary>
@@ -217,8 +229,30 @@ public partial class VersionPickerViewModel(AsobuLauncher launcher, Action<Insta
         var version = SelectedVersion?.Id;
         CanUsePerformanceMod = version is not null && supported.Contains(version, StringComparer.OrdinalIgnoreCase);
 
+        // Nothing from Embeddium on Forge is where OptiFine earns its place: the older Forge
+        // versions it does not cover are exactly the ones OptiFine has had builds for since long
+        // before either existed. Asked in that order and never the other way round — OptiFine is
+        // closed-source and comes off a website rather than a repository, so it is what to reach
+        // for when the open one has nothing, not instead of it.
+        _performanceIsOptiFine = false;
+
+        if (!CanUsePerformanceMod && version is not null && loader == Loaders.Forge)
+        {
+            _optiFineVersions ??= await launcher.OptiFine.GetGameVersionsAsync();
+
+            if (_optiFineVersions.Contains(version, StringComparer.OrdinalIgnoreCase))
+            {
+                _performanceIsOptiFine = true;
+                CanUsePerformanceMod = true;
+                PerformanceModName = "OptiFine";
+            }
+        }
+
         PerformanceModNote = CanUsePerformanceMod
-            ? $"Renders far faster. Installed on first launch."
+            ? _performanceIsOptiFine
+                ? "Renders far faster. Embeddium has no build this far back, so this is OptiFine, "
+                  + "from optifine.net. Installed on first launch."
+                : "Renders far faster. Installed on first launch."
             : $"{PerformanceModName} has no build for {version}.";
 
         // Suggested rather than merely offered: on a modded instance this is what almost everyone
