@@ -1272,7 +1272,11 @@
                        IsVisible="{Binding ShareError, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-              <Button Classes="ghost" Content="Back" Command="{Binding BackToShareChoiceCommand}"/>
+              <!-- Only worth offering when there is no code: going back from a code you already
+                   have is a button that undoes nothing. When getting one failed, it is the way
+                   to the other door. -->
+              <Button Classes="ghost" Content="Back" IsVisible="{Binding !HasShareCode}"
+                      Command="{Binding BackToShareChoiceCommand}"/>
               <Button Classes="primary" Content="Done" Command="{Binding CloseShareCommand}"/>
             </StackPanel>
           </StackPanel>
