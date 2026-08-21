@@ -1,4 +1,4 @@
-using Asobu.Core.Servers;
+﻿using Asobu.Core.Servers;
 
 namespace Asobu.Core.Tests;
 
@@ -104,5 +104,38 @@ public class SuggestedServerTests
             Assert.Contains('.', server.Address);
             Assert.DoesNotContain(' ', server.Address);
         }
+    }
+
+    /// <summary>
+    /// Every range here is a claim about somebody else's server, and the only way to be right
+    /// about one is to have looked. PvP Legacy went in as 1.8.x+ on the reasoning that a PvP
+    /// server would want the old combat -- which was a guess, and wrong: it is 1.21.2+. Pinned so
+    /// the corrected value is the one that has to be argued with next time.
+    /// </summary>
+    [Fact]
+    public void Pvp_legacy_is_modern_only()
+    {
+        var legacy = SuggestedServers.All.Single(s => s.Name == "PvP Legacy");
+
+        Assert.Equal("1.21.2+", legacy.VersionLabel);
+        Assert.False(legacy.Accepts("1.8.9"));
+        Assert.False(legacy.Accepts("1.21.1"));
+        Assert.True(legacy.Accepts("1.21.2"));
+        Assert.True(legacy.Accepts("1.21.4"));
+    }
+
+    /// <summary>What is shown and what is enforced have to be the same range.</summary>
+    [Theory]
+    [InlineData("Hypixel", "1.8")]
+    [InlineData("Mineplex", "1.8.9")]
+    [InlineData("MCC Island", "1.21.11")]
+    [InlineData("PvP Club", "1.21.2")]
+    [InlineData("PvP Legacy", "1.21.2")]
+    public void The_label_agrees_with_the_floor(string name, string floor)
+    {
+        var server = SuggestedServers.All.Single(s => s.Name == name);
+
+        Assert.StartsWith(floor, server.VersionLabel, StringComparison.Ordinal);
+        Assert.True(server.Accepts(floor), $"{name} says {floor} and will not take it");
     }
 }

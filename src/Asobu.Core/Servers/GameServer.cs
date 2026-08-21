@@ -92,6 +92,6 @@ public static class SuggestedServers
         new("Mineplex", "play.mineplex.com", "1.8.9 - 1.21", "1.8.9", "1.21"),
         new("MCC Island", "play.mccisland.net", "1.21.11+", "1.21.11", null),
         new("PvP Club", "mcpvp.club", "1.21.2+", "1.21.2", null),
-        new("PvP Legacy", "pvplegacy.net", "1.8.x+", "1.8", null),
+        new("PvP Legacy", "pvplegacy.net", "1.21.2+", "1.21.2", null),
     ];
 }
