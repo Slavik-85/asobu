@@ -140,7 +140,12 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     private Task<T> PostAsync<T>(string path, object body, CancellationToken cancellationToken) =>
         SendAsync<T>(HttpMethod.Post, path, body, cancellationToken);
 
-    private async Task<T> SendAsync<T>(
+    /// <summary>
+    /// One authenticated call to the Asobu API. Internal rather than private so sharing can use
+    /// it: a share code is made by the same signed-in person, over the same session, and a
+    /// second copy of the bearer handling would be a second place for it to go wrong.
+    /// </summary>
+    internal async Task<T> SendAsync<T>(
         HttpMethod method, string path, object? body, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, Api + path);

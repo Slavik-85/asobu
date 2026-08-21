@@ -5,6 +5,8 @@ using System.Text.Json.Serialization;
 using Asobu.Core.Download;
 using Asobu.Core.Minecraft;
 using Asobu.Core.Mods;
+using Asobu.Core.Online;
+using System.Text.RegularExpressions;
 
 namespace Asobu.Core.Instances;
 
@@ -45,14 +47,22 @@ public sealed record ImportOutcome(Instance? Instance, string? Reason, IReadOnly
 /// Everything lands in a freshly created instance, and a failure part-way tears that instance
 /// down again: half an import surviving as a library card would launch into a broken game.
 /// </summary>
-public sealed class InstanceImporter(
+public sealed partial class InstanceImporter(
     HttpClient http,
     AsobuPaths paths,
     InstanceStore instances,
     Modrinth modrinth,
     CurseForge curseForge,
-    ModCatalogue catalogue)
+    ModCatalogue catalogue,
+    ShareClient shares)
 {
+    /// <summary>
+    /// Asobu's own share codes: eight characters from an alphabet with no 0/O and no 1/I/L, so
+    /// nothing is ambiguous when read off one screen and typed into another.
+    /// </summary>
+    [GeneratedRegex("^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{8}$", RegexOptions.IgnoreCase)]
+    private static partial Regex AsobuCode();
+
     /// <summary>
     /// Resolves a profile code to the pack zip behind it. Not in the published API; it is what
     /// the CurseForge app itself calls, answering 404 "code does not exist" for anything it
@@ -195,6 +205,22 @@ public sealed class InstanceImporter(
 
         if (code.Contains('/') || code.Contains(' '))
             return ImportOutcome.Failed("That doesn't look like a profile code or a modpack link.");
+
+        if (AsobuCode().IsMatch(code))
+        {
+            progress?.Report(new InstallProgress("Asking Asobu about the code", 0));
+
+            try
+            {
+                if (await shares.FetchAsync(code, cancellationToken).ConfigureAwait(false) is { } sharedInstance)
+                    return await ImportSharedAsync(sharedInstance, progress, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is HttpRequestException or FriendsException)
+            {
+                // Asobu being unreachable is not a reason to stop: the same string might still
+                // be a CurseForge or Modrinth code, which is what the rest of this tries.
+            }
+        }
 
         progress?.Report(new InstallProgress("Asking CurseForge about the code", 0));
 
@@ -727,6 +753,115 @@ public sealed class InstanceImporter(
 
         return code.Length > 0 ? code : null;
     }
+
+    /// <summary>
+    /// Rebuilds an instance from a shared manifest.
+    ///
+    /// Every file is named by hash and nothing else, so each one has to be found before it can
+    /// be fetched: Modrinth answers for a whole folder in one request, and whatever it does not
+    /// know is asked of CurseForge by fingerprint. Anything neither has is named in the notes
+    /// rather than passed over, because a pack that quietly arrives incomplete is worse than one
+    /// that says which two mods are missing.
+    ///
+    /// No address in the manifest is ever used, because there are none in it. Downloads only go
+    /// to whatever Modrinth or CurseForge return for a hash they already serve.
+    /// </summary>
+    public async Task<ImportOutcome> ImportSharedAsync(
+        SharedInstance shared,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        progress?.Report(new InstallProgress("Looking the shared files up", 0));
+
+        var wanted = shared.Files;
+        var byHash = await modrinth
+            .GetDownloadsByHashAsync([.. wanted.Select(f => f.Sha1)], cancellationToken)
+            .ConfigureAwait(false);
+
+        var missingFingerprints = wanted
+            .Where(f => f.Fingerprint != 0 && !byHash.ContainsKey(f.Sha1))
+            .Select(f => f.Fingerprint)
+            .Distinct()
+            .ToList();
+
+        var byFingerprint = missingFingerprints.Count > 0
+            ? await curseForge.GetFilesByFingerprintAsync(missingFingerprints, cancellationToken).ConfigureAwait(false)
+            : new Dictionary<uint, CurseForge.PackFile>();
+
+        var instance = instances.Create(
+            shared.Name, shared.GameVersion, shared.Loader, NullIfBlank(shared.LoaderVersion));
+
+        try
+        {
+            var gameDir = paths.InstanceGameDir(instance.Folder);
+            var notes = new List<string>();
+            var tasks = new List<DownloadTask>();
+            var unresolved = 0;
+
+            foreach (var file in wanted)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // The manifest's own path decides only the folder and the name, and both were
+                // checked before this point. It is joined and re-checked here regardless: this
+                // is the line that actually creates a file.
+                var destination = Path.GetFullPath(Path.Combine(gameDir, file.Path));
+                if (!destination.StartsWith(Path.GetFullPath(gameDir) + Path.DirectorySeparatorChar,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (byHash.TryGetValue(file.Sha1, out var fromModrinth) && fromModrinth.Url is { Length: > 0 } url)
+                {
+                    tasks.Add(new DownloadTask(url, destination, file.Sha1, file.Size));
+                    continue;
+                }
+
+                if (file.Fingerprint != 0
+                    && byFingerprint.TryGetValue(file.Fingerprint, out var fromCurseForge))
+                {
+                    if (fromCurseForge.DownloadUrl is { Length: > 0 } address)
+                    {
+                        tasks.Add(new DownloadTask(address, destination, file.Sha1, file.Size));
+                        continue;
+                    }
+
+                    // The author allows downloads only from their own page. Handled the way
+                    // every other import handles it: the person is asked, and the launcher
+                    // watches for the file rather than reaching around the refusal.
+                    _blocked.Add(new BlockedDownload(
+                        Path.GetFileNameWithoutExtension(file.Path),
+                        Path.GetFileName(file.Path),
+                        file.Size,
+                        file.Sha1,
+                        $"https://www.curseforge.com/minecraft/mc-mods/{fromCurseForge.ModId}/files/{fromCurseForge.FileId}",
+                        destination));
+                    continue;
+                }
+
+                unresolved++;
+            }
+
+            if (unresolved > 0)
+                notes.Add(unresolved == 1
+                    ? "One file could not be found on Modrinth or CurseForge and was left out. It was probably added by hand."
+                    : $"{unresolved} files could not be found on Modrinth or CurseForge and were left out. They were probably added by hand.");
+
+            await _downloader.RunAsync(tasks, Stage(progress, "Downloading files"), cancellationToken)
+                .ConfigureAwait(false);
+
+            instances.Save(instance);
+            return new ImportOutcome(instance, null, notes) { Blocked = [.. _blocked] };
+        }
+        catch
+        {
+            instances.Delete(instance);
+            throw;
+        }
+    }
+
+    private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>
     /// A link off a CurseForge project page. Only modpacks can become an instance, so a link to

@@ -267,6 +267,55 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
         return found;
     }
 
+    /// <summary>
+    /// The files a set of fingerprints belong to, with enough to download each one.
+    ///
+    /// The same request as GetModIdsByFingerprintAsync, kept apart because they want different
+    /// halves of the answer: that one identifies which mod a jar is, this one wants the jar
+    /// back. A file whose author has opted out of third-party downloads comes back with a null
+    /// address rather than being dropped, so the caller can say so instead of silently missing it.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<uint, PackFile>> GetFilesByFingerprintAsync(
+        IReadOnlyList<uint> fingerprints, CancellationToken cancellationToken = default)
+    {
+        var found = new Dictionary<uint, PackFile>();
+        if (!IsAvailable || fingerprints.Count == 0) return found;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiRoot}fingerprints");
+            request.Headers.Add("x-api-key", apiKey());
+            request.Content = JsonContent.Create(new { fingerprints });
+
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return found;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            var matches = await JsonSerializer
+                .DeserializeAsync<FingerprintResponse>(stream, Options, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var match in matches?.Data?.ExactMatches ?? [])
+            {
+                if (match.File is not { FileFingerprint: > 0 } file) continue;
+
+                found[(uint)file.FileFingerprint.Value] = new PackFile(
+                    file.Id,
+                    file.ModId ?? 0,
+                    file.FileName ?? "",
+                    file.DownloadUrl,
+                    file.Hashes?.FirstOrDefault(h => h.Algo == 1)?.Value,
+                    file.FileLength);
+            }
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or InvalidOperationException)
+        {
+        }
+
+        return found;
+    }
+
     /// <summary>One entry of a modpack manifest, resolved to something downloadable.</summary>
     public sealed record PackFile(int FileId, int ModId, string FileName, string? DownloadUrl, string? Sha1, long Size);
 

@@ -14,6 +14,7 @@ using Asobu.Core.Launch;
 using Asobu.Core.Minecraft;
 using Asobu.App.Controls;
 using Asobu.Core.Mods;
+using Asobu.Core.Online;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -1832,6 +1833,110 @@ public partial class InstancesViewModel : ViewModelBase
         var clone = _launcher.Instances.Clone(instance);
         Reload();
         Selected = _all.FirstOrDefault(i => i.Id == clone.Id);
+    }
+
+    // ---- Sharing an instance: as a file anything can open, or as a code only Asobu reads. ----
+
+    [ObservableProperty] public partial bool IsShareOpen { get; set; }
+    [ObservableProperty] public partial bool IsShareClosing { get; set; }
+
+    /// <summary>Which pane of the sheet is up: the two doors, or the code behind one of them.</summary>
+    [ObservableProperty] public partial bool IsShareChoosing { get; set; } = true;
+
+    [ObservableProperty] public partial bool IsSharePublishing { get; set; }
+    [ObservableProperty] public partial string? ShareCodeText { get; set; }
+    [ObservableProperty] public partial string? ShareExpiry { get; set; }
+    [ObservableProperty] public partial string? ShareError { get; set; }
+    [ObservableProperty] public partial string? ShareNotice { get; set; }
+
+    /// <summary>Said only when the same contents already had a code, which is worth explaining.</summary>
+    [ObservableProperty] public partial bool ShareWasReused { get; set; }
+
+    public bool HasShareCode => ShareCodeText is { Length: > 0 };
+    public bool IsShareCodePane => !IsShareChoosing;
+
+    partial void OnShareCodeTextChanged(string? value) => OnPropertyChanged(nameof(HasShareCode));
+    partial void OnIsShareChoosingChanged(bool value) => OnPropertyChanged(nameof(IsShareCodePane));
+
+    /// <summary>Opens the two doors. Which instance is shared is whichever is selected.</summary>
+    public void OpenShare()
+    {
+        if (Selected is null) return;
+
+        ShareCodeText = null;
+        ShareExpiry = null;
+        ShareError = null;
+        ShareNotice = null;
+        ShareWasReused = false;
+        IsShareChoosing = true;
+        IsShareOpen = true;
+    }
+
+    [RelayCommand]
+    private async Task CloseShareAsync()
+    {
+        if (!IsShareOpen || IsShareClosing) return;
+
+        IsShareClosing = true;
+        await Task.Delay(240);
+        IsShareClosing = false;
+        IsShareOpen = false;
+    }
+
+    /// <summary>
+    /// Reads the instance, asks Asobu for a code, and shows it.
+    ///
+    /// The same contents always come back as the same code, so pressing this twice is not a way
+    /// to make a second one — it winds the existing code's week forward instead, which is what
+    /// makes a code you have already sent someone keep working.
+    /// </summary>
+    [RelayCommand]
+    private async Task ShareAsCodeAsync()
+    {
+        if (Selected is not { } instance) return;
+
+        IsShareChoosing = false;
+        IsSharePublishing = true;
+        ShareError = null;
+
+        try
+        {
+            var described = await Task.Run(() => _launcher.Shares.DescribeAsync(instance));
+
+            if (described.Files.Count == 0)
+                ShareNotice = "This instance has no mods or packs, so the code carries only its version and loader.";
+
+            var code = await _launcher.Shares.PublishAsync(described);
+
+            ShareCodeText = code.Code;
+            ShareExpiry = code.ExpiryLabel;
+            ShareWasReused = code.Reused;
+        }
+        catch (FriendsAuthException)
+        {
+            ShareError = "Sharing by code needs a Microsoft account. Sign in from Accounts, then try again.";
+        }
+        catch (FriendsException e)
+        {
+            ShareError = e.Message;
+        }
+        catch (Exception e)
+        {
+            ShareError = e.Message;
+        }
+        finally
+        {
+            IsSharePublishing = false;
+        }
+    }
+
+    /// <summary>Back to the two doors, so the other one can be taken.</summary>
+    [RelayCommand]
+    private void BackToShareChoice()
+    {
+        ShareError = null;
+        ShareNotice = null;
+        IsShareChoosing = true;
     }
 
     /// <summary>Called from the view's code-behind, which owns the save-file dialog.</summary>

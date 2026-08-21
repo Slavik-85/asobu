@@ -1,3 +1,5 @@
+using System;
+using Avalonia.Input.Platform;
 using Avalonia.Threading;
 using Avalonia.Input;
 using System.Linq;
@@ -310,18 +312,52 @@ public partial class InstancesView : UserControl
             vm.DeleteGroupCommand.Execute(group);
     }
 
-    /// <summary>Export needs a save dialog, and the view model exports whatever is selected.</summary>
-    private async void CardExport_Click(object? sender, RoutedEventArgs e)
+    /// <summary>Sharing asks which way first; the file half still needs a save dialog.</summary>
+    private void CardShare_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { Tag: Instance instance } || DataContext is not InstancesViewModel vm) return;
 
         vm.Selected = instance;
+        vm.OpenShare();
+    }
+
+    private void ShareButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is InstancesViewModel vm) vm.OpenShare();
+    }
+
+    /// <summary>Clicking the dimmed area closes the sheet, as it does everywhere else.</summary>
+    private void ShareScrim_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!ReferenceEquals(e.Source, sender)) return;
+
+        if (DataContext is InstancesViewModel vm) vm.CloseShareCommand.Execute(null);
+    }
+
+    private async void ShareAsFile_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not InstancesViewModel { Selected: { } instance } vm) return;
+
+        // The sheet goes first: a save dialog over a modal is two things asking at once.
+        vm.CloseShareCommand.Execute(null);
         await ExportAsync(vm, instance);
     }
 
-    private async void ExportButton_Click(object? sender, RoutedEventArgs e)
+    private async void CopyShareCode_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is InstancesViewModel { Selected: { } instance } vm) await ExportAsync(vm, instance);
+        if (DataContext is not InstancesViewModel { ShareCodeText: { Length: > 0 } code }) return;
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null) return;
+
+        try
+        {
+            await clipboard.SetTextAsync(code);
+        }
+        catch (Exception)
+        {
+            // Another application can hold the clipboard. The code is on screen either way.
+        }
     }
 
     private async Task ExportAsync(InstancesViewModel viewModel, Instance instance)

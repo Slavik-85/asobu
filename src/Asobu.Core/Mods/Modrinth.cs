@@ -454,6 +454,53 @@ public sealed class Modrinth(HttpClient http) : IModSource
     }
 
     /// <summary>
+    /// The files a set of SHA-1s belong to, in one request, with an address for each.
+    ///
+    /// Modrinth's bulk form of the lookup below. A shared instance is a list of hashes, and
+    /// asking about a hundred jars one at a time would be a hundred round trips before the
+    /// first byte of anything downloads.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, ModDownload>> GetDownloadsByHashAsync(
+        IReadOnlyList<string> sha1s, CancellationToken cancellationToken = default)
+    {
+        var found = new Dictionary<string, ModDownload>(StringComparer.OrdinalIgnoreCase);
+        if (sha1s.Count == 0) return found;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, ApiRoot + "version_files");
+            request.Content = JsonContent.Create(new { hashes = sha1s, algorithm = "sha1" });
+
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return found;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            // Keyed by the hash that was asked about, so the answer maps back to the file.
+            var versions = await JsonSerializer
+                .DeserializeAsync<Dictionary<string, ProjectVersion>>(stream, Options, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var (hash, version) in versions ?? [])
+            {
+                // The file that actually matches, not merely the first one this version ships.
+                var file = version.Files.FirstOrDefault(f =>
+                    string.Equals(f.Hashes?.GetValueOrDefault("sha1"), hash, StringComparison.OrdinalIgnoreCase));
+
+                if (file is not { Url.Length: > 0 }) continue;
+
+                found[hash] = new ModDownload(
+                    file.Url, file.FileName, file.Hashes?.GetValueOrDefault("sha1"), file.Size, []);
+            }
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or InvalidOperationException)
+        {
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// Which project a file on disk belongs to, by its SHA-1. The only reliable way to identify
     /// an installed jar: a mod's own id is the loader's, not the catalogue's, and the two agree
     /// only by luck.

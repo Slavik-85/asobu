@@ -72,13 +72,15 @@ public sealed class AsobuLauncher
         _downloader = new Downloader(http);
         _forge = new ForgeInstaller(Paths, _downloader);
 
-        Importer = new InstanceImporter(http, Paths, Instances, Modrinth, CurseForge, Mods);
-
         var xbox = new XboxChain(http);
         Microsoft = new MicrosoftAuth(xbox, Paths, Settings.MicrosoftClientId ?? "");
         DeviceCode = new DeviceCodeAuth(http, new TokenVault(Paths), xbox);
 
         Friends = new FriendsClient(http, Paths);
+        Shares = new ShareClient(http, Paths, Friends);
+
+        // After sharing, which it needs: a code someone pastes is one of the things it imports.
+        Importer = new InstanceImporter(http, Paths, Instances, Modrinth, CurseForge, Mods, Shares);
     }
 
     /// <summary>Shared client, already carrying Asobu's user agent.</summary>
@@ -118,6 +120,9 @@ public sealed class AsobuLauncher
 
     /// <summary>The Asobu network: who your friends are and whether they're around.</summary>
     public FriendsClient Friends { get; }
+
+    /// <summary>Instances passed around as a code, which lasts a week.</summary>
+    public ShareClient Shares { get; }
     public LauncherSettings Settings { get; set; }
 
     /// <summary>
