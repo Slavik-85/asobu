@@ -86,6 +86,13 @@ public static partial class CrashAnalyzer
 {
     private const int DirectAccusationScore = 100;
     private const int FirstStackFrameScore = 40;
+
+    /// <summary>
+    /// A mixin config named somewhere in the log. Below a stack frame in the fatal trace on
+    /// purpose: being mentioned is not being blamed.
+    /// </summary>
+    private const int MixinConfigScore = 20;
+
     private const int LaterStackFrameScore = 12;
     private const int ReportThreshold = 12;
     private const int MaxSuspects = 4;
@@ -363,6 +370,16 @@ public static partial class CrashAnalyzer
             "Install it and the crash should go with it.", []);
     }
 
+    /// <summary>The whole line a match landed on, so its surroundings can be judged.</summary>
+    private static string LineAround(string report, int index)
+    {
+        var start = report.LastIndexOf('\n', Math.Min(index, report.Length - 1)) + 1;
+        var end = report.IndexOf('\n', index);
+        if (end < 0) end = report.Length;
+
+        return report[start..end];
+    }
+
     private static List<CrashSuspect> FindSuspects(string report, IReadOnlyList<ModEntry> installedMods)
     {
         var scores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -388,10 +405,23 @@ public static partial class CrashAnalyzer
         }
 
         // 2. A mixin config file is named after its own mod by convention: sodium.mixins.json.
+        //
+        // Circumstantial, not an accusation, and it took a real crash to see why. A log mentions
+        // these names constantly — Mixin prints one for a missing refmap and says in the same
+        // breath that the message can be ignored, and a mod whose companion plugin failed to load
+        // is named this way too even when it is a symptom rather than the cause. Treated as proof,
+        // that put four healthy mods on screen as "named in the crash" while the mod that actually
+        // stopped the game went unmentioned.
+        //
+        // So: worth something, worth less than a stack frame in the trace that killed the game,
+        // and never enough on its own to claim the loader named anybody.
         foreach (Match match in MixinConfigPattern().Matches(report))
         {
+            var line = LineAround(report, match.Index);
+            if (HarmlessPattern().IsMatch(line)) continue;
+
             var named = match.Groups["id"].Value;
-            if (Resolve(named, tokens) is { } file) Accuse(file, DirectAccusationScore, match.Value);
+            if (Resolve(named, tokens) is { } file) Accuse(file, MixinConfigScore, line);
         }
 
         // 3. Stack frames. The first trace in a report is the one that killed the game; frames
@@ -490,8 +520,26 @@ public static partial class CrashAnalyzer
 
         // A loader sometimes names "sodium-extra" where the jar only carries "sodiumextra".
         var normalised = named.Replace("-", "").Replace("_", "");
-        return tokens.FirstOrDefault(pair =>
+        var joined = tokens.FirstOrDefault(pair =>
             pair.Key.Replace("-", "").Replace("_", "").Equals(normalised, StringComparison.OrdinalIgnoreCase)).Value;
+
+        if (joined is not null) return joined;
+
+        // And sometimes the id carries a word the file name has no reason to: Essential ships as
+        // "Essential_1-4-1-1_fabric_26-2.jar" and calls itself "essential-loader", so the whole id
+        // matches nothing while its first half matches exactly. Tried last, and only on parts that
+        // are not themselves noise — dropping every segment would make "fabric-api" match "api"
+        // and put the wrong mod's name in front of somebody.
+        var parts = named.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(part => !Noise.Contains(part))
+            .ToArray();
+
+        if (parts.Length == 0 || parts.Length == named.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries).Length)
+            return null;
+
+        var trimmed = string.Concat(parts);
+        return tokens.FirstOrDefault(pair =>
+            pair.Key.Replace("-", "").Replace("_", "").Equals(trimmed, StringComparison.OrdinalIgnoreCase)).Value;
     }
 
     private static string Shorten(string line)
@@ -609,6 +657,10 @@ public static partial class CrashAnalyzer
         @"^-- MOD (?<id>[\w.-]+) --|" +
         @"Mod File: .*[/\\](?<id>[\w.-]+)\.jar|" +
         @"in mod (?<id>[\w.-]+) failed|" +
+        // Fabric, saying whose entrypoint threw. This is the loader naming the mod that stopped
+        // the game, and it is the line that matters most in a Fabric crash — without it, a
+        // startup failure gets attributed to whatever else happened to be mentioned nearby.
+        @"provided by '(?<id>[\w.-]+)'|" +
         @"^\s*(?<id>[\w.-]+) \(.*\) has failed to load correctly",
         RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex DirectAccusationPattern();
@@ -616,6 +668,17 @@ public static partial class CrashAnalyzer
     /// <summary>"sodium.mixins.json" — mixin configs are named after their own mod by convention.</summary>
     [GeneratedRegex(@"(?<id>[\w-]+)\.mixins\.json", RegexOptions.IgnoreCase)]
     private static partial Regex MixinConfigPattern();
+
+    /// <summary>
+    /// A line the game itself says can be disregarded.
+    ///
+    /// Mixin says exactly this about a missing refmap, which is normal in any environment that is
+    /// not a development one and means nothing at all. It names a mixin config while it does it,
+    /// which is enough to get an entirely healthy mod accused of causing a crash.
+    /// </summary>
+    [GeneratedRegex(@"you can ignore this message|is not supported in this environment|" +
+        @"development environment", RegexOptions.IgnoreCase)]
+    private static partial Regex HarmlessPattern();
 
     [GeneratedRegex(@"^\s+at (?<at>[\w$.]+)", RegexOptions.Multiline)]
     private static partial Regex StackFramePattern();
