@@ -136,13 +136,14 @@ a { color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offse
 }
 
 .brand { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: var(--text); }
+/* The launcher's own icon, so it arrives with its colour and its shape already on it — no
+   tinted square behind it, which would only put pink on pink. The box stays square because the
+   artwork is; the gamepad inside it is wider than it is tall and sits centred in its own room. */
 .brand-mark {
-  width: 34px; height: 34px; border-radius: 11px;
-  background: var(--accent);
+  width: 34px; height: 34px;
   display: grid; place-items: center;
-  box-shadow: var(--shadow-sm);
 }
-.brand-mark svg { width: 17px; height: 17px; }
+.brand-mark img { width: 100%; height: 100%; }
 .brand-name { font-size: 1.3rem; }
 
 .nav { margin-left: auto; display: flex; align-items: center; gap: 1.6rem; }

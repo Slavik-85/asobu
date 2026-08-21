@@ -66,6 +66,7 @@
          The Link is what keeps it reachable as /Assets/asobu.ico. Forward slashes because the
          Linux job builds this same file, and the Link becomes part of the resource's name. -->
     <AvaloniaResource Include="../../assets/asobu.ico" Link="Assets/asobu.ico" />
+    <AvaloniaResource Include="../../assets/asobu.png" Link="Assets/asobu.png" />
   </ItemGroup>
 
   <ItemGroup>
