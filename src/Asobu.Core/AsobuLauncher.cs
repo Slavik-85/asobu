@@ -221,7 +221,8 @@ public sealed class AsobuLauncher
 
             var url = instance.Loader.Equals(Minecraft.Loaders.NeoForge, StringComparison.OrdinalIgnoreCase)
                 ? LoaderCatalog.NeoForgeInstallerUrl(loaderVersion)
-                : LoaderCatalog.ForgeInstallerUrl(instance.MinecraftVersion, loaderVersion);
+                : await Loaders.ForgeInstallerUrlAsync(instance.MinecraftVersion, loaderVersion, cancellationToken)
+                    .ConfigureAwait(false);
 
             document = await _forge
                 .EnsureAsync(url, java, Paths.VersionJarFile(vanilla.Id), progress, cancellationToken)

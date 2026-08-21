@@ -1,5 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Asobu.Core.Minecraft;
 
@@ -29,7 +30,7 @@ public static class Loaders
 /// jars live. Kept apart from <see cref="ForgeInstaller"/>, which does not care where the URL it
 /// is handed came from.
 /// </summary>
-public sealed class LoaderCatalog(HttpClient http)
+public sealed partial class LoaderCatalog(HttpClient http)
 {
     private const string ForgePromotionsUrl = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
     private const string ForgeMaven = "https://maven.minecraftforge.net/net/minecraftforge/forge/";
@@ -38,6 +39,7 @@ public sealed class LoaderCatalog(HttpClient http)
     private const string NeoForgeMaven = "https://maven.neoforged.net/releases/net/neoforged/neoforge/";
 
     private Dictionary<string, string>? _forgePromos;
+    private HashSet<string>? _forgeArtifacts;
     private IReadOnlyList<string>? _neoForgeVersions;
 
     /// <summary>
@@ -52,8 +54,52 @@ public sealed class LoaderCatalog(HttpClient http)
                ?? promos.GetValueOrDefault($"{gameVersion}-latest");
     }
 
-    public static string ForgeInstallerUrl(string gameVersion, string forgeVersion) =>
-        $"{ForgeMaven}{gameVersion}-{forgeVersion}/forge-{gameVersion}-{forgeVersion}-installer.jar";
+    /// <summary>
+    /// Where Forge's installer for a build actually is.
+    ///
+    /// Not composable from the two version numbers, which is what this used to do. Most builds are
+    /// published under "1.19.2-43.5.0", but 378 of the five thousand carry a branch on the end as
+    /// well — 1.8.9's recommended build lives at "1.8.9-11.15.1.2318-1.8.9", and asking for it
+    /// without that tail is a 404 during install, before any log exists to explain it.
+    ///
+    /// So the published list is asked rather than guessed at, and only fallen back to a guess
+    /// where the list cannot be reached — in which case the plain form is right nine times in ten
+    /// and the download says so either way.
+    /// </summary>
+    public async Task<string> ForgeInstallerUrlAsync(
+        string gameVersion, string forgeVersion, CancellationToken cancellationToken = default)
+    {
+        var plain = $"{gameVersion}-{forgeVersion}";
+        var published = await GetForgeArtifactsAsync(cancellationToken).ConfigureAwait(false);
+
+        // The exact name first: a build whose branch happens to match another's prefix must not
+        // be answered with the other one.
+        var artifact = published.Contains(plain)
+            ? plain
+            : published.FirstOrDefault(v => v.StartsWith(plain + "-", StringComparison.Ordinal)) ?? plain;
+
+        return $"{ForgeMaven}{artifact}/forge-{artifact}-installer.jar";
+    }
+
+    /// <summary>Every build name Forge has published, read once.</summary>
+    private async Task<HashSet<string>> GetForgeArtifactsAsync(CancellationToken cancellationToken)
+    {
+        if (_forgeArtifacts is { } remembered) return remembered;
+
+        try
+        {
+            var xml = await http.GetStringAsync(ForgeMaven + "maven-metadata.xml", cancellationToken)
+                .ConfigureAwait(false);
+
+            return _forgeArtifacts = [.. ForgeVersionPattern().Matches(xml).Select(m => m.Groups[1].Value)];
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Unreachable. The plain form is what nine builds in ten use, and a wrong guess fails
+            // as a download rather than as something worse.
+            return _forgeArtifacts = [];
+        }
+    }
 
     /// <summary>
     /// NeoForge's newest build for a Minecraft version. Its version numbers drop the leading "1."
@@ -71,6 +117,10 @@ public sealed class LoaderCatalog(HttpClient http)
             .Where(v => v.StartsWith(prefix, StringComparison.Ordinal) && !v.Contains('-'))
             .LastOrDefault();
     }
+
+    /// <summary>One <version> entry out of Forge's maven metadata.</summary>
+    [GeneratedRegex(@"<version>([^<]+)</version>")]
+    private static partial Regex ForgeVersionPattern();
 
     public static string NeoForgeInstallerUrl(string neoForgeVersion) =>
         $"{NeoForgeMaven}{neoForgeVersion}/neoforge-{neoForgeVersion}-installer.jar";
