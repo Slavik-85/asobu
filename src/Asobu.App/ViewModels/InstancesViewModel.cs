@@ -2670,6 +2670,24 @@ public partial class InstancesViewModel : ViewModelBase
     private Task PlayAsync() => LaunchAsync(Selected);
 
     /// <summary>
+    /// Starts an instance pointed at a server, for the Servers page.
+    ///
+    /// Through the same path as pressing Play, deliberately: the install, the progress, the log
+    /// and the running state all belong to this page, and a second way in would be a second lot
+    /// of all four to keep honest.
+    /// </summary>
+    public async Task<string?> PlayOnServerAsync(Instance instance, string address)
+    {
+        if (IsBusy || IsRunning) return "Something is already running. Stop it first.";
+
+        Selected = _all.FirstOrDefault(i => i.Id == instance.Id) ?? instance;
+
+        await LaunchAsync(Selected, address);
+
+        return Error is { Length: > 0 } gone ? gone : null;
+    }
+
+    /// <summary>
     /// Launch straight from a library card without opening its page. Takes the instance as a
     /// parameter rather than leaning on Selected, so hovering one card and hitting play can
     /// never start whichever instance happened to be selected last.
@@ -2677,7 +2695,7 @@ public partial class InstancesViewModel : ViewModelBase
     [RelayCommand]
     private Task QuickPlayAsync(Instance? instance) => LaunchAsync(instance);
 
-    private async Task LaunchAsync(Instance? target)
+    private async Task LaunchAsync(Instance? target, string? joinServer = null)
     {
         if (target is not { } instance) return;
         if (IsBusy || IsRunning) return;
@@ -2711,7 +2729,7 @@ public partial class InstancesViewModel : ViewModelBase
             _logInstance = instance;
             OnPropertyChanged(nameof(LogTitle));
 
-            var process = await _launcher.LaunchAsync(instance, session, reporter, AppendLog);
+            var process = await _launcher.LaunchAsync(instance, session, reporter, AppendLog, joinServer);
 
             _process = process;
             IsRunning = true;

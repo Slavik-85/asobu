@@ -49,6 +49,15 @@ public partial class MainViewModel : ViewModelBase
         ModPage = new ModPageViewModel(Launcher, AskInstall, AskCreatePack);
         InstallPicker = new InstallPickerViewModel(Launcher, () => _ = GoNewInstanceAsync());
 
+        // Joining goes through the instances page rather than starting the game from here: the
+        // progress, the log and the running state all live over there, and a second way to start
+        // Minecraft would be a second lot of all three to keep honest.
+        ServersPage = new ServersViewModel(Launcher, AccountsPage, AskInstall, async (instance, address) =>
+        {
+            GoInstances();
+            return await InstancesPage.PlayOnServerAsync(instance, address);
+        });
+
         AccountsPage.Reload();
         AccountsPage.PropertyChanged += (_, e) =>
         {
@@ -56,6 +65,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 InstancesPage.RefreshAccountLabel();
                 FriendsPage.OnAccountChanged();
+                ServersPage.OnAccountChanged();
                 OnPropertyChanged(nameof(AccountLabel));
                 OnPropertyChanged(nameof(AccountKindLabel));
             }
@@ -215,6 +225,9 @@ public partial class MainViewModel : ViewModelBase
     public AccountsViewModel AccountsPage { get; }
     public SettingsViewModel SettingsPage { get; }
     public ExploreViewModel ExplorePage { get; }
+
+    /// <summary>A short list of servers worth playing on, and one button that gets you there.</summary>
+    public ServersViewModel ServersPage { get; }
     public BrowseViewModel BrowsePage { get; }
     public FriendsViewModel FriendsPage { get; }
 
@@ -234,6 +247,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsCrashReports => CurrentPage is CrashReportsViewModel;
     public bool IsInstancesArea => IsInstances || IsNewInstance || IsCrashReports;
     public bool IsExplore => CurrentPage is ExploreViewModel;
+    public bool IsServers => CurrentPage is ServersViewModel;
     public bool IsBrowse => CurrentPage is BrowseViewModel;
     public bool IsAccounts => CurrentPage is AccountsViewModel;
     public bool IsSettings => CurrentPage is SettingsViewModel;
@@ -257,6 +271,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsCrashReports));
         OnPropertyChanged(nameof(IsInstancesArea));
         OnPropertyChanged(nameof(IsExplore));
+        OnPropertyChanged(nameof(IsServers));
         OnPropertyChanged(nameof(IsBrowse));
         OnPropertyChanged(nameof(IsAccounts));
         OnPropertyChanged(nameof(IsSettings));
@@ -274,6 +289,15 @@ public partial class MainViewModel : ViewModelBase
     {
         InstancesPage.Reload();
         CurrentPage = InstancesPage;
+    }
+
+    [RelayCommand]
+    private void GoServers()
+    {
+        // The list is written into the launcher, so there is nothing to load — only the account
+        // to look at again, since whether these can be joined at all depends on it.
+        ServersPage.OnAccountChanged();
+        CurrentPage = ServersPage;
     }
 
     [RelayCommand]

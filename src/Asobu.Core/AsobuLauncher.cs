@@ -253,6 +253,7 @@ public sealed class AsobuLauncher
         MinecraftSession session,
         IProgress<InstallProgress>? progress = null,
         Action<string>? onOutput = null,
+        string? joinServer = null,
         CancellationToken cancellationToken = default)
     {
         var version = await InstallAsync(instance, progress, cancellationToken).ConfigureAwait(false);
@@ -273,7 +274,7 @@ public sealed class AsobuLauncher
         GpuPreferences.Apply(javaExecutable, settings.Gpu);
 
         progress?.Report(new InstallProgress("Starting Minecraft", 1));
-        var plan = _launchBuilder.Build(version, instance, settings, session, javaExecutable);
+        var plan = _launchBuilder.Build(version, instance, settings, session, javaExecutable, joinServer);
         var process = _gameLauncher.Start(plan, instance, onOutput);
 
         instance.LastPlayed = DateTimeOffset.UtcNow;

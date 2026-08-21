@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Asobu.Core.Accounts;
 using Asobu.Core.Instances;
 using Asobu.Core.Minecraft;
@@ -32,7 +32,8 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         Instance instance,
         LauncherSettings settings,
         MinecraftSession session,
-        string javaExecutable)
+        string javaExecutable,
+        string? joinServer = null)
     {
         var platform = RuleContext.Current;
         var gameDirectory = paths.InstanceGameDir(instance.Folder);
@@ -114,7 +115,57 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
                 .Select(value => Substitute(value, values)));
         }
 
+        if (joinServer is { Length: > 0 } address) arguments.AddRange(JoinArguments(version, address));
+
         return new LaunchPlan(javaExecutable, arguments, gameDirectory);
+    }
+
+    /// <summary>
+    /// How to tell this version of the game to connect to a server on the way in.
+    ///
+    /// Two spellings, and which one is right is asked of the version rather than worked out from
+    /// its number. 1.20 brought --quickPlayMultiplayer and every version declares its own game
+    /// arguments, so a version that knows the flag says so in its own document — which is a
+    /// better answer than a comparison against a version number that stops being true the year
+    /// somebody backports it.
+    ///
+    /// Older versions take --server and --port instead, and want them apart.
+    /// </summary>
+    private static IEnumerable<string> JoinArguments(VersionJson version, string address)
+    {
+        var understandsQuickPlay = version.Arguments?.Game
+            .SelectMany(a => a.Values)
+            .Any(value => value.Contains("--quickPlayMultiplayer", StringComparison.Ordinal)) ?? false;
+
+        if (understandsQuickPlay)
+        {
+            yield return "--quickPlayMultiplayer";
+            yield return address;
+            yield break;
+        }
+
+        var (host, port) = SplitAddress(address);
+
+        yield return "--server";
+        yield return host;
+        yield return "--port";
+        yield return port;
+    }
+
+    /// <summary>
+    /// "play.example.com:25566" as a host and a port, defaulting to Minecraft's own.
+    ///
+    /// Only splits on the last colon, and only when what follows is a number: an IPv6 address is
+    /// full of colons and none of them separates a port.
+    /// </summary>
+    private static (string Host, string Port) SplitAddress(string address)
+    {
+        var cut = address.LastIndexOf(':');
+
+        if (cut > 0 && ushort.TryParse(address[(cut + 1)..], out _))
+            return (address[..cut], address[(cut + 1)..]);
+
+        return (address, "25565");
     }
 
     /// <summary>Pre-1.7.3 wants a real folder tree of assets rather than the hashed object store.</summary>

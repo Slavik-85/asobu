@@ -1,4 +1,4 @@
-using Asobu.App.ViewModels;
+﻿using Asobu.App.ViewModels;
 using Asobu.App.Views;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -22,6 +22,7 @@ public class ViewLocator : IDataTemplate
     public Control? Build(object? param) => param switch
     {
         InstancesViewModel => new InstancesView(),
+        ServersViewModel => new ServersView(),
         ExploreViewModel => new ExploreView(),
         BrowseViewModel => new BrowseView(),
         ModPageViewModel => new ModPageView(),

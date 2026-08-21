@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="using:Asobu.App.Controls"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             x:Class="Asobu.App.Views.ServersView"
+             x:DataType="vm:ServersViewModel">
+
+  <ScrollViewer ctrl:SmoothScroll.Enabled="True">
+    <StackPanel Margin="28,26,28,32" Spacing="6" MaxWidth="760" HorizontalAlignment="Center">
+
+      <TextBlock Text="Asobu Suggests" Classes="h1" FontSize="30" HorizontalAlignment="Center"/>
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                 Text="Some of the best Minecraft servers there are."/>
+
+      <!-- Said here rather than at the disconnect screen: every one of these checks with Mojang
+           that a joining player is who they say they are, and an offline account cannot answer
+           that. Finding out after a download is a worse way to learn it. -->
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                 Foreground="{DynamicResource TextMuted}"
+                 IsVisible="{Binding NeedsMicrosoft}"
+                 Text="These need a Microsoft account. An offline one can't sign in to them."/>
+
+      <ItemsControl ItemsSource="{Binding Servers}" Margin="0,18,0,0">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ServerRow">
+            <Border Classes="card" Padding="20,16" Margin="0,0,0,12">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
+
+                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis"/>
+                  <TextBlock Text="{Binding VersionLabel}" Classes="label"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center" MinWidth="190">
+
+                  <!-- The address, and a button that takes it. Pressing the pill copies too:
+                       the address is the thing somebody wants from it, and making them hit the
+                       small icon beside it would be a target for no reason. -->
+                  <Button Classes="addressPill" Tag="{Binding}" Click="CopyAddress_Click"
+                          ToolTip.Tip="Copy the address">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <TextBlock Grid.Column="0" Text="{Binding Address}" FontSize="13"
+                                 VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                 IsVisible="{Binding !JustCopied}"/>
+                      <TextBlock Grid.Column="0" Text="Copied" FontSize="13" FontWeight="SemiBold"
+                                 VerticalAlignment="Center"
+                                 Foreground="{DynamicResource Accent}"
+                                 IsVisible="{Binding JustCopied}"/>
+                      <Viewbox Grid.Column="1" Classes="icon" Width="13" Height="13">
+                        <Canvas Width="24" Height="24">
+                          <Path Data="M9 9 H19 V19 H9 Z M5 15 V5 H15" StrokeThickness="2"
+                                StrokeLineCap="Round" StrokeJoin="Round"
+                                Stroke="{DynamicResource TextMuted}"/>
+                        </Canvas>
+                      </Viewbox>
+                    </Grid>
+                  </Button>
+
+                  <Button Classes="primary" Content="Join" HorizontalAlignment="Stretch"
+                          HorizontalContentAlignment="Center"
+                          Command="{Binding $parent[ItemsControl].((vm:ServersViewModel)DataContext).JoinCommand}"
+                          CommandParameter="{Binding}"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0"
+                 Foreground="{DynamicResource TextMuted}"
+                 Text="Asobu is not affiliated with any of these. Joining opens the game straight onto the server."/>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
