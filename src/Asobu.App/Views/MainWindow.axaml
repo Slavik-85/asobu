@@ -25,7 +25,7 @@
             <Path Data="M 0,0 L 9,5.5 L 0,11 Z" Fill="{DynamicResource OnAccent}" Width="9" Height="11"
                   Margin="3,0,0,0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
-          <TextBlock Text="asobu" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <TextBlock Text="Asobu" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>
 
         <!-- Only ever visible with an update already downloaded and staged, so pressing it
