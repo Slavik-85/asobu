@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Diagnostics;
 using Asobu.Core.Accounts;
 using Asobu.Core.Diagnostics;
@@ -1161,10 +1161,17 @@ public sealed class AsobuLauncher
     /// project has a port under another name (Sodium becoming Embeddium), or there is nothing and
     /// it has to be left behind.
     /// </summary>
+    /// <param name="toVersion">
+    /// The Minecraft version to find builds for, or null to keep the instance's own. A duplicate
+    /// can change both at once, and the two questions are really one: what does this mod publish
+    /// for this pairing. Nothing about the search cared which of them moved.
+    /// </param>
     public async Task<IReadOnlyList<ModMove>> PlanLoaderMoveAsync(
-        Instance instance, string toLoader, CancellationToken cancellationToken = default)
+        Instance instance, string toLoader, string? toVersion = null,
+        CancellationToken cancellationToken = default)
     {
         var directory = ModScanner.ModsDirectory(Paths, instance.Folder);
+        var gameVersion = toVersion is { Length: > 0 } wanted ? wanted : instance.MinecraftVersion;
 
         // The display name, since a row reads "no NeoForge build" rather than "no neoforge".
         var loaderName = new Instance { Id = "", Name = "", MinecraftVersion = "", Loader = toLoader }.LoaderName;
@@ -1181,7 +1188,7 @@ public sealed class AsobuLauncher
             async (index, token) =>
             {
                 moves[index] = await PlanMoveAsync(
-                    installed[index], instance.MinecraftVersion, toLoader, loaderName, token).ConfigureAwait(false);
+                    installed[index], gameVersion, toLoader, loaderName, token).ConfigureAwait(false);
             }).ConfigureAwait(false);
 
         return moves;

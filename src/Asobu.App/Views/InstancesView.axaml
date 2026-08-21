@@ -978,6 +978,99 @@
       </Border>
     </Border>
 
+    <!-- ============ Duplicating an instance ============ -->
+    <!-- A sheet rather than an immediate copy: the reason to duplicate a pack is nearly always
+         to try it on a newer Minecraft or another loader, and doing that afterwards meant
+         editing the copy and then watching every mod fail to load. -->
+    <Border Classes="modalScrim" Classes.open="{Binding IsDuplicateOpen}"
+            Classes.closing="{Binding IsDuplicateClosing}"
+            IsVisible="{Binding IsDuplicateOpen}">
+      <Border Classes="modalCard" Classes.open="{Binding IsDuplicateOpen}"
+              Classes.closing="{Binding IsDuplicateClosing}" Width="520" MaxHeight="640">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+          <StackPanel Grid.Row="0" Margin="26,24,26,0" Spacing="4">
+            <TextBlock Text="Duplicate this instance" Classes="h2"/>
+            <TextBlock Classes="sub" TextWrapping="Wrap"
+                       Text="The original is left exactly as it is. Change the version or the loader and Asobu finds the matching build of every mod for the copy."/>
+          </StackPanel>
+
+          <ScrollViewer Grid.Row="1" ctrl:SmoothScroll.Enabled="True" AllowAutoHide="False"
+                        Margin="26,18,26,0">
+            <StackPanel Spacing="16">
+
+              <StackPanel Spacing="6">
+                <TextBlock Text="Name" Classes="label"/>
+                <TextBox Text="{Binding DuplicateName}" PlaceholderText="What to call the copy"/>
+              </StackPanel>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <StackPanel Grid.Column="0" Spacing="6">
+                  <TextBlock Text="Minecraft" Classes="label"/>
+                  <ComboBox ItemsSource="{Binding DuplicateVersions}"
+                            SelectedItem="{Binding DuplicateVersion}"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="6">
+                  <TextBlock Text="Mod loader" Classes="label"/>
+                  <ComboBox ItemsSource="{Binding DuplicateLoaders}"
+                            SelectedItem="{Binding DuplicateLoader}"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+              </Grid>
+
+              <!-- Said before it starts, because it is the difference between a copy that takes
+                   a second and one that goes and asks two shops about forty mods. -->
+              <Border Classes="card" Padding="12,10" IsVisible="{Binding DuplicateMovesMods}">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Mods will be re-found" FontWeight="SemiBold" FontSize="13"/>
+                  <TextBlock Classes="sub" TextWrapping="Wrap"
+                             Text="Every mod in the copy is looked up again for the version and loader you picked — including the ones that go by another name over there, like Sodium and Embeddium. Anything with no build is left out and named."/>
+                </StackPanel>
+              </Border>
+
+              <StackPanel Spacing="7">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Grid.Column="0" Text="Icon" Classes="label" VerticalAlignment="Center"/>
+                  <Border Grid.Column="1" Width="34" Height="34" CornerRadius="10"
+                          Background="{DynamicResource AccentSoft}">
+                    <TextBlock Text="{Binding DuplicateIcon}" FontSize="18"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding IconChoices}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                      <Button Classes="iconChoice" Content="{Binding}" CommandParameter="{Binding}"
+                              Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).SelectDuplicateIconCommand}"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
+              <TextBlock Text="{Binding DuplicateStatus}" Classes="label" TextWrapping="Wrap"
+                         Foreground="{DynamicResource Accent}"
+                         IsVisible="{Binding HasDuplicateStatus}"/>
+
+            </StackPanel>
+          </ScrollViewer>
+
+          <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="26,18,26,24"
+                      HorizontalAlignment="Right">
+            <Button Classes="ghost" Content="Close" Command="{Binding DismissDuplicateCommand}"
+                    IsEnabled="{Binding !IsDuplicating}"/>
+            <Button Classes="primary" Content="Duplicate" IsEnabled="{Binding CanDuplicate}"
+                    Command="{Binding ConfirmDuplicateCommand}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Border>
+
     <!-- ============ Delete confirmation ============ -->
     <!-- Outside the instance sheet on purpose: the context menu can ask to delete a card without
          that sheet ever being open. -->

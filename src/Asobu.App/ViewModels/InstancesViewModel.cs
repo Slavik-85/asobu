@@ -1825,15 +1825,295 @@ public partial class InstancesViewModel : ViewModelBase
 
     // ---- Clone / export / import ----
 
+    /// <summary>
+    /// Duplicating opens the sheet rather than copying at once.
+    ///
+    /// A copy is almost never wanted as an exact one — the reason to make it is to try the pack
+    /// on a newer Minecraft, or on another loader, and doing that afterwards meant editing the
+    /// copy and then watching every mod fail to load.
+    /// </summary>
     [RelayCommand]
-    private void Clone()
-    {
-        if (Selected is not { } instance) return;
+    private void Clone() => OpenDuplicate(Selected);
 
-        var clone = _launcher.Instances.Clone(instance);
-        Reload();
-        Selected = _all.FirstOrDefault(i => i.Id == clone.Id);
+    // ---- Duplicating an instance, possibly onto a different version or loader ----
+
+    [ObservableProperty] public partial bool IsDuplicateOpen { get; set; }
+    [ObservableProperty] public partial bool IsDuplicateClosing { get; set; }
+
+    [ObservableProperty] public partial string DuplicateName { get; set; } = "";
+    [ObservableProperty] public partial string DuplicateIcon { get; set; } = "🌸";
+    [ObservableProperty] public partial string? DuplicateVersion { get; set; }
+    [ObservableProperty] public partial string? DuplicateLoader { get; set; }
+
+    /// <summary>Set while the copy is being made, which is the slow part when mods have to move.</summary>
+    [ObservableProperty] public partial bool IsDuplicating { get; set; }
+    [ObservableProperty] public partial string? DuplicateStatus { get; set; }
+
+    public ObservableCollection<string> DuplicateVersions { get; } = [];
+    public ObservableCollection<string> DuplicateLoaders { get; } = [];
+
+    /// <summary>The instance being copied. Held rather than read off Selected, which can move.</summary>
+    private Instance? _duplicating;
+
+    /// <summary>Stops the loader list reacting to its own repopulation.</summary>
+    private bool _loadingDuplicateLoaders;
+
+    public bool HasDuplicateStatus => DuplicateStatus is { Length: > 0 };
+
+    /// <summary>
+    /// Whether the copy will have to go and find different builds. Said before it starts, since
+    /// it is the difference between a copy that takes a second and one that takes a minute.
+    /// </summary>
+    public bool DuplicateMovesMods =>
+        _duplicating is { } source &&
+        (!string.Equals(DuplicateVersion, source.MinecraftVersion, StringComparison.OrdinalIgnoreCase)
+         || !string.Equals(DuplicateLoader, source.LoaderName, StringComparison.OrdinalIgnoreCase));
+
+    public bool CanDuplicate => !IsDuplicating && DuplicateName.Trim().Length > 0
+                                && DuplicateVersion is { Length: > 0 };
+
+    partial void OnDuplicateStatusChanged(string? value) => OnPropertyChanged(nameof(HasDuplicateStatus));
+    partial void OnDuplicateNameChanged(string value) => OnPropertyChanged(nameof(CanDuplicate));
+    partial void OnIsDuplicatingChanged(bool value) => OnPropertyChanged(nameof(CanDuplicate));
+
+    partial void OnDuplicateVersionChanged(string? value)
+    {
+        OnPropertyChanged(nameof(CanDuplicate));
+        OnPropertyChanged(nameof(DuplicateMovesMods));
+
+        // Which loaders exist is a question about the version, so it is asked again whenever the
+        // version moves. Fabric for 1.7 and NeoForge for 1.16 do not exist, and offering them
+        // would be offering a copy that cannot be made.
+        if (!_loadingDuplicateLoaders && value is { Length: > 0 }) _ = LoadDuplicateLoadersAsync(value);
     }
+
+    partial void OnDuplicateLoaderChanged(string? value) => OnPropertyChanged(nameof(DuplicateMovesMods));
+
+    [RelayCommand]
+    private void OpenDuplicate(Instance? instance)
+    {
+        var source = instance ?? Selected;
+        if (source is null) return;
+
+        _duplicating = source;
+
+        DuplicateName = $"{source.Name} (copy)";
+        DuplicateIcon = source.Icon;
+        DuplicateStatus = null;
+        IsDuplicating = false;
+
+        _loadingDuplicateLoaders = true;
+        DuplicateVersion = source.MinecraftVersion;
+        DuplicateLoader = source.LoaderName;
+        _loadingDuplicateLoaders = false;
+
+        DismissSheets();
+        IsDuplicateClosing = false;
+        IsDuplicateOpen = true;
+
+        _ = LoadDuplicateVersionsAsync(source);
+        _ = LoadDuplicateLoadersAsync(source.MinecraftVersion);
+
+        OnPropertyChanged(nameof(DuplicateMovesMods));
+        OnPropertyChanged(nameof(CanDuplicate));
+    }
+
+    /// <summary>
+    /// Every release, newest first, plus whatever the source runs.
+    ///
+    /// Releases only: snapshots are a long list of things nobody is copying an instance onto,
+    /// and the one the instance is already on is added regardless in case it is a snapshot.
+    /// </summary>
+    private async Task LoadDuplicateVersionsAsync(Instance source)
+    {
+        try
+        {
+            var manifest = await _launcher.Meta.GetManifestAsync();
+
+            var releases = manifest.Versions
+                .Where(v => v.Type == "release")
+                .Select(v => v.Id)
+                .ToList();
+
+            if (!releases.Contains(source.MinecraftVersion, StringComparer.OrdinalIgnoreCase))
+                releases.Insert(0, source.MinecraftVersion);
+
+            _loadingDuplicateLoaders = true;
+            DuplicateVersions.Clear();
+            foreach (var version in releases) DuplicateVersions.Add(version);
+            _loadingDuplicateLoaders = false;
+        }
+        catch (Exception)
+        {
+            // Offline. The version it is already on is the only one that can be offered, which
+            // still allows a plain copy.
+            DuplicateVersions.Clear();
+            DuplicateVersions.Add(source.MinecraftVersion);
+        }
+    }
+
+    /// <summary>The loaders that exist for one Minecraft version, which is not the same set for all of them.</summary>
+    private async Task LoadDuplicateLoadersAsync(string version)
+    {
+        var wanted = DuplicateLoader;
+
+        try
+        {
+            var fabric = _launcher.Fabric.GetLatestLoaderAsync(version);
+            var quilt = _launcher.Quilt.GetLatestLoaderAsync(version);
+            var forge = _launcher.Loaders.GetForgeVersionAsync(version);
+            var neoForge = _launcher.Loaders.GetNeoForgeVersionAsync(version);
+
+            await Task.WhenAll(fabric, quilt, forge, neoForge);
+
+            if (DuplicateVersion != version) return;   // moved on while we were asking
+
+            _loadingDuplicateLoaders = true;
+
+            DuplicateLoaders.Clear();
+            DuplicateLoaders.Add("Vanilla");
+            if (fabric.Result is { Length: > 0 }) DuplicateLoaders.Add("Fabric");
+            if (forge.Result is { Length: > 0 }) DuplicateLoaders.Add("Forge");
+            if (neoForge.Result is { Length: > 0 }) DuplicateLoaders.Add("NeoForge");
+            if (quilt.Result is { Length: > 0 }) DuplicateLoaders.Add("Quilt");
+
+            // Keep the choice where it still exists, and fall back to the source's rather than
+            // to nothing — an empty box reads as though the copy had lost its loader.
+            DuplicateLoader = wanted is { Length: > 0 } && DuplicateLoaders.Contains(wanted)
+                ? wanted
+                : DuplicateLoaders.Contains(_duplicating?.LoaderName ?? "") ? _duplicating!.LoaderName : "Vanilla";
+
+            _loadingDuplicateLoaders = false;
+
+            OnPropertyChanged(nameof(DuplicateMovesMods));
+        }
+        catch (Exception)
+        {
+            _loadingDuplicateLoaders = false;
+        }
+    }
+
+    [RelayCommand]
+    private void SelectDuplicateIcon(string? icon)
+    {
+        if (icon is { Length: > 0 }) DuplicateIcon = icon;
+    }
+
+    [RelayCommand]
+    private async Task DismissDuplicateAsync()
+    {
+        if (IsDuplicateClosing || IsDuplicating) return;
+
+        IsDuplicateClosing = true;
+        await Task.Delay(ModalSlideMilliseconds);
+
+        IsDuplicateOpen = false;
+        IsDuplicateClosing = false;
+        _duplicating = null;
+    }
+
+    /// <summary>
+    /// Makes the copy, then brings its mods with it.
+    ///
+    /// The mods are re-found rather than asked about, which is the one place this differs from
+    /// changing an instance's own loader. That prompt exists because rewriting somebody's mods
+    /// folder under them is not a thing to do unannounced — but a duplicate is a new instance
+    /// and the original is untouched, so there is nothing to lose and nothing to confirm.
+    /// </summary>
+    [RelayCommand]
+    private async Task ConfirmDuplicateAsync()
+    {
+        if (_duplicating is not { } source || !CanDuplicate) return;
+
+        IsDuplicating = true;
+        DuplicateStatus = "Copying…";
+
+        try
+        {
+            var clone = _launcher.Instances.Clone(source);
+
+            clone.Name = DuplicateName.Trim();
+            clone.Icon = DuplicateIcon;
+
+            var loader = DuplicateLoader ?? source.LoaderName;
+            var version = DuplicateVersion ?? source.MinecraftVersion;
+
+            var moving = !string.Equals(version, source.MinecraftVersion, StringComparison.OrdinalIgnoreCase)
+                         || !string.Equals(loader, source.LoaderName, StringComparison.OrdinalIgnoreCase);
+
+            if (moving)
+            {
+                DuplicateStatus = "Finding mods for the new version…";
+
+                // Planned against the copy, and against where it is going rather than where it
+                // came from. Both may have changed at once, which the planner treats as one
+                // question: what does this mod publish for this pairing.
+                var target = LoaderIdFor(loader);
+                var moves = await _launcher.PlanLoaderMoveAsync(clone, target, version);
+
+                var moved = 0;
+                var stuck = new List<string>();
+
+                foreach (var move in moves)
+                {
+                    if (!move.CanMove)
+                    {
+                        stuck.Add(move.Name);
+                        continue;
+                    }
+
+                    var result = await _launcher.ApplyMoveAsync(clone, move);
+                    if (result.Swapped) moved++;
+                    else stuck.Add(move.Name);
+                }
+
+                clone.MinecraftVersion = version;
+                clone.Loader = target;
+                clone.LoaderVersion = await LoaderVersionFor(target, version);
+
+                DuplicateStatus = stuck.Count == 0
+                    ? $"Copied. All {moved} mods found builds for {loader} {version}."
+                    : $"Copied. {moved} moved; {stuck.Count} had no {loader} {version} build: {string.Join(", ", stuck.Take(4))}"
+                      + (stuck.Count > 4 ? $" and {stuck.Count - 4} more." : ".");
+            }
+
+            _launcher.Instances.Save(clone);
+            Reload();
+            Selected = _all.FirstOrDefault(i => i.Id == clone.Id);
+
+            // A plain copy has nothing to report, so it just closes.
+            if (!moving) await DismissDuplicateAsync();
+        }
+        catch (Exception e)
+        {
+            DuplicateStatus = e.Message;
+        }
+        finally
+        {
+            IsDuplicating = false;
+        }
+    }
+
+    /// <summary>The id an instance stores, from the name the box shows.</summary>
+    private static string LoaderIdFor(string loaderName) => loaderName.ToLowerInvariant() switch
+    {
+        "fabric" => "fabric",
+        "forge" => "forge",
+        "neoforge" => "neoforge",
+        "quilt" => "quilt",
+        _ => "vanilla",
+    };
+
+    /// <summary>The loader build to record, which the copy needs before it can be launched.</summary>
+    private async Task<string?> LoaderVersionFor(string loader, string version) => loader switch
+    {
+        "fabric" => await _launcher.Fabric.GetLatestLoaderAsync(version),
+        "quilt" => await _launcher.Quilt.GetLatestLoaderAsync(version),
+        "forge" => await _launcher.Loaders.GetForgeVersionAsync(version),
+        "neoforge" => await _launcher.Loaders.GetNeoForgeVersionAsync(version),
+        _ => null,
+    };
+
 
     // ---- Sharing an instance: as a file anything can open, or as a code only Asobu reads. ----
 
@@ -2424,7 +2704,10 @@ public partial class InstancesViewModel : ViewModelBase
     private async Task<IReadOnlyList<ModMove>> PlanAndPrefetchAsync(
         Instance instance, string loader, CancellationToken cancellationToken)
     {
-        var plan = await _launcher.PlanLoaderMoveAsync(instance, loader, cancellationToken);
+        // Named, because the version now sits between the loader and the token: this path keeps
+        // the instance's own version and only the loader is moving.
+        var plan = await _launcher.PlanLoaderMoveAsync(
+            instance, loader, toVersion: null, cancellationToken: cancellationToken);
 
         try
         {
