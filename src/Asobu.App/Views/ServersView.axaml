@@ -60,7 +60,9 @@
                     </Grid>
                   </Button>
 
-                  <Button Classes="primary" Content="Join" Height="38"
+                  <!-- MinHeight rather than Height: a primary brings its own padding, and
+                       pinning the height crops the text against the bottom edge. -->
+                  <Button Classes="primary" Content="Join" MinHeight="38"
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                           Command="{Binding $parent[ItemsControl].((vm:ServersViewModel)DataContext).JoinCommand}"
                           CommandParameter="{Binding}"/>

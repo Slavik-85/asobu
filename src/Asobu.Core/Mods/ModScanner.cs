@@ -299,12 +299,16 @@ public static class ModScanner
         {
             using var archive = ZipFile.OpenRead(path);
 
-            // Fabric and Quilt both ship a JSON manifest we can read directly. Forge/NeoForge
-            // use TOML, which isn't worth a parser here — those fall back to the file name.
             var manifest = archive.GetEntry("fabric.mod.json") ?? archive.GetEntry("quilt.mod.json");
+
+            // Forge and NeoForge declare themselves in TOML instead. That used to be dismissed as
+            // not worth a parser, and the cost of dismissing it was every Forge mod in the list
+            // showing as its own file name with no author — "cushionbackport-26.2-NeoF…" beside
+            // "Fabric API", as though one of them were broken.
             if (manifest is null)
-                return Remember(key, new ModEntry(
-                    path, fallbackName, Clean(fallbackName), "Unknown", null, info.Length, enabled, null));
+                return Remember(key, ReadForgeStyle(archive, path, fallbackName, info.Length, enabled)
+                    ?? new ModEntry(
+                        path, fallbackName, Clean(fallbackName), "Unknown", null, info.Length, enabled, null));
 
             using var stream = manifest.Open();
             using var document = JsonDocument.Parse(stream, new JsonDocumentOptions { AllowTrailingCommas = true });
@@ -359,6 +363,144 @@ public static class ModScanner
         }
 
         return names.Count == 0 ? "Unknown" : string.Join(", ", names);
+    }
+
+    /// <summary>
+    /// A Forge or NeoForge mod, out of its own manifest, or null when it has none.
+    ///
+    /// NeoForge moved the file in 1.20.5 and both names are still in the wild, so both are tried.
+    /// </summary>
+    private static ModEntry? ReadForgeStyle(
+        ZipArchive archive, string path, string fallbackName, long size, bool enabled)
+    {
+        var entry = archive.GetEntry("META-INF/neoforge.mods.toml")
+                    ?? archive.GetEntry("META-INF/mods.toml");
+
+        if (entry is null) return null;
+
+        string text;
+        try
+        {
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            text = reader.ReadToEnd();
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException)
+        {
+            return null;
+        }
+
+        var (mod, top) = ReadTomlHeads(text);
+
+        string? Field(string name) =>
+            mod.TryGetValue(name, out var inMod) ? inMod
+            : top.TryGetValue(name, out var atTop) ? atTop
+            : null;
+
+        var displayName = Field("displayName");
+        var modId = Field("modId");
+
+        // The logo is named relative to the jar root, same as Fabric's icon.
+        var icon = Field("logoFile") is { Length: > 0 } logo ? ReadEntry(archive, logo) : null;
+
+        return new ModEntry(
+            path,
+            fallbackName,
+            string.IsNullOrWhiteSpace(displayName) ? Clean(fallbackName) : displayName!,
+            Field("authors") is { Length: > 0 } authors ? authors : "Unknown",
+            string.IsNullOrWhiteSpace(modId) ? null : modId,
+            size,
+            enabled,
+            icon);
+    }
+
+    /// <summary>
+    /// The top-level keys of a mods.toml and those of its first [[mods]] block.
+    ///
+    /// Enough of TOML to read a manifest and no more: keys and quoted values, the tables they sit
+    /// under, and nothing else. A mod's own block wins over the top level, which is where a pack
+    /// of several mods puts the things they share — the licence, and often the authors.
+    ///
+    /// Only the first [[mods]] block. A jar holding several is one file in the folder either way,
+    /// and the first is the one it is named after.
+    /// </summary>
+    private static (Dictionary<string, string> Mod, Dictionary<string, string> Top) ReadTomlHeads(string text)
+    {
+        var top = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var mod = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var inFirstMod = false;
+        var pastFirstMod = false;
+
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line[0] is '#') continue;
+
+            if (line.StartsWith('['))
+            {
+                var isMods = line.StartsWith("[[mods]]", StringComparison.OrdinalIgnoreCase);
+
+                if (isMods && pastFirstMod) inFirstMod = false;
+                else if (isMods) { inFirstMod = true; pastFirstMod = true; }
+                else inFirstMod = false;
+
+                continue;
+            }
+
+            var split = line.IndexOf('=');
+            if (split <= 0) continue;
+
+            var value = Unquote(line[(split + 1)..].Trim());
+            if (value.Length == 0) continue;
+
+            (inFirstMod ? mod : top).TryAdd(line[..split].Trim(), value);
+        }
+
+        return (mod, top);
+    }
+
+    /// <summary>
+    /// A TOML scalar as its text. Multi-line strings open with three quotes and carry nothing
+    /// useful on that first line, so they come back empty rather than as a stray quote mark —
+    /// descriptions are written that way and nothing here shows one.
+    /// </summary>
+    private static string Unquote(string value)
+    {
+        if (value.StartsWith("'''", StringComparison.Ordinal)
+            || value.StartsWith("\"\"\"", StringComparison.Ordinal))
+            return "";
+
+        // Read to the closing quote rather than expecting the line to end there. Manifests are
+        // written from Forge's own template, which puts a comment after almost every line —
+        // modId = "deimos" #mandatory — so a value that "ends with a quote" describes hardly any
+        // of them, and treating those as unquoted leaves the quotes in the name.
+        if (value.Length >= 2 && value[0] is '"' or '\'')
+        {
+            var close = value.IndexOf(value[0], 1);
+            if (close > 0) return value[1..close];
+        }
+
+        // Unquoted, so anything after a comment marker is not part of it.
+        var hash = value.IndexOf('#');
+        return (hash >= 0 ? value[..hash] : value).Trim();
+    }
+
+    private static byte[]? ReadEntry(ZipArchive archive, string name)
+    {
+        if (archive.GetEntry(name.TrimStart('/')) is not { } entry) return null;
+
+        try
+        {
+            using var stream = entry.Open();
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return buffer.ToArray();
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException)
+        {
+            return null;
+        }
     }
 
     private static byte[]? ReadIcon(ZipArchive archive, JsonElement root)

@@ -90,12 +90,12 @@
         <StackPanel Spacing="3" VerticalAlignment="Top">
           <Button x:Name="NavInstances" Classes="nav" Classes.active="{Binding IsInstancesArea}"
                   Command="{Binding GoInstancesCommand}" Content="Instances"/>
-          <Button x:Name="NavServers" Classes="nav" Classes.active="{Binding IsServers}"
-                  Command="{Binding GoServersCommand}" Content="Servers"/>
           <Button x:Name="NavExplore" Classes="nav" Classes.active="{Binding IsExplore}"
                   Command="{Binding GoExploreCommand}" Content="Explore"/>
           <Button x:Name="NavBrowse" Classes="nav" Classes.active="{Binding IsBrowse}"
                   Command="{Binding GoBrowseCommand}" Content="Browse"/>
+          <Button x:Name="NavServers" Classes="nav" Classes.active="{Binding IsServers}"
+                  Command="{Binding GoServersCommand}" Content="Servers"/>
         </StackPanel>
 
       </DockPanel>

@@ -31,9 +31,33 @@ public sealed class ModMetadataCache
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    /// <summary>
+    /// Bumped whenever the scanner learns to read something it could not read before.
+    ///
+    /// The key is the file's path, date and size, none of which change when Asobu gets better at
+    /// opening it — so without this, every jar already in the cache would keep the answer given
+    /// by the older scanner forever. That is how a fix for Forge names would have appeared not to
+    /// work: correct code, stale cache, and nothing on screen any different.
+    ///
+    /// 2: Forge and NeoForge manifests, which used to fall back to the file name.
+    /// </summary>
+    private const int Generation = 2;
+
     public ModMetadataCache(AsobuPaths paths)
     {
-        _file = Path.Combine(paths.Cache, "mod-metadata.json");
+        _file = Path.Combine(paths.Cache, $"mod-metadata.v{Generation}.json");
+
+        // The ones from before, which are of no use now and would otherwise sit there for good.
+        foreach (var old in PreviousFiles(paths))
+        {
+            try
+            {
+                File.Delete(old);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
 
         try
         {
@@ -47,6 +71,19 @@ public sealed class ModMetadataCache
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
         {
             // A damaged cache is a slow scan, not a broken launcher.
+        }
+    }
+
+    /// <summary>Caches written by an older scanner, including the one from before they were numbered.</summary>
+    private static IEnumerable<string> PreviousFiles(AsobuPaths paths)
+    {
+        var unnumbered = Path.Combine(paths.Cache, "mod-metadata.json");
+        if (File.Exists(unnumbered)) yield return unnumbered;
+
+        for (var older = 1; older < Generation; older++)
+        {
+            var file = Path.Combine(paths.Cache, $"mod-metadata.v{older}.json");
+            if (File.Exists(file)) yield return file;
         }
     }
 

@@ -1676,6 +1676,16 @@ public partial class InstancesViewModel : ViewModelBase
             return;
         }
 
+        // Planned before the loader is applied, not after. What each mod would become is a
+        // question about moving from the old loader to the new one, and once the instance has
+        // been changed the old one is gone — planning then asks what it would take to move from
+        // NeoForge to NeoForge, whose answer is nothing, and no prompt appears at all.
+        //
+        // Usually this has already started, from the moment the picker moved. This is for when it
+        // has not: a loader chosen and Done pressed faster than the first plan could begin.
+        if (_movePlan is null || !string.Equals(_movePlanFor, chosen, StringComparison.OrdinalIgnoreCase))
+            StartMovePlan(chosen);
+
         // Applied while the sheet is still up, so a refusal — no build of that loader for this
         // Minecraft version — is read against the picker that caused it.
         IsCheckingLoaderChange = true;
@@ -3303,8 +3313,11 @@ public partial class InstancesViewModel : ViewModelBase
         await LoadModsAsync(instance);
         await Task.Delay(SwapSettleMilliseconds);
 
-        // Anything that could not move keeps the sheet up: that list is the whole point of it.
-        if (!HasStuckMods) await DismissMovesAsync();
+        // Held open only when nothing could move at all, because then there is something to do
+        // about it and Revert is on the sheet. One mod out of twenty having no build used to keep
+        // it open too, which after pressing Move them all reads as the button not having worked —
+        // the ones that stayed put are still in the list behind it, saying so.
+        if (!NothingCanMove) await DismissMovesAsync();
     }
 
     [RelayCommand]
@@ -3312,6 +3325,11 @@ public partial class InstancesViewModel : ViewModelBase
     {
         foreach (var row in Moves.Where(move => move.IsPending).ToList())
             await MoveModAsync(row);
+
+        // The last one through closes the sheet on its own. This is for the case where the list
+        // held nothing to do — every row already moved or stuck — so nothing above ran and the
+        // button would otherwise do nothing at all.
+        if (IsMovePromptOpen && !NothingCanMove) await DismissMovesAsync();
     }
 
     /// <summary>
