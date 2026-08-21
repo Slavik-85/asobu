@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -109,6 +109,15 @@ public partial class UpdateViewModel : ViewModelBase
 
     partial void OnStageChanged(UpdateStage value)
     {
+        // An update is downloaded and waiting for a restart, so there is nothing further to look
+        // for. CheckAsync would refuse anyway; stopping means not waking every ten minutes for
+        // the rest of the session to be refused.
+        if (value == UpdateStage.Ready)
+        {
+            _timer?.Stop();
+            _timer = null;
+        }
+
         OnPropertyChanged(nameof(IsChecking));
         OnPropertyChanged(nameof(IsReady));
         OnPropertyChanged(nameof(IsCurrent));
@@ -117,6 +126,35 @@ public partial class UpdateViewModel : ViewModelBase
     }
 
     partial void OnNewVersionChanged(string? value) => OnPropertyChanged(nameof(StatusLine));
+
+    /// <summary>
+    /// How often a running launcher looks again.
+    ///
+    /// The startup check used to be the only one, which meant a launcher left open — and this
+    /// one is meant to be left open, since it is what you alt-tab back to — never noticed a new
+    /// version at all. Somebody with Asobu up for a week stayed a week behind.
+    /// </summary>
+    private static readonly TimeSpan HowOften = TimeSpan.FromMinutes(10);
+
+    private DispatcherTimer? _timer;
+
+    /// <summary>
+    /// Starts looking again every ten minutes.
+    ///
+    /// Cheap enough not to think about: one request to GitHub's release feed, six times an hour,
+    /// against an unauthenticated allowance of sixty. It costs nothing while there is nothing to
+    /// find, because a check that finds no update downloads nothing.
+    /// </summary>
+    public void KeepChecking()
+    {
+        // Nothing to check in a build that has no update path — a source run, or an unpacked
+        // folder. Velopack says so rather than being guessed at.
+        if (_timer is not null || !CanUpdate) return;
+
+        _timer = new DispatcherTimer { Interval = HowOften };
+        _timer.Tick += (_, _) => _ = CheckQuietlyAsync();
+        _timer.Start();
+    }
 
     /// <summary>
     /// The startup check. Silent about everything except an update actually being ready: a

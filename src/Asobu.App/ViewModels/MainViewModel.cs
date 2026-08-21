@@ -183,6 +183,10 @@ public partial class MainViewModel : ViewModelBase
                 // And whether there is a newer Asobu. Silent unless there is: it downloads in
                 // the background and puts a button in the sidebar, rather than interrupting.
                 Warm(Updates.CheckQuietlyAsync));
+
+            // And keep looking, rather than only at startup. A launcher that is left open is
+            // exactly the one that would otherwise never hear about a new version.
+            await Dispatcher.UIThread.InvokeAsync(Updates.KeepChecking);
         }),
         DispatcherPriority.Background);
 
