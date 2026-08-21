@@ -1,4 +1,4 @@
-using Asobu.Core.Diagnostics;
+﻿using Asobu.Core.Diagnostics;
 
 namespace Asobu.Core.Tests;
 
@@ -126,6 +126,37 @@ public class DiagnosticsTests
 
         Assert.Equal("curios", missing.Id);
         Assert.Equal("ars_nouveau", missing.RequiredBy);
+    }
+
+    /// <summary>The crash this was reported for, copied out of the launcher's own log.</summary>
+    private const string DuplicateAsm = """
+        Exception in thread "main" java.lang.ExceptionInInitializerError
+            at net.fabricmc.loader.impl.launch.knot.KnotClient.main(KnotClient.java:23)
+        Caused by: java.lang.IllegalStateException: duplicate ASM classes found on classpath: jar:file:/C:/Users/x/AppData/Local/Asobu/data/cache/libraries/org/ow2/asm/asm/9.10.1/asm-9.10.1.jar!/org/objectweb/asm/ClassReader.class, jar:file:/C:/Users/x/AppData/Local/Asobu/data/cache/libraries/org/ow2/asm/asm/9.6/asm-9.6.jar!/org/objectweb/asm/ClassReader.class
+            at net.fabricmc.loader.impl.util.LoaderUtil.verifyClasspath(LoaderUtil.java:83)
+        """;
+
+    [Fact]
+    public void Crash_NamesADuplicateLibraryRatherThanBlamingAMod()
+    {
+        var analysis = CrashAnalyzer.Analyze(DuplicateAsm, []);
+
+        Assert.Equal(CrashCause.DuplicateLibrary, analysis.Cause);
+        Assert.Contains("ASM", analysis.Headline);
+
+        // The stack trace is Fabric's, so the mod heuristics would happily have found somebody
+        // to accuse. Nobody's mods did this.
+        Assert.Empty(analysis.Suspects);
+    }
+
+    [Fact]
+    public void Crash_SaysWhoseFaultTheDuplicateWas()
+    {
+        var analysis = CrashAnalyzer.Analyze(DuplicateAsm, []);
+
+        // Sending somebody off to uninstall mods over a launcher bug is the failure worth
+        // avoiding here, so the advice has to say plainly that it is not their mods.
+        Assert.Contains("None of your mods", analysis.Advice);
     }
 
     [Theory]

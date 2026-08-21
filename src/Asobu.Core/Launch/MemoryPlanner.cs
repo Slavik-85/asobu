@@ -32,6 +32,29 @@ public static class MemoryPlanner
     public static int MinMemoryMbFor(int maxMemoryMb) =>
         Round(Math.Clamp(maxMemoryMb / 4, 512, 1024));
 
+    /// <summary>How much a single "give it more" is worth. Two gigabytes is a step somebody notices.</summary>
+    private const int RaiseMb = 2048;
+
+    /// <summary>
+    /// What this instance's ceiling should become after it ran out of memory, or null when there
+    /// is no room left to give.
+    ///
+    /// Null rather than the number it is already on, so a crash the launcher cannot do anything
+    /// about does not get offered a button that would change nothing. Out of memory at the
+    /// machine's own limit is a different problem, and pretending otherwise wastes a click.
+    /// </summary>
+    public static int? RaisedFor(AsobuPaths paths, Instance instance)
+    {
+        var current = instance.MaxMemoryMb ?? MaxMemoryMbFor(paths, instance);
+        var ceiling = Ceiling();
+
+        return current >= ceiling ? null : Math.Min(Round(current + RaiseMb), ceiling);
+    }
+
+    /// <summary>What an instance is set to run on now, whether it says so itself or leaves it to Asobu.</summary>
+    public static int CurrentMaxMemoryMb(AsobuPaths paths, Instance instance) =>
+        instance.MaxMemoryMb ?? MaxMemoryMbFor(paths, instance);
+
     /// <summary>How many enabled jars are in the instance's mods folder.</summary>
     public static int CountMods(AsobuPaths paths, Instance instance)
     {

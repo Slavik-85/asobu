@@ -2599,6 +2599,9 @@ public partial class InstancesViewModel : ViewModelBase
 
         /// <summary>The mod a crash points at. Turn it off.</summary>
         BadMod,
+
+        /// <summary>The game ran out of memory and there is room to give it more.</summary>
+        Memory,
     }
 
     /// <summary>
@@ -2630,6 +2633,16 @@ public partial class InstancesViewModel : ViewModelBase
                 Suspect = suspect,
             };
 
+        public static ProblemRow ForMemory(int fromMb, int toMb) =>
+            new(ProblemKind.Memory, "Minecraft ran out of memory",
+                $"Running on {Gigabytes(fromMb)}. Asobu can give it {Gigabytes(toMb)}.")
+            {
+                RaiseMemoryToMb = toMb,
+            };
+
+        private static string Gigabytes(int megabytes) =>
+            (megabytes / 1024.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB";
+
         public ProblemKind Kind { get; }
         public string Headline { get; }
         public string Detail { get; }
@@ -2637,6 +2650,7 @@ public partial class InstancesViewModel : ViewModelBase
         public ModConflict? Conflict { get; private init; }
         public MissingDependency? Missing { get; private init; }
         public CrashSuspect? Suspect { get; private init; }
+        public int? RaiseMemoryToMb { get; private init; }
 
         /// <summary>
         /// Every name this row's mod goes by, for keeping two findings about one mod off the
@@ -2647,28 +2661,34 @@ public partial class InstancesViewModel : ViewModelBase
         {
             ProblemKind.Conflict => [Conflict!.ModId, Conflict.ModName],
             ProblemKind.Missing => [Missing!.Id, Missing.Name],
-            _ => [Suspect!.Name, Suspect.FileName],
+            ProblemKind.BadMod => [Suspect!.Name, Suspect.FileName],
+
+            // Not about a mod, so there is nothing for another row to collide with.
+            _ => [],
         };
 
         public string ActionLabel => Kind switch
         {
             ProblemKind.Conflict => "Swap",
             ProblemKind.Missing => "Get it",
-            _ => "Turn off",
+            ProblemKind.BadMod => "Turn off",
+            _ => "Give it more",
         };
 
         public string BusyLabel => Kind switch
         {
             ProblemKind.Conflict => "Swapping…",
             ProblemKind.Missing => "Fetching…",
-            _ => "Turning off…",
+            ProblemKind.BadMod => "Turning off…",
+            _ => "Saving…",
         };
 
         public string DoneLabel => Kind switch
         {
             ProblemKind.Conflict => "Swapped",
             ProblemKind.Missing => "Added",
-            _ => "Off",
+            ProblemKind.BadMod => "Off",
+            _ => "Raised",
         };
 
         [ObservableProperty] public partial bool IsFixing { get; set; }
@@ -2695,7 +2715,8 @@ public partial class InstancesViewModel : ViewModelBase
         {
             ProblemKind.Conflict => "One mod wants a different version of another",
             ProblemKind.Missing => "A mod is missing something it needs",
-            _ => "One mod looks like the cause",
+            ProblemKind.BadMod => "One mod looks like the cause",
+            _ => "That session ran out of memory",
         }
         : $"{Problems.Count} things went wrong in that session";
 
@@ -2750,6 +2771,16 @@ public partial class InstancesViewModel : ViewModelBase
                 var named = analysis.Suspects.Where(suspect => suspect.NamedDirectly).ToList();
 
                 rows.AddRange((named.Count > 0 ? named : analysis.Suspects.Take(1)).Select(ProblemRow.For));
+            }
+
+            // Ran out of memory, and there is room to give it more. Offered only when raising it
+            // would actually change something: at the machine's own limit this is a different
+            // problem, and a button that sets the number it is already on wastes the click.
+            if (analysis is { Cause: CrashCause.OutOfMemory }
+                && MemoryPlanner.RaisedFor(_launcher.Paths, instance) is { } raised)
+            {
+                rows.Add(ProblemRow.ForMemory(
+                    MemoryPlanner.CurrentMaxMemoryMb(_launcher.Paths, instance), raised));
             }
 
             return rows;
@@ -2844,6 +2875,18 @@ public partial class InstancesViewModel : ViewModelBase
                       ?? (result.Blocked
                           ? "The author allows downloads from their page only."
                           : $"No build for {instance.LoaderName} {instance.MinecraftVersion}."));
+            }
+
+            case ProblemKind.Memory:
+            {
+                // The floor moves with the ceiling: -Xms well under -Xmx is what lets the JVM
+                // grow into what the pack needs instead of reserving it all up front.
+                instance.MaxMemoryMb = row.RaiseMemoryToMb;
+                instance.MinMemoryMb = MemoryPlanner.MinMemoryMbFor(row.RaiseMemoryToMb!.Value);
+
+                _launcher.Instances.Save(instance);
+
+                return (true, "Saved. It takes effect next time this instance starts.");
             }
 
             default:

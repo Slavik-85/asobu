@@ -12,6 +12,13 @@ public enum CrashCause
 
     /// <summary>Two mods that will not sit together, which the loader refuses to start with.</summary>
     IncompatibleMods,
+
+    /// <summary>
+    /// Two builds of one library on the classpath, which the loader checks for by hand and
+    /// refuses to start with. Asobu's fault rather than anybody's mods: it is the launcher that
+    /// decides what goes on the classpath.
+    /// </summary>
+    DuplicateLibrary,
     OutOfMemory,
     Graphics,
     Java,
@@ -167,6 +174,20 @@ public static partial class CrashAnalyzer
     /// </summary>
     private static CrashAnalysis? Environmental(string report)
     {
+        // Checked before everything else. The stack trace is Fabric's, so a reader — and the mod
+        // heuristics below — would otherwise start looking for a mod to blame for something no
+        // mod did.
+        if (DuplicateLibraryPattern().Match(report) is { Success: true } duplicate)
+        {
+            var library = duplicate.Groups["what"].Value.Trim();
+
+            return new CrashAnalysis(CrashCause.DuplicateLibrary,
+                library.Length > 0 ? $"Two copies of {library} were on the classpath" : "A library was on the classpath twice",
+                "None of your mods did this — the launcher decides what goes on the classpath, and an older Asobu " +
+                "could put two builds of one library there when a loader and the game wanted different ones. " +
+                "Updating Asobu and launching again is the whole fix; nothing in the instance needs changing.", []);
+        }
+
         if (OutOfMemoryPattern().IsMatch(report))
             return new CrashAnalysis(CrashCause.OutOfMemory, "Ran out of memory",
                 "The game asked for more memory than it was allowed. Raise this instance's memory in its settings, " +
@@ -385,6 +406,17 @@ public static partial class CrashAnalyzer
     [GeneratedRegex(@"java\.lang\.OutOfMemoryError|Java heap space|GC overhead limit exceeded|unable to create native thread",
         RegexOptions.IgnoreCase)]
     private static partial Regex OutOfMemoryPattern();
+
+    /// <summary>
+    /// Fabric's own words when it finds one library twice:
+    ///
+    ///     duplicate ASM classes found on classpath: jar:file:/.../asm-9.10.1.jar!/...
+    ///
+    /// The word before "classes" is the library, which Fabric writes for ASM and for the handful
+    /// of others it checks. Optional, because the sentence is worth recognising either way.
+    /// </summary>
+    [GeneratedRegex(@"duplicate (?<what>[\w.-]+ )?classes found on classpath", RegexOptions.IgnoreCase)]
+    private static partial Regex DuplicateLibraryPattern();
 
     [GeneratedRegex(@"Pixel format not accelerated|Couldn't set pixel format|Failed to create window|GLFW error|" +
         @"EXCEPTION_ACCESS_VIOLATION[\s\S]{0,400}?(nvoglv|atio6axx|amdvlk|ig\d*icd|opengl32|vulkan)|" +

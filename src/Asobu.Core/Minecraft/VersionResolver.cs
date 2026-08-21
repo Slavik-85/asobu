@@ -53,12 +53,65 @@ public static class VersionResolver
         MinimumLauncherVersion = child.MinimumLauncherVersion ?? parent.MinimumLauncherVersion,
 
         // Loader libraries must precede vanilla ones on the classpath, or the loader's patched
-        // classes lose to the originals.
-        Libraries = [.. child.Libraries, .. parent.Libraries],
+        // classes lose to the originals. One entry per artifact, because two builds of one
+        // library is not a preference — it is a crash.
+        Libraries = Deduplicate([.. child.Libraries, .. parent.Libraries]),
 
         MinecraftArguments = child.MinecraftArguments ?? parent.MinecraftArguments,
         Arguments = MergeArguments(parent.Arguments, child.Arguments),
     };
+
+    /// <summary>
+    /// One entry per artifact, keeping the newest version of each where the chain disagrees.
+    ///
+    /// A loader and the vanilla version it inherits from routinely want different builds of the
+    /// same library. Concatenating the two lists put both on the classpath, and Fabric refuses to
+    /// start at all when it finds them:
+    ///
+    ///     duplicate ASM classes found on classpath: .../asm-9.10.1.jar, .../asm-9.6.jar
+    ///
+    /// Newest wins rather than the loader's choice winning outright, because the disagreement
+    /// runs both ways — a loader can be older than the game it is being run against, and picking
+    /// its build then would hand vanilla code a library from before the version it was compiled
+    /// for. These libraries are compatible upwards; that is why both sides felt free to ask for
+    /// different ones.
+    ///
+    /// Position follows the first mention, so a loader library that has to precede vanilla on the
+    /// classpath still does even when the version taken is vanilla's.
+    /// </summary>
+    private static List<Library> Deduplicate(List<Library> libraries)
+    {
+        var best = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var kept = new List<Library>();
+
+        foreach (var library in libraries)
+        {
+            var key = Maven.ArtifactKey(library.Name);
+
+            if (!best.TryGetValue(key, out var at))
+            {
+                best[key] = kept.Count;
+                kept.Add(library);
+                continue;
+            }
+
+            if (IsNewer(library.Name, kept[at].Name)) kept[at] = library;
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// Whether one coordinate names a later build than another. Unreadable versions never win, so
+    /// a coordinate this cannot parse leaves whatever was already chosen in place.
+    /// </summary>
+    private static bool IsNewer(string candidate, string incumbent)
+    {
+        if (Maven.VersionOf(candidate) is not { } mine) return false;
+        if (Maven.VersionOf(incumbent) is not { } theirs) return true;
+
+        return Diagnostics.VersionBound.Compare(mine, theirs) > 0;
+    }
 
     private static Arguments? MergeArguments(Arguments? parent, Arguments? child)
     {

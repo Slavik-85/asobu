@@ -26,4 +26,33 @@ public static class Maven
             version,
             $"{artifact}-{version}{classifier}.{extension}");
     }
+
+    /// <summary>
+    /// What identifies a library across versions: everything about the coordinate except the
+    /// version itself. "org.ow2.asm:asm:9.6" and "org.ow2.asm:asm:9.10.1" share one.
+    ///
+    /// The classifier stays in, because a natives payload is a different file rather than a
+    /// different build of the same one — dropping it would have a windows natives jar and a
+    /// linux one look like two versions of one library.
+    /// </summary>
+    public static string ArtifactKey(string coordinates)
+    {
+        var body = coordinates.Split('@')[0];
+        var parts = body.Split(':');
+
+        if (parts.Length < 2) return coordinates;
+
+        // group:artifact, then any classifier that followed the version.
+        var classifier = parts.Length > 3 ? ":" + string.Join(':', parts[3..]) : "";
+
+        return $"{parts[0]}:{parts[1]}{classifier}";
+    }
+
+    /// <summary>The version out of a coordinate, or null when there is not one to read.</summary>
+    public static string? VersionOf(string coordinates)
+    {
+        var parts = coordinates.Split('@')[0].Split(':');
+
+        return parts.Length >= 3 && parts[2].Length > 0 ? parts[2] : null;
+    }
 }
