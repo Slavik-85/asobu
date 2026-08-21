@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -378,6 +378,10 @@ public partial class MainViewModel : ViewModelBase
         await Task.Delay(240);
         IsFriendsClosing = false;
         IsFriendsOpen = false;
+
+        // Told rather than inferred: the conversation stays selected so reopening lands back in
+        // it, which means the friends page cannot work out on its own that nobody can see it.
+        FriendsPage.Closed();
     }
 
     [RelayCommand]

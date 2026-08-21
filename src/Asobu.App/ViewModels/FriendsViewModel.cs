@@ -210,12 +210,33 @@ public partial class FriendsViewModel : ViewModelBase
         _watching = null;
     }
 
+    /// <summary>
+    /// Whether the drawer is actually up.
+    ///
+    /// Kept because a conversation can be left open behind a closed drawer, and "the message is
+    /// already on screen" has to mean on screen rather than merely selected.
+    /// </summary>
+    private bool IsOnScreen { get; set; }
+
     /// <summary>Every visit to the page lands here: connect if needed, then bring the list up to date.</summary>
     public void Opened()
     {
         Notice = null;
+        IsOnScreen = true;
+
+        // Whatever arrived for the conversation still open behind the drawer is now being looked
+        // at, so it stops counting.
+        if (ChatWith is { } open)
+        {
+            open.Unread = 0;
+            RaiseUnread();
+        }
+
         _ = EnsureConnectedAsync(thenRefresh: true);
     }
+
+    /// <summary>The drawer has gone. The watch keeps running; nothing here is on screen any more.</summary>
+    public void Closed() => IsOnScreen = false;
 
     /// <summary>
     /// Called at startup with only the stored session — one request when it exists, nothing at
@@ -486,7 +507,11 @@ public partial class FriendsViewModel : ViewModelBase
             // wondering why the other never replied.
             ConversationFor(message.From).Add(Unseal(message));
 
-            if (string.Equals(ChatWith?.Uuid, message.From, StringComparison.OrdinalIgnoreCase))
+            // Being looked at means the drawer is open *and* this is the conversation in it.
+            // Without the first half, closing the drawer mid-conversation left ChatWith pointing
+            // at somebody — so everything they said afterwards counted as already read, and the
+            // badge that exists to announce it never appeared.
+            if (IsOnScreen && string.Equals(ChatWith?.Uuid, message.From, StringComparison.OrdinalIgnoreCase))
             {
                 OnPropertyChanged(nameof(ConversationIsEmpty));
                 continue;
