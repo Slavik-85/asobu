@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Asobu.Core;
 using Asobu.Core.Mods;
 
@@ -124,6 +124,77 @@ public class ReplaceOnInstallTests : IDisposable
         Run(new ModEntry(off, "sodium-0.9.1.jar", "Sodium", "", "sodium", 3, false, null), landed, ModKind.Mod);
 
         Assert.False(File.Exists(off));
+
+        // The replacement is there under the switched-off name. This used to expect it at the
+        // plain one, which was the bug rather than the intent: taking out the old copy is this
+        // test's point, and updating a mod was never meant to also turn it on.
+        Assert.True(File.Exists(landed + ".disabled"));
+    }
+
+    // ---- a mod that was switched off stays switched off ----
+
+    private static ModEntry Switched(string path, bool on) =>
+        new(path, Path.GetFileName(path), "Sodium", "", "sodium", 3, on, null);
+
+    /// <summary>
+    /// Updating is a newer copy of a mod, not a decision to start running it. Somebody who turned
+    /// a mod off to stop it crashing their game, and then updated everything, was having it
+    /// quietly turned back on — and finding out by crashing again.
+    /// </summary>
+    [Fact]
+    public void An_update_leaves_a_disabled_mod_disabled()
+    {
+        var old = File_("sodium-1.0.jar.disabled");
+        var landed = File_("sodium-2.0.jar");
+
+        Run(Switched(old, on: false), landed, ModKind.Mod);
+
+        Assert.False(File.Exists(old), "the build being replaced is still there");
+        Assert.False(File.Exists(landed), "the new build was left switched on");
+        Assert.True(File.Exists(landed + ".disabled"), "the new build is not switched off");
+    }
+
+    [Fact]
+    public void An_update_leaves_an_enabled_mod_enabled()
+    {
+        var old = File_("sodium-1.0.jar");
+        var landed = File_("sodium-2.0.jar");
+
+        Run(Switched(old, on: true), landed, ModKind.Mod);
+
+        Assert.False(File.Exists(old));
+        Assert.True(File.Exists(landed), "an enabled mod came back switched off");
+        Assert.False(File.Exists(landed + ".disabled"));
+    }
+
+    /// <summary>
+    /// A leftover of the same name from an earlier build would make the rename fail, and failing
+    /// it silently would leave the mod running when it was meant to be off.
+    /// </summary>
+    [Fact]
+    public void Switching_off_survives_a_leftover_of_the_same_name()
+    {
+        var old = File_("sodium-1.0.jar.disabled");
+        var stale = File_("sodium-2.0.jar.disabled", "an older attempt");
+        var landed = File_("sodium-2.0.jar", "the new one");
+
+        Run(Switched(old, on: false), landed, ModKind.Mod);
+
+        Assert.True(File.Exists(stale));
+        Assert.Equal("the new one", File.ReadAllText(stale));
+    }
+
+    /// <summary>A world is somebody's building. Nothing here renames or deletes one.</summary>
+    [Fact]
+    public void A_disabled_world_is_left_completely_alone()
+    {
+        var old = File_("myworld.disabled");
+        var landed = File_("myworld-2.zip");
+
+        Run(Switched(old, on: false), landed, ModKind.World);
+
+        Assert.True(File.Exists(old));
         Assert.True(File.Exists(landed));
+        Assert.False(File.Exists(landed + ".disabled"));
     }
 }

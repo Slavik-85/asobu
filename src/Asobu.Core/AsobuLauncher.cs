@@ -463,6 +463,36 @@ public sealed class AsobuLauncher
             // Held open or read-only. Two builds is a mess the loader will complain about, but
             // the one that was asked for is in — which beats failing the install over tidying.
         }
+
+        // Switched off before, switched off after. An update is a newer copy of a mod, not a
+        // decision to start running it: somebody who turned a mod off to stop it crashing their
+        // game, and then updated everything, was having it quietly turned back on for them.
+        if (!previous.Enabled) SwitchOff(landed);
+    }
+
+    /// <summary>
+    /// Renames a freshly downloaded file so the game ignores it, the way the copy it replaced was
+    /// being ignored.
+    ///
+    /// Failing here leaves the mod on rather than failing the update, which is the same trade the
+    /// deletion above makes: the build somebody asked for is installed either way, and a mod that
+    /// came back on is a switch to flick rather than a download to do again.
+    /// </summary>
+    private static void SwitchOff(string landed)
+    {
+        var off = landed + ModScanner.DisabledSuffix;
+
+        try
+        {
+            // A leftover from an earlier build of the same name, which would otherwise make this
+            // rename fail and leave the mod switched on.
+            if (File.Exists(off)) File.Delete(off);
+
+            File.Move(landed, off);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>
@@ -1320,7 +1350,9 @@ public sealed class AsobuLauncher
 
         // A mod that was switched off stays switched off. Moving loaders is not the moment to
         // quietly turn something back on.
-        var fileName = move.Installed.Enabled ? target.FileName : target.FileName + ".disabled";
+        var fileName = move.Installed.Enabled
+            ? target.FileName
+            : target.FileName + ModScanner.DisabledSuffix;
         var destination = Path.Combine(directory, fileName);
 
         // Prefetched while the settings sheet was open, in the usual case.

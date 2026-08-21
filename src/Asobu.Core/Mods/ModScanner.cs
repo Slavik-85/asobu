@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Text.Json;
 
 namespace Asobu.Core.Mods;
@@ -28,7 +28,12 @@ public sealed record ModEntry(
 /// </summary>
 public static class ModScanner
 {
-    private const string DisabledSuffix = ".disabled";
+    /// <summary>
+    /// What every launcher marks a switched-off file with. Public because turning something
+    /// off is not the only place it is needed: replacing a file has to put the replacement
+    /// back into the state its predecessor was in, and one spelling of this is enough.
+    /// </summary>
+    public const string DisabledSuffix = ".disabled";
 
     /// <summary>
     /// What was inside each jar last time. Set once at startup; without it every scan opens
