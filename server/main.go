@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -77,6 +78,22 @@ type pendingAuth struct {
 const onlineWindow = 150 * time.Second
 
 const tokenLife = 90 * 24 * time.Hour
+
+// Ceilings on the things a caller can cause to accumulate. Each is far above what using Asobu
+// normally looks like and far below what a script could manage in an afternoon.
+const (
+	// Handshakes waiting to be completed. They expire after a minute anyway; this is the guard
+	// for the minute in between.
+	maxPendingAuth = 5000
+
+	// Sessions one account may hold. Signing in again is ordinary — on another machine, after
+	// a reinstall — but a loop doing it should not grow the file forever.
+	maxSessionsPerUser = 20
+
+	// Friend requests one account may have outstanding at once. Accepting or being turned down
+	// frees the slot; this only stops someone asking everybody.
+	maxOutgoingRequests = 200
+)
 
 // ---------------------------------------------------------------------------- persistence
 
@@ -138,6 +155,10 @@ func (s *Server) flushLoop() {
 				delete(s.pending, k)
 			}
 		}
+
+		// And the rate-limit table, which otherwise keeps a row for every caller ever seen.
+		s.limiter.forget(5 * time.Minute)
+
 		s.mu.Unlock()
 	}
 }
@@ -148,6 +169,32 @@ func (s *Server) flushLoop() {
 // through us, not to be fair queueing.
 type limiter struct {
 	hits map[string][]time.Time
+}
+
+// The most callers to track at once. Past this the oldest are forgotten, which at worst gives
+// a few strangers a fresh allowance — where growing without limit hands anyone who can vary
+// their address a way to spend the server's memory instead.
+const limiterKeyCap = 20000
+
+// forget drops keys whose window has passed. Without it every address ever seen keeps an entry
+// for the life of the process.
+func (l *limiter) forget(window time.Duration) {
+	now := time.Now()
+	for key, times := range l.hits {
+		if len(times) == 0 || now.Sub(times[len(times)-1]) >= window {
+			delete(l.hits, key)
+		}
+	}
+
+	// A sweep is not enough on its own: entries can be added faster than a window expires.
+	if len(l.hits) > limiterKeyCap {
+		for key := range l.hits {
+			delete(l.hits, key)
+			if len(l.hits) <= limiterKeyCap {
+				break
+			}
+		}
+	}
 }
 
 func (l *limiter) allow(key string, max int, window time.Duration) bool {
@@ -169,12 +216,28 @@ func (l *limiter) allow(key string, max int, window time.Duration) bool {
 	return true
 }
 
+// clientIP returns the address the request really came from.
+//
+// The LAST entry of X-Forwarded-For, not the first. Caddy appends the peer it is talking to
+// onto whatever header arrived, so a caller who sends "X-Forwarded-For: 1.2.3.4" produces
+// "1.2.3.4, <their real address>" — and reading the first entry would take a value they chose.
+// Every rate limit here is keyed on this, so trusting the front of that list would let anyone
+// bypass all of them by inventing a new address per request.
+//
+// Only safe because exactly one proxy sits in front of us and we listen on loopback, so the
+// last hop is always Caddy's view of the real peer.
 func clientIP(r *http.Request) string {
-	// Caddy is the only thing that can reach us, and it sets X-Forwarded-For.
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
+		parts := strings.Split(xff, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
+			return last
+		}
 	}
-	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
 	return host
 }
 
@@ -200,10 +263,14 @@ func readBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// randomHex returns cryptographically random hex, or "" if the OS refuses to provide any.
+// Callers must treat "" as a failure: a predictable serverId or session token is worse than
+// no sign-in at all.
 func randomHex(bytes int) string {
 	b := make([]byte, bytes)
 	if _, err := rand.Read(b); err != nil {
-		panic(err) // the OS entropy source failing is not a request-sized problem
+		log.Printf("no randomness available: %v", err)
+		return ""
 	}
 	return hex.EncodeToString(b)
 }
@@ -232,11 +299,42 @@ func (s *Server) authed(w http.ResponseWriter, r *http.Request) *User {
 		return nil
 	}
 
+	// Nothing authenticated is free. Generous enough that the launcher's once-a-minute
+	// heartbeat and ordinary use never notice, tight enough that a loop does.
+	if !s.limiter.allow("use:"+session.UUID, 240, 5*time.Minute) {
+		fail(w, http.StatusTooManyRequests, "slow down")
+		return nil
+	}
+
 	// Presence rides on every authenticated call; the session slides with use.
 	user.LastSeen = time.Now()
 	session.Expires = time.Now().Add(tokenLife)
 	s.dirty = true
 	return user
+}
+
+// trimSessions keeps only the newest sessions for one account, dropping the rest. Signing in
+// on a new machine should not cost the old one its session, but nothing needs twenty.
+func (s *Server) trimSessions(uuid string) {
+	var mine []string
+	for hash, session := range s.state.Tokens {
+		if session.UUID == uuid {
+			mine = append(mine, hash)
+		}
+	}
+
+	if len(mine) <= maxSessionsPerUser {
+		return
+	}
+
+	// Expiry slides with use, so the ones expiring soonest are the ones least recently used.
+	sort.Slice(mine, func(a, b int) bool {
+		return s.state.Tokens[mine[a]].Expires.Before(s.state.Tokens[mine[b]].Expires)
+	})
+
+	for _, hash := range mine[:len(mine)-maxSessionsPerUser] {
+		delete(s.state.Tokens, hash)
+	}
 }
 
 // between finds the friendship row linking two players, whoever asked first.
@@ -267,7 +365,18 @@ func (s *Server) handleAuthBegin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serverId := "asobu" + randomHex(16)
+	if len(s.pending) >= maxPendingAuth {
+		fail(w, http.StatusServiceUnavailable, "too many sign-ins at once, try again in a moment")
+		return
+	}
+
+	random := randomHex(16)
+	if random == "" {
+		fail(w, http.StatusInternalServerError, "could not start a sign-in, try again")
+		return
+	}
+
+	serverId := "asobu" + random
 	s.pending[serverId] = pendingAuth{name: body.Name, expires: time.Now().Add(time.Minute)}
 	writeJSON(w, http.StatusOK, map[string]string{"serverId": serverId})
 }
@@ -312,7 +421,13 @@ func (s *Server) handleAuthComplete(w http.ResponseWriter, r *http.Request) {
 	user.LastSeen = time.Now()
 
 	token := randomHex(32)
+	if token == "" {
+		fail(w, http.StatusInternalServerError, "could not finish the sign-in, try again")
+		return
+	}
+
 	s.state.Tokens[hashToken(token)] = &Session{UUID: uuid, Expires: time.Now().Add(tokenLife)}
+	s.trimSessions(uuid)
 	s.saveNow()
 
 	writeJSON(w, http.StatusOK, map[string]string{"token": token, "uuid": uuid, "name": profile.Name})
@@ -423,6 +538,17 @@ func (s *Server) handleFriendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	outstanding := 0
+	for _, f := range s.state.Friends {
+		if !f.Accepted && f.From == me.UUID {
+			outstanding++
+		}
+	}
+	if outstanding >= maxOutgoingRequests {
+		fail(w, http.StatusTooManyRequests, "too many requests waiting on a reply")
+		return
+	}
+
 	s.state.Friends = append(s.state.Friends, &Friendship{From: me.UUID, To: target.UUID, Since: time.Now()})
 	s.saveNow()
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -510,6 +636,18 @@ func main() {
 		os.Exit(0)
 	}()
 
+	// Without these a caller can open connections and send a byte at a time, holding one
+	// goroutine each for as long as it likes and costing nothing to do it.
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       20 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
+
 	log.Printf("asobu api on %s, state in %s", addr, statePath)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	log.Fatal(server.ListenAndServe())
 }

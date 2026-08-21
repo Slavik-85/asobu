@@ -42,6 +42,27 @@ State is saved on SIGTERM, so a restart never loses the last half minute.
 curl https://api.asobu.cc/v1/health
 ```
 
+## Abuse resistance
+
+- Every rate limit is keyed on the **last** entry of `X-Forwarded-For`, not the first. Caddy
+  appends the real peer to whatever header arrived, so reading the front of that list would take
+  a value the caller chose — and let anyone bypass every limit by inventing an address per
+  request. Verified: 40 sign-in attempts with 40 different forged addresses now yield 30 allowed
+  and 10 refused, against 40 allowed before.
+- Limits: sign-in 30 per 5 min per address, friend requests 60 per 5 min per account, and any
+  authenticated call 240 per 5 min per account — far above the launcher's once-a-minute
+  heartbeat, far below a loop.
+- The rate-limit table forgets expired keys and is capped, so it cannot be grown into a memory
+  cost by varying the key.
+- Caps on everything a caller can accumulate: handshakes in flight, sessions per account,
+  outstanding friend requests.
+- Request bodies are cut off at 4 KB; the connection is dropped rather than read.
+- Server timeouts on the Go side. **Caddy needs its own** — it is what the internet connects
+  to, and it holds a slow request until it is complete. See `Caddyfile.proposed` on the host.
+
+Known and accepted: asking to add a friend reveals whether that name is on Asobu. That is what
+the feature is for, and it is rate limited.
+
 ## Endpoints
 
 ```
