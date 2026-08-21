@@ -382,6 +382,25 @@ public partial class FriendsViewModel : ViewModelBase
     [RelayCommand]
     private void ToggleFingerprint() => ShowFingerprint = !ShowFingerprint;
 
+    /// <summary>
+    /// Everything unread, across every conversation, for the badge on the friends button.
+    ///
+    /// The drawer is shut most of the time, so without this a message arriving is a thing that
+    /// happened silently behind a button with nothing on it.
+    /// </summary>
+    public int TotalUnread => Friends.Sum(f => f.Unread);
+
+    public bool HasAnyUnread => TotalUnread > 0;
+    public string TotalUnreadLabel => TotalUnread > 9 ? "9+" : TotalUnread.ToString();
+
+    /// <summary>Called wherever a count moves, since the total is derived from all of them.</summary>
+    private void RaiseUnread()
+    {
+        OnPropertyChanged(nameof(TotalUnread));
+        OnPropertyChanged(nameof(HasAnyUnread));
+        OnPropertyChanged(nameof(TotalUnreadLabel));
+    }
+
     private ObservableCollection<ChatLine> ConversationFor(string uuid) =>
         _conversations.TryGetValue(uuid, out var existing)
             ? existing
@@ -399,6 +418,7 @@ public partial class FriendsViewModel : ViewModelBase
 
         // Reading them is what marks them read.
         row.Unread = 0;
+        RaiseUnread();
 
         OnPropertyChanged(nameof(ConversationIsEmpty));
     }
@@ -440,6 +460,8 @@ public partial class FriendsViewModel : ViewModelBase
                     string.Equals(f.Uuid, message.From, StringComparison.OrdinalIgnoreCase)) is { } row)
                 row.Unread++;
         }
+
+        RaiseUnread();
     }
 
     [RelayCommand]
@@ -610,6 +632,8 @@ public partial class FriendsViewModel : ViewModelBase
             rows.Add(row);
             _ = LoadFaceAsync(row);
         }
+
+        RaiseUnread();
     }
 
     private async Task LoadFaceAsync(FriendRow row)

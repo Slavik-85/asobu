@@ -1,4 +1,4 @@
-<Styles xmlns="https://github.com/avaloniaui"
+﻿<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctrl="using:Asobu.App.Controls">
 
@@ -2679,6 +2679,36 @@
     <Setter Property="CornerRadius" Value="12"/>
     <Setter Property="Padding" Value="12,9"/>
     <Setter Property="Margin" Value="0,0,0,6"/>
+  </Style>
+
+  <!-- One box for every icon in a button, and one coordinate space inside it.
+
+       Stretch="Uniform" on a Path scales its *ink*, not the 24-unit square it was drawn in — so
+       an X whose ink is 12x12 and a speech bubble whose ink is 16x15 came out different sizes and
+       sat at different heights however carefully the boxes around them were aligned. A Viewbox
+       scaling a full 24x24 canvas fixes that for good: every icon is drawn in the same square,
+       centred on the same point, and scaled by the same rule. -->
+  <Style Selector="Viewbox.icon">
+    <Setter Property="Width" Value="15"/>
+    <Setter Property="Height" Value="15"/>
+    <Setter Property="Stretch" Value="Uniform"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- The count riding the friends button. Bordered in the page background so it reads as a
+       badge sitting on the button rather than as part of it. -->
+  <Style Selector="Border.fabBadge">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Bg}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+    <Setter Property="CornerRadius" Value="11"/>
+    <Setter Property="MinWidth" Value="22"/>
+    <Setter Property="Height" Value="22"/>
+    <Setter Property="Padding" Value="5,0"/>
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="VerticalAlignment" Value="Top"/>
+    <Setter Property="Margin" Value="0,-4,-4,0"/>
   </Style>
 
   <!-- ===== Chat ===== -->

@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Asobu.App.ViewModels"
         xmlns:views="using:Asobu.App.Views"
@@ -117,14 +117,17 @@
   <!-- A floating button rather than a sidebar page: friends are a glance away from anywhere,
        and the drawer leaves the page you were on untouched underneath. Hidden while the drawer
        is out, since that corner is where the drawer lives. -->
-  <Button x:Name="FriendsButton" Classes="fab" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-          Margin="0,0,22,22" Command="{Binding OpenFriendsCommand}" ToolTip.Tip="Friends">
-    <Button.IsVisible>
+  <Panel x:Name="FriendsCorner" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+         Margin="0,0,22,22">
+    <Panel.IsVisible>
       <MultiBinding Converter="{x:Static BoolConverters.And}">
         <Binding Path="!IsFriendsOpen"/>
         <Binding Path="IsChromeVisible"/>
       </MultiBinding>
-    </Button.IsVisible>
+    </Panel.IsVisible>
+
+  <Button x:Name="FriendsButton" Classes="fab"
+          Command="{Binding OpenFriendsCommand}" ToolTip.Tip="Friends">
     <!-- Material's "people": two heads, two shoulders. The drawing occupies x 1-23 and y 5-19,
          so its box is 22x14 rather than square — sized to that ratio on purpose. A square box
          would scale to the width and leave all the slack below the glyph, hanging it above
@@ -132,6 +135,18 @@
     <Path Data="M16,11 C17.66,11 18.99,9.66 18.99,8 C18.99,6.34 17.66,5 16,5 C14.34,5 13,6.34 13,8 C13,9.66 14.34,11 16,11 Z M8,11 C9.66,11 10.99,9.66 10.99,8 C10.99,6.34 9.66,5 8,5 C6.34,5 5,6.34 5,8 C5,9.66 6.34,11 8,11 Z M8,13 C5.67,13 1,14.17 1,16.5 V19 H15 V16.5 C15,14.17 10.33,13 8,13 Z M16,13 C15.71,13 15.38,13.02 15.03,13.05 C16.19,13.89 17,15.02 17,16.5 V19 H23 V16.5 C23,14.17 18.33,13 16,13 Z"
           Fill="{DynamicResource OnAccent}" Width="22" Height="14" Stretch="Uniform"/>
   </Button>
+
+    <!-- Rides the button's top-right corner. The drawer is shut most of the time, so without
+         this a message arriving is something that happened silently behind a blank button.
+         IsHitTestVisible off: it sits over the button, and a badge that swallowed the click
+         would make the very thing it is announcing harder to open. -->
+    <Border Classes="fabBadge" IsVisible="{Binding FriendsPage.HasAnyUnread}"
+            IsHitTestVisible="False">
+      <TextBlock Text="{Binding FriendsPage.TotalUnreadLabel}" FontSize="11" FontWeight="SemiBold"
+                 Foreground="{DynamicResource OnAccent}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+  </Panel>
 
   <!-- The scrim greys out the whole window, sidebar included, and clicking it closes the
        drawer — same manners as every other sheet in the launcher. -->
