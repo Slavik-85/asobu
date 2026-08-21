@@ -160,6 +160,26 @@ public sealed class AsobuLauncher
     }
 
     /// <summary>
+    /// A project's picture, for the mods whose jars carry none of their own.
+    ///
+    /// Through the same cache every screen uses, so a mod already seen while browsing costs
+    /// nothing to keep. Failure is silence: an install must not turn on whether a logo arrived.
+    /// </summary>
+    private async Task<byte[]?> ArtworkAsync(string? url, CancellationToken cancellationToken)
+    {
+        if (url is not { Length: > 0 }) return null;
+
+        try
+        {
+            return await Web.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Fetches OptiFine, which takes two requests and has no checksum to check against.
     ///
     /// No hash and no size, because the site publishes neither — so unlike every other download
@@ -432,7 +452,8 @@ public sealed class AsobuLauncher
             // own — Essential's Forge build has no manifest at all — and this is the only moment
             // the launcher will ever know what the project is actually called.
             ModCredits.Record(Paths, instance, download.FileName,
-                new ModCredit(listing.Title, listing.Author, listing.ProviderName));
+                new ModCredit(listing.Title, listing.Author, listing.ProviderName),
+                await ArtworkAsync(listing.IconUrl, cancellationToken).ConfigureAwait(false));
 
             // Dependencies go to mods/ whatever needed them: what a shader pack or a resource
             // pack cannot run without is a loader mod — Iris, or the mod whose blocks it retextures.
@@ -485,7 +506,9 @@ public sealed class AsobuLauncher
 
         if (project is { } listed)
             ModCredits.Record(Paths, instance, version.FileName,
-                new ModCredit(listed.Title, listed.Author, version.Provider.ToString()));
+                new ModCredit(listed.Title, listed.Author, version.Provider.ToString()),
+                await ArtworkAsync((listed.Modrinth ?? listed.CurseForge)?.IconUrl, cancellationToken)
+                    .ConfigureAwait(false));
 
         var source = ModSources.FirstOrDefault(s => s.Provider == version.Provider);
 

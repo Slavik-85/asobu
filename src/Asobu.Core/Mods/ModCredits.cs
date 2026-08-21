@@ -43,6 +43,21 @@ public sealed class ModCredits
     private static string FileFor(AsobuPaths paths, Instance instance) =>
         Path.Combine(paths.InstanceDir(instance.Folder), "asobu-mods.json");
 
+    /// <summary>
+    /// Where a kept icon lives. Beside the names file and outside the game folder, and named after
+    /// the jar so it goes stale the moment that jar does rather than lingering under a project id
+    /// nothing points at any more.
+    /// </summary>
+    private static string IconFor(AsobuPaths paths, Instance instance, string fileName) =>
+        Path.Combine(paths.InstanceDir(instance.Folder), "asobu-mod-icons", Safe(fileName) + ".png");
+
+    /// <summary>A file name is not to be trusted as a path, whatever it looks like.</summary>
+    private static string Safe(string fileName)
+    {
+        var kept = new string([.. fileName.Where(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.')]);
+        return kept.Length > 0 ? kept[..Math.Min(kept.Length, 96)] : "unknown";
+    }
+
     public static ModCredits For(AsobuPaths paths, Instance instance)
     {
         try
@@ -53,9 +68,23 @@ public sealed class ModCredits
             var stored = JsonSerializer.Deserialize<Dictionary<string, ModCredit>>(
                 File.ReadAllText(file), Options);
 
-            return stored is null
-                ? Empty
-                : new ModCredits(new Dictionary<string, ModCredit>(stored, StringComparer.OrdinalIgnoreCase));
+            if (stored is null) return Empty;
+
+            return new ModCredits(new Dictionary<string, ModCredit>(stored, StringComparer.OrdinalIgnoreCase))
+            {
+                _icons = name =>
+                {
+                    try
+                    {
+                        var icon = IconFor(paths, instance, name);
+                        return File.Exists(icon) ? File.ReadAllBytes(icon) : null;
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        return null;
+                    }
+                },
+            };
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
         {
@@ -81,13 +110,39 @@ public sealed class ModCredits
         {
             Name = entry.Declared ? entry.Name : credit.Name,
             Author = entry.Author is "Unknown" or "" ? credit.Author : entry.Author,
+
+            // Only where the jar carried none. A mod that ships its own artwork is showing what
+            // its author drew for it, which is the picture people recognise it by.
+            IconPng = entry.IconPng ?? _icons?.Invoke(entry.FileName),
         };
     }
 
-    /// <summary>Writes down what a shop called a file it just handed over.</summary>
+    /// <summary>
+    /// Reads a kept icon off the disk. Held as a function so an instance of this can be made
+    /// without one — the empty case has no folder to read from.
+    /// </summary>
+    private Func<string, byte[]?>? _icons;
+
+    /// <summary>
+    /// Writes down what a shop called a file it just handed over, and its picture if one came too.
+    /// </summary>
     public static void Record(
-        AsobuPaths paths, Instance instance, string fileName, ModCredit credit)
+        AsobuPaths paths, Instance instance, string fileName, ModCredit credit, byte[]? icon = null)
     {
+        if (icon is { Length: > 0 })
+        {
+            try
+            {
+                var path = IconFor(paths, instance, fileName);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllBytes(path, icon);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // A picture is the least of what this keeps. The name still goes in below.
+            }
+        }
+
         try
         {
             var file = FileFor(paths, instance);

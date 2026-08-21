@@ -1,4 +1,4 @@
-using Asobu.Core;
+﻿using Asobu.Core;
 using Asobu.Core.Instances;
 using Asobu.Core.Mods;
 
@@ -139,5 +139,75 @@ public class ModCreditsTests : IDisposable
             Assert.Empty(Directory.GetFiles(game, "asobu-mods.json", SearchOption.AllDirectories));
 
         Assert.True(File.Exists(Path.Combine(Paths.InstanceDir("one"), "asobu-mods.json")));
+    }
+
+    // ---- the picture, for jars that carry none ----
+
+    [Fact]
+    public void Keeps_a_picture_for_a_jar_that_has_none()
+    {
+        var instance = MakeInstance();
+        ModCredits.Record(Paths, instance, "essential.jar",
+            new ModCredit("Essential", "Essential Mod", "Modrinth"), icon: [1, 2, 3, 4]);
+
+        var dressed = ModCredits.For(Paths, instance)
+            .Dress(Scanned("essential.jar", "essential", "Unknown", declared: false));
+
+        Assert.Equal(4, dressed.IconPng?.Length);
+    }
+
+    /// <summary>
+    /// A mod that ships its own artwork keeps it. That picture is what its author drew and what
+    /// people recognise it by; a shop's tile is only ever a stand-in for having none.
+    /// </summary>
+    [Fact]
+    public void Leaves_a_jars_own_picture_alone()
+    {
+        var instance = MakeInstance();
+        ModCredits.Record(Paths, instance, "sodium.jar",
+            new ModCredit("Sodium", "shop", "Modrinth"), icon: [9, 9, 9, 9, 9]);
+
+        var own = Scanned("sodium.jar", "Sodium", "JellySquid", declared: true) with { IconPng = [1, 2, 3] };
+
+        Assert.Equal(3, ModCredits.For(Paths, instance).Dress(own).IconPng?.Length);
+    }
+
+    [Fact]
+    public void A_credit_without_a_picture_leaves_the_row_without_one()
+    {
+        var instance = MakeInstance();
+        ModCredits.Record(Paths, instance, "thing.jar", new ModCredit("Thing", "Someone", "Modrinth"));
+
+        var dressed = ModCredits.For(Paths, instance)
+            .Dress(Scanned("thing.jar", "thing", "Unknown", declared: false));
+
+        Assert.Null(dressed.IconPng);
+        Assert.Equal("Thing", dressed.Name);
+    }
+
+    /// <summary>Pictures stay out of the game folder, same as the names file.</summary>
+    [Fact]
+    public void Keeps_pictures_out_of_the_game_folder()
+    {
+        var instance = MakeInstance();
+        ModCredits.Record(Paths, instance, "a.jar", new ModCredit("Ay", "One", "Modrinth"), icon: [1]);
+
+        var game = Paths.InstanceGameDir("one");
+        if (Directory.Exists(game))
+            Assert.Empty(Directory.GetFiles(game, "*.png", SearchOption.AllDirectories));
+    }
+
+    /// <summary>A file name arrives from a shop and is never used as a path unchecked.</summary>
+    [Fact]
+    public void Cannot_be_talked_out_of_its_own_folder()
+    {
+        var instance = MakeInstance();
+        ModCredits.Record(Paths, instance, "../../escaped.jar",
+            new ModCredit("Escaped", "Nobody", "Modrinth"), icon: [1, 2]);
+
+        Assert.False(File.Exists(Path.Combine(_root, "escaped.jar.png")));
+        Assert.All(
+            Directory.EnumerateFiles(_root, "*.png", SearchOption.AllDirectories),
+            path => Assert.StartsWith(Paths.InstanceDir("one"), path, StringComparison.Ordinal));
     }
 }
