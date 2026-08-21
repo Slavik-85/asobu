@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -43,7 +43,7 @@
       </p>
 
       <div class="note">
-        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. The Asobu server is only involved in friends and share codes, and it never sees your worlds, your game files, or your password.</p>
+        <p><strong>Short version:</strong> everything about playing Minecraft happens on your computer. Two things reach the internet on their own: a check for a new version of Asobu, and, if you have used friends, a note that you are online. The Asobu server is only involved in friends, messages and share codes — it passes messages between friends without storing any of them, and it never sees your worlds, your game files, or your password.</p>
       </div>
 
       <h2>What we collect</h2>
@@ -89,7 +89,8 @@
         <li>
           <strong>What it stores:</strong> your Minecraft username and UUID, who your friends are,
           pending friend requests, when you were last seen, and a hashed copy of your session token.
-          Share codes are kept here too, described below.
+          Share codes are kept here too, described below. Messages are not on this list, and that is
+          not an oversight — see below.
         </li>
         <li>
           <strong>Your friends can see when you were last online.</strong> That is what a friends list is
@@ -102,6 +103,37 @@
         <li>
           <strong>There is no way to delete your account yet.</strong> This is a real gap and it is being
           worked on. Until then, opening an issue on GitHub gets your row removed by hand.
+        </li>
+      </ul>
+
+      <h2>Messages</h2>
+      <p>
+        Friends can send each other messages. The server passes them on and keeps none of them.
+      </p>
+      <ul>
+        <li>
+          <strong>Nothing is stored.</strong> A message sits in the server's memory from the moment you
+          send it until your friend's launcher collects it, and then it is gone. It is never written to a
+          disk, never part of a backup, and never in the file the rest of the friends data lives in.
+        </li>
+        <li>
+          <strong>There is no history to ask for.</strong> Your conversation exists only in the two
+          launchers holding it, and only while they are open. Close Asobu and it is over — nobody, us
+          included, can produce what was said.
+        </li>
+        <li>
+          <strong>Uncollected messages expire.</strong> Send something to a friend who never opens Asobu
+          again and it is forgotten after ten minutes rather than waiting forever.
+        </li>
+        <li>
+          <strong>Only friends can message you.</strong> Not people who have asked to be your friend —
+          accepted friends. Removing someone stops them immediately.
+        </li>
+        <li>
+          <strong>It is not encrypted end to end.</strong> The connection is HTTPS, so nobody between you
+          and the server can read it, but the server handles the text in the clear on its way past. It
+          is a relay for "launching in five", not a secure messenger, and it would be wrong to let you
+          think otherwise.
         </li>
       </ul>
 

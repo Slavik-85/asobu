@@ -2681,6 +2681,36 @@
     <Setter Property="Margin" Value="0,0,0,6"/>
   </Style>
 
+  <!-- ===== Chat ===== -->
+
+  <!-- Bubbles are sized to their own text and pushed to one side, which is what makes a column
+       of them read as a conversation rather than as a list. MaxWidth rather than a fraction:
+       the drawer is a fixed width, and a long message that ran its full span would leave nothing
+       to tell the two sides apart. -->
+  <Style Selector="Border.bubble">
+    <Setter Property="CornerRadius" Value="13"/>
+    <Setter Property="Padding" Value="11,8"/>
+    <Setter Property="MaxWidth" Value="250"/>
+  </Style>
+  <Style Selector="Border.bubble.theirs">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+  </Style>
+  <Style Selector="Border.bubble.mine">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+  </Style>
+
+  <!-- Small, accent, and beside the name rather than over the avatar: the avatar already carries
+       the presence dot, and two badges on one picture is a mess. -->
+  <Style Selector="Border.unreadBadge">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Padding" Value="6,2"/>
+    <Setter Property="MinWidth" Value="18"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
   <Style Selector="Border.friendFace">
     <Setter Property="Width" Value="38"/>
     <Setter Property="Height" Value="38"/>

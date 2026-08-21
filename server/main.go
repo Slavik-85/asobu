@@ -68,6 +68,12 @@ type Server struct {
 	// a restart mid-handshake just means signing in again.
 	pending map[string]pendingAuth
 
+	// Messages waiting to be collected, by recipient. Never persisted either, and for a
+	// stronger reason: chat is relayed rather than stored, so nothing here may ever reach
+	// state.json. Keeping it off State is what makes that structural instead of a promise.
+	// See chat.go.
+	inbox map[string][]message
+
 	limiter limiter
 
 	// Bumped whenever anything a friends list shows changes. A watcher tells us the revision
@@ -183,6 +189,9 @@ func (s *Server) flushLoop() {
 
 		// Codes whose week is up, removed rather than archived.
 		s.dropExpiredShares(now)
+
+		// And messages nobody came for.
+		s.dropStaleMessages(now)
 
 		// And the rate-limit table, which otherwise keeps a row for every caller ever seen.
 		s.limiter.forget(5 * time.Minute)
@@ -546,6 +555,10 @@ func (s *Server) writeFriends(w http.ResponseWriter, me *User) {
 		"incoming": incoming,
 		"outgoing": outgoing,
 		"revision": s.revision,
+
+		// Chat rides the poll the launcher already makes rather than needing one of its own,
+		// and is forgotten the moment it is handed over.
+		"messages": s.takeMessages(me.UUID),
 	})
 }
 
@@ -698,7 +711,12 @@ func main() {
 		statePath = "state.json"
 	}
 
-	s := &Server{path: statePath, pending: map[string]pendingAuth{}, changed: make(chan struct{})}
+	s := &Server{
+		path:    statePath,
+		pending: map[string]pendingAuth{},
+		inbox:   map[string][]message{},
+		changed: make(chan struct{}),
+	}
 	s.load()
 	go s.flushLoop()
 
@@ -723,6 +741,7 @@ func main() {
 	mux.HandleFunc("POST /v1/friends/requests", locked(s.handleFriendRequest))
 	mux.HandleFunc("POST /v1/friends/accept", locked(s.handleFriendAccept))
 	mux.HandleFunc("DELETE /v1/friends/{uuid}", locked(s.handleFriendRemove))
+	mux.HandleFunc("POST /v1/chat", locked(s.handleChatSend))
 	mux.HandleFunc("POST /v1/shares", locked(s.handleShareCreate))
 	mux.HandleFunc("GET /v1/shares/{code}", locked(s.handleShareRead))
 	mux.HandleFunc("DELETE /v1/shares/{code}", locked(s.handleShareDelete))

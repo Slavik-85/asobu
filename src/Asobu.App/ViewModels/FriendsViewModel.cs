@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -27,6 +27,18 @@ public partial class FriendRow(Friend friend) : ViewModelBase
     [ObservableProperty] public partial Bitmap? Face { get; set; }
     public bool HasFace => Face is not null;
     partial void OnFaceChanged(Bitmap? value) => OnPropertyChanged(nameof(HasFace));
+
+    /// <summary>Things said while their conversation was not the one on screen.</summary>
+    [ObservableProperty] public partial int Unread { get; set; }
+
+    public bool HasUnread => Unread > 0;
+    public string UnreadLabel => Unread > 9 ? "9+" : Unread.ToString();
+
+    partial void OnUnreadChanged(int value)
+    {
+        OnPropertyChanged(nameof(HasUnread));
+        OnPropertyChanged(nameof(UnreadLabel));
+    }
 
     private static string Ago(DateTimeOffset seen)
     {
@@ -194,6 +206,12 @@ public partial class FriendsViewModel : ViewModelBase
         ConnectionError = null;
         Notice = null;
         _shown = "";
+
+        // Somebody else's conversations are none of the new account's business, and they only
+        // ever existed in memory anyway.
+        _conversations.Clear();
+        CloseChat();
+
         Friends.Clear();
         Incoming.Clear();
         Outgoing.Clear();
@@ -201,6 +219,137 @@ public partial class FriendsViewModel : ViewModelBase
         OnPropertyChanged(nameof(NeedsMicrosoft));
 
         _ = TryResumeAsync();
+    }
+
+    // ---- Chat ----
+
+    /// <summary>One thing said, on one side or the other.</summary>
+    public sealed class ChatLine(string text, bool mine, DateTimeOffset at)
+    {
+        public string Text { get; } = text;
+
+        /// <summary>Ours, so it sits on the right in the accent colour. Theirs sits on the left.</summary>
+        public bool Mine { get; } = mine;
+
+        public bool Theirs => !Mine;
+        public string TimeLabel { get; } = at.ToLocalTime().ToString("HH:mm");
+    }
+
+    /// <summary>
+    /// What has been said, by friend, for as long as the launcher is open.
+    ///
+    /// Only here. The server relays chat and stores none of it, so there is nothing to catch up
+    /// on when Asobu next starts — closing it is the end of the conversation, and this is
+    /// deliberately not written to disk either. Somebody who wants a record of what was said has
+    /// a hundred better apps for it; this is for "launching in five".
+    /// </summary>
+    private readonly Dictionary<string, ObservableCollection<ChatLine>> _conversations = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The friend whose conversation is on screen, or null when the list is.</summary>
+    [ObservableProperty] public partial FriendRow? ChatWith { get; set; }
+
+    [ObservableProperty] public partial ObservableCollection<ChatLine>? Conversation { get; set; }
+    [ObservableProperty] public partial string Draft { get; set; } = "";
+    [ObservableProperty] public partial string? ChatError { get; set; }
+
+    public bool IsChatting => ChatWith is not null;
+    public bool CanSend => IsChatting && Draft.Trim().Length > 0;
+    public bool HasChatError => ChatError is { Length: > 0 };
+
+    /// <summary>Said once, in the empty conversation, so the terms are clear before anyone types.</summary>
+    public bool ConversationIsEmpty => Conversation is { Count: 0 };
+
+    partial void OnChatWithChanged(FriendRow? value)
+    {
+        OnPropertyChanged(nameof(IsChatting));
+        OnPropertyChanged(nameof(CanSend));
+    }
+
+    partial void OnDraftChanged(string value) => OnPropertyChanged(nameof(CanSend));
+    partial void OnChatErrorChanged(string? value) => OnPropertyChanged(nameof(HasChatError));
+    partial void OnConversationChanged(ObservableCollection<ChatLine>? value) =>
+        OnPropertyChanged(nameof(ConversationIsEmpty));
+
+    private ObservableCollection<ChatLine> ConversationFor(string uuid) =>
+        _conversations.TryGetValue(uuid, out var existing)
+            ? existing
+            : _conversations[uuid] = [];
+
+    [RelayCommand]
+    private void OpenChat(FriendRow? row)
+    {
+        if (row is null) return;
+
+        ChatError = null;
+        Draft = "";
+        ChatWith = row;
+        Conversation = ConversationFor(row.Uuid);
+
+        // Reading them is what marks them read.
+        row.Unread = 0;
+
+        OnPropertyChanged(nameof(ConversationIsEmpty));
+    }
+
+    [RelayCommand]
+    private void CloseChat()
+    {
+        ChatWith = null;
+        Conversation = null;
+        ChatError = null;
+    }
+
+    /// <summary>
+    /// Files what just arrived, and counts it against whoever said it unless their conversation
+    /// is the one being looked at.
+    /// </summary>
+    private void Deliver(IReadOnlyList<ChatMessage> messages)
+    {
+        if (messages.Count == 0) return;
+
+        foreach (var message in messages)
+        {
+            ConversationFor(message.From).Add(new ChatLine(message.Text, mine: false, message.At));
+
+            if (string.Equals(ChatWith?.Uuid, message.From, StringComparison.OrdinalIgnoreCase))
+            {
+                OnPropertyChanged(nameof(ConversationIsEmpty));
+                continue;
+            }
+
+            // Not on screen, so it is news. The row may not exist yet — a message from somebody
+            // whose acceptance is in the same snapshot — and the badge lands when it does.
+            if (Friends.FirstOrDefault(f =>
+                    string.Equals(f.Uuid, message.From, StringComparison.OrdinalIgnoreCase)) is { } row)
+                row.Unread++;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SendChatAsync()
+    {
+        if (ChatWith is not { } friend || Draft.Trim() is not { Length: > 0 } text) return;
+
+        // On screen before it is on the wire. Chat that waits for a round trip before showing
+        // what you typed feels broken on a slow connection, and this one cannot be un-said
+        // anyway — the server has no record to correct.
+        ConversationFor(friend.Uuid).Add(new ChatLine(text, mine: true, DateTimeOffset.UtcNow));
+        Draft = "";
+        ChatError = null;
+        OnPropertyChanged(nameof(ConversationIsEmpty));
+
+        try
+        {
+            await _launcher.Friends.SayAsync(friend.Uuid, text);
+        }
+        catch (FriendsException e)
+        {
+            ChatError = e.Message;
+        }
+        catch (Exception e)
+        {
+            ChatError = e.Message;
+        }
     }
 
     [RelayCommand]
@@ -275,6 +424,11 @@ public partial class FriendsViewModel : ViewModelBase
 
     private void Show(FriendsSnapshot snapshot)
     {
+        // Before anything else, and before the early return below. A message arriving on its own
+        // leaves the friends list identical, so the signature check would drop it — and the
+        // server has already forgotten it by then, which makes dropped mean gone.
+        Deliver(snapshot.Messages);
+
         // Online friends first, then alphabetical — the people you can actually play with now.
         var friends = snapshot.Friends
             .OrderByDescending(f => f.Online)
@@ -298,10 +452,15 @@ public partial class FriendsViewModel : ViewModelBase
 
     private void Rebuild(ObservableCollection<FriendRow> rows, IEnumerable<Friend> people)
     {
+        // What each row was carrying before it was thrown away. A row is rebuilt whenever anyone
+        // comes online, and without this every unread badge would vanish the moment a friend's
+        // presence changed — including the badge belonging to the message that caused it.
+        var unread = rows.ToDictionary(row => row.Uuid, row => row.Unread, StringComparer.OrdinalIgnoreCase);
+
         rows.Clear();
         foreach (var person in people)
         {
-            var row = new FriendRow(person);
+            var row = new FriendRow(person) { Unread = unread.GetValueOrDefault(person.Uuid) };
             rows.Add(row);
             _ = LoadFaceAsync(row);
         }

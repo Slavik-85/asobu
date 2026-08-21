@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Asobu.Core.Accounts;
@@ -8,13 +8,30 @@ namespace Asobu.Core.Online;
 /// <summary>Someone on the network, as the friends list shows them.</summary>
 public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffset LastSeen);
 
+/// <summary>
+/// One thing a friend said, as it arrived.
+///
+/// The server relays chat and keeps none of it, so this is the only copy there will ever be —
+/// once a snapshot carrying it has been read, asking again returns nothing.
+/// </summary>
+public sealed record ChatMessage(string From, string Name, string Text, DateTimeOffset At);
+
 /// <summary>The whole social picture in one answer: friends, requests waiting on you, requests waiting on them.</summary>
 public sealed record FriendsSnapshot(
     IReadOnlyList<Friend> Friends,
     IReadOnlyList<Friend> Incoming,
     IReadOnlyList<Friend> Outgoing,
-    long Revision = 0)
+    long Revision = 0,
+    IReadOnlyList<ChatMessage>? Messages = null)
 {
+    /// <summary>
+    /// Anything said since the last answer. Carried on the friends snapshot rather than fetched
+    /// separately: the launcher already holds one request open, and chat rides it.
+    ///
+    /// Handed over once. Whatever reads a snapshot owns these — dropping them loses them.
+    /// </summary>
+    public IReadOnlyList<ChatMessage> Messages { get; init; } = Messages ?? [];
+
     public static readonly FriendsSnapshot Empty = new([], [], []);
 }
 
@@ -124,7 +141,7 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
             .ConfigureAwait(false);
 
         return new FriendsSnapshot(
-            reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? [], reply.Revision);
+            reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? [], reply.Revision, reply.Messages);
     }
 
     /// <summary>
@@ -143,8 +160,18 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
             .ConfigureAwait(false);
 
         return new FriendsSnapshot(
-            reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? [], reply.Revision);
+            reply.Friends ?? [], reply.Incoming ?? [], reply.Outgoing ?? [], reply.Revision, reply.Messages);
     }
+
+    /// <summary>
+    /// Says something to a friend.
+    ///
+    /// The server passes it on and keeps nothing, so there is no history to fetch and no
+    /// conversation to open — sending is the whole of it, and what comes back arrives on the
+    /// watch like everything else.
+    /// </summary>
+    public Task SayAsync(string uuid, string text, CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Post, "chat", new { to = uuid, text }, cancellationToken);
 
     public Task AddAsync(string name, CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "friends/requests", new { name }, cancellationToken);
@@ -221,5 +248,6 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     private sealed record ErrorReply(string? Error);
 
     private sealed record SnapshotReply(
-        List<Friend>? Friends, List<Friend>? Incoming, List<Friend>? Outgoing, long Revision);
+        List<Friend>? Friends, List<Friend>? Incoming, List<Friend>? Outgoing, long Revision,
+        List<ChatMessage>? Messages);
 }
