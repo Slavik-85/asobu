@@ -54,6 +54,7 @@ type State struct {
 	Users   map[string]*User    `json:"users"`   // uuid -> user
 	Friends []*Friendship       `json:"friends"` //
 	Tokens  map[string]*Session `json:"tokens"`  // sha256(token) hex -> session
+	Shares  map[string]*Share   `json:"shares"`  // code -> shared instance, see shares.go
 }
 
 type Server struct {
@@ -98,7 +99,11 @@ const (
 // ---------------------------------------------------------------------------- persistence
 
 func (s *Server) load() {
-	s.state = State{Users: map[string]*User{}, Tokens: map[string]*Session{}}
+	s.state = State{
+		Users:  map[string]*User{},
+		Tokens: map[string]*Session{},
+		Shares: map[string]*Share{},
+	}
 
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -112,6 +117,9 @@ func (s *Server) load() {
 	}
 	if s.state.Tokens == nil {
 		s.state.Tokens = map[string]*Session{}
+	}
+	if s.state.Shares == nil {
+		s.state.Shares = map[string]*Share{}
 	}
 }
 
@@ -155,6 +163,9 @@ func (s *Server) flushLoop() {
 				delete(s.pending, k)
 			}
 		}
+
+		// Codes whose week is up, removed rather than archived.
+		s.dropExpiredShares(now)
 
 		// And the rate-limit table, which otherwise keeps a row for every caller ever seen.
 		s.limiter.forget(5 * time.Minute)
@@ -633,6 +644,9 @@ func main() {
 	mux.HandleFunc("POST /v1/friends/requests", locked(s.handleFriendRequest))
 	mux.HandleFunc("POST /v1/friends/accept", locked(s.handleFriendAccept))
 	mux.HandleFunc("DELETE /v1/friends/{uuid}", locked(s.handleFriendRemove))
+	mux.HandleFunc("POST /v1/shares", locked(s.handleShareCreate))
+	mux.HandleFunc("GET /v1/shares/{code}", locked(s.handleShareRead))
+	mux.HandleFunc("DELETE /v1/shares/{code}", locked(s.handleShareDelete))
 
 	// The state is saved on the way out, so a deploy never loses the last half minute.
 	stop := make(chan os.Signal, 1)
