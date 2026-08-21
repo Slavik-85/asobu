@@ -32,22 +32,25 @@
                   <TextBlock Text="{Binding VersionLabel}" Classes="label"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center" MinWidth="190">
+                <!-- One width for both, so the address and the button read as a pair rather than
+                     as two controls that happened to land near each other. Wide enough for the
+                     longest address on the list without the column stealing the name's room. -->
+                <StackPanel Grid.Column="1" Spacing="9" VerticalAlignment="Center" Width="212">
 
-                  <!-- The address, and a button that takes it. Pressing the pill copies too:
-                       the address is the thing somebody wants from it, and making them hit the
-                       small icon beside it would be a target for no reason. -->
+                  <!-- The address, and a button that takes it. The whole pill copies rather than
+                       just the icon: the address is the thing somebody wants from it, and a 13px
+                       target beside it would be a smaller door to the same room. -->
                   <Button Classes="addressPill" Tag="{Binding}" Click="CopyAddress_Click"
                           ToolTip.Tip="Copy the address">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                      <TextBlock Grid.Column="0" Text="{Binding Address}" FontSize="13"
+                      <TextBlock Grid.Column="0" Text="{Binding Address}"
                                  VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                  IsVisible="{Binding !JustCopied}"/>
-                      <TextBlock Grid.Column="0" Text="Copied" FontSize="13" FontWeight="SemiBold"
+                      <TextBlock Grid.Column="0" Text="Copied" FontWeight="SemiBold"
                                  VerticalAlignment="Center"
                                  Foreground="{DynamicResource Accent}"
                                  IsVisible="{Binding JustCopied}"/>
-                      <Viewbox Grid.Column="1" Classes="icon" Width="13" Height="13">
+                      <Viewbox Grid.Column="1" Width="13" Height="13" VerticalAlignment="Center">
                         <Canvas Width="24" Height="24">
                           <Path Data="M9 9 H19 V19 H9 Z M5 15 V5 H15" StrokeThickness="2"
                                 StrokeLineCap="Round" StrokeJoin="Round"
@@ -57,8 +60,8 @@
                     </Grid>
                   </Button>
 
-                  <Button Classes="primary" Content="Join" HorizontalAlignment="Stretch"
-                          HorizontalContentAlignment="Center"
+                  <Button Classes="primary" Content="Join" Height="38"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                           Command="{Binding $parent[ItemsControl].((vm:ServersViewModel)DataContext).JoinCommand}"
                           CommandParameter="{Binding}"/>
                 </StackPanel>
