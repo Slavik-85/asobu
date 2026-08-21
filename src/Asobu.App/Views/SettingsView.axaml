@@ -49,8 +49,8 @@
         </StackPanel>
       </Border>
 
-      <!-- Graphics -->
-      <Border Classes="card" Padding="24">
+      <!-- Graphics. Windows only; see SettingsViewModel.ShowGraphics. -->
+      <Border Classes="card" Padding="24" IsVisible="{Binding ShowGraphics}">
         <StackPanel Spacing="12">
           <StackPanel Spacing="4">
             <TextBlock Text="Graphics" Classes="h2"/>

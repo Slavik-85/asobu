@@ -60,7 +60,7 @@
       </p>
       <ul>
         <li><strong>Asobu never sees your password.</strong> You type it into Microsoft's sign-in page. The launcher only receives a token afterwards.</li>
-        <li><strong>Tokens are encrypted on your disk.</strong> Your refresh token is sealed with Windows DPAPI under your user account, in a file only that account can read. Copying it to another machine yields nothing.</li>
+        <li><strong>Tokens are kept private on your disk.</strong> On Windows your refresh token is sealed with DPAPI under your user account, in a file only that account can read, and copying it to another machine yields nothing. Linux offers no equivalent that works without a desktop keyring running, so there the file is stored readable and writable by your user alone. Anyone who can already run programs as you can read it — which is true of the Windows file too, once you are logged in.</li>
         <li><strong>Tokens go to Microsoft and Mojang, nowhere else.</strong> They are exchanged with Xbox Live and Minecraft services to verify you own Minecraft: Java Edition and to get your profile name and UUID, which the game needs to start.</li>
         <li><strong>Signing in does not involve any Asobu server.</strong> Not even when you use friends, which is explained below.</li>
       </ul>
@@ -169,16 +169,18 @@
 
       <h2>What is stored on your computer</h2>
       <p>
-        An installed Asobu keeps everything in one folder inside its own install directory, so an update
-        replaces the program without touching your data. Running from a source build instead, it uses
-        <code>%APPDATA%\.asobu</code>.
+        On Windows an installed Asobu keeps everything in one folder inside its own install directory,
+        so an update replaces the program without touching your data. A source build uses
+        <code>%APPDATA%\.asobu</code> instead. On Linux it is always <code>~/.asobu</code>, beside the
+        <code>~/.minecraft</code> you already have, because an AppImage runs from a read-only mount with
+        nowhere beside it to write.
       </p>
       <ul>
         <li><strong>Instances</strong> with your worlds, mods, configuration and screenshots.</li>
         <li><strong>Cache</strong> holding Minecraft versions, libraries, assets and Java runtimes, shared between instances.</li>
         <li><strong>Logs</strong> from each session, so crashes can be explained. They stay on your disk and are never uploaded.</li>
         <li><strong>accounts.json</strong> with the display name and UUID of accounts you have added. No tokens or passwords are in this file.</li>
-        <li><strong>tokens.dat</strong> holding your encrypted Microsoft refresh token, sealed with DPAPI.</li>
+        <li><strong>tokens.dat</strong> holding your Microsoft refresh token — sealed with DPAPI on Windows, and on Linux readable by your user only.</li>
         <li><strong>settings.json</strong> with your preferences, such as memory allocation and Java choice.</li>
       </ul>
       <p>

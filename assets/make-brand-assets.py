@@ -66,6 +66,18 @@ def build_icon():
     print(f"wrote {out}  ({', '.join(str(s) for s in sizes)})")
 
 
+def build_png():
+    """The same mark as a plain PNG, which is what Linux packaging wants.
+
+    AppImage and the .desktop entry beside it take a PNG; neither reads an .ico. 256 is the
+    largest size freedesktop's icon spec defines, and every smaller one a desktop needs is
+    scaled from it.
+    """
+    out = os.path.join(HERE, "asobu.png")
+    draw_mark(256).save(out, format="PNG")
+    print(f"wrote {out}  (256)")
+
+
 def build_splash():
     """The installer's splash: the welcome, held.
 
@@ -124,4 +136,5 @@ def build_splash():
 
 if __name__ == "__main__":
     build_icon()
+    build_png()
     build_splash()

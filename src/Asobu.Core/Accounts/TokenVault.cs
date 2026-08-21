@@ -5,12 +5,17 @@ using System.Text.Json;
 namespace Asobu.Core.Accounts;
 
 /// <summary>
-/// Refresh tokens, encrypted at rest.
+/// Refresh tokens, protected at rest.
 ///
 /// MSAL brings its own encrypted cache, but the device-code flow talks to login.live.com directly
 /// and so has to keep its own. On Windows the file is sealed with DPAPI under the current user
 /// account, which means another user on the same machine cannot read it and copying the file to
 /// another machine yields nothing.
+///
+/// Linux has no DPAPI. The file is plain JSON there, kept private by being created readable only
+/// by its owner — the same trade Prism makes. A keyring would be better against someone already
+/// running code as you; against the case that actually happens, another account on a shared
+/// machine reading the file, 0600 is the whole of the defence and it is enough.
 /// </summary>
 public sealed class TokenVault(AsobuPaths paths)
 {
@@ -66,12 +71,35 @@ public sealed class TokenVault(AsobuPaths paths)
 
         var plain = JsonSerializer.SerializeToUtf8Bytes(all, Options);
 
-        // DPAPI is Windows-only. Elsewhere this lands as plain JSON in the launcher's own folder,
-        // which is worth knowing about before Asobu ships anywhere but Windows.
-        var payload = OperatingSystem.IsWindows()
-            ? ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser)
-            : plain;
+        if (OperatingSystem.IsWindows())
+        {
+            File.WriteAllBytes(VaultFile, ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser));
+            return;
+        }
 
-        File.WriteAllBytes(VaultFile, payload);
+        // The mode is set as the file is created rather than afterwards. chmod after the write
+        // would leave a window — however brief — in which a token sat on disk readable by every
+        // account on the machine, and a window is all a shared machine needs.
+        using (var file = new FileStream(VaultFile, new FileStreamOptions
+        {
+            Mode = FileMode.Create,
+            Access = FileAccess.Write,
+            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite,
+        }))
+        {
+            file.Write(plain);
+        }
+
+        // UnixCreateMode only applies to a file being created, so a vault written by an older
+        // build keeps whatever mode it was born with until this puts it right.
+        try
+        {
+            File.SetUnixFileMode(VaultFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // A filesystem with no modes to set — a FAT-formatted USB stick in portable mode,
+            // most likely. Refusing to save the token would be the worse answer.
+        }
     }
 }

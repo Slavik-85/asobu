@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Asobu · a cute, capable Minecraft launcher</title>
-<meta name="description" content="Asobu is a free, open-source Minecraft: Java Edition launcher for Windows. Isolated instances, every mod loader, mods from Modrinth and CurseForge, and crashes it explains instead of dumping on you.">
+<meta name="description" content="Asobu is a free, open-source Minecraft: Java Edition launcher for Windows and Linux. Isolated instances, every mod loader, mods from Modrinth and CurseForge, and crashes it explains instead of dumping on you.">
 <meta property="og:title" content="Asobu · don't waste time during asobu time">
 <meta property="og:description" content="Isolated instances, every mod loader, mods from Modrinth and CurseForge, and crashes explained in words. Free and open source.">
 <meta property="og:type" content="website">
@@ -62,7 +62,9 @@
         </a>
       </div>
       <p class="tagline rise" style="font-size:0.9rem;margin-top:1rem">
-        Windows, about 65&nbsp;MB. There is a portable build and every past version
+        Windows, about 65&nbsp;MB. There's a
+        <a href="https://github.com/Slavik-85/asobu/releases/latest">Linux AppImage</a> too, plus a
+        portable build and every past version
         <a href="https://github.com/Slavik-85/asobu/releases">on the releases page</a>.
       </p>
     </div>
@@ -190,8 +192,8 @@
           </li>
           <li>
             <div>
-              <strong>The token is sealed on your machine</strong>
-              <span>Your refresh token is encrypted with Windows DPAPI under your user account, so another user on the same PC cannot read it and copying the file elsewhere gets them nothing.</span>
+              <strong>The token stays on your machine</strong>
+              <span>On Windows your refresh token is encrypted with DPAPI under your user account, so another user on the same PC cannot read it and copying the file elsewhere gets them nothing. Linux has no equivalent, so there the file is readable only by you.</span>
             </div>
           </li>
         </ol>

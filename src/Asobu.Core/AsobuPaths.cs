@@ -46,13 +46,24 @@ public sealed class AsobuPaths(string root)
         if (File.Exists(Path.Combine(exeDir, "portable")))
             return new AsobuPaths(Path.Combine(exeDir, "data"));
 
-        var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var home = DataHome();
 
         if (InstalledDataDir(exeDir) is { } installed)
-            return AdoptInto(installed, Path.Combine(roaming, ".asobu"));
+            return AdoptInto(installed, Path.Combine(home, ".asobu"));
 
-        return ResolveIn(roaming);
+        return ResolveIn(home);
     }
+
+    /// <summary>
+    /// The folder .asobu sits in: AppData\Roaming on Windows, the home directory everywhere else.
+    ///
+    /// Asking for ApplicationData on Linux gives ~/.config, and .asobu inside it would be a
+    /// hidden folder inside a hidden folder. ~/.asobu instead puts it beside the ~/.minecraft
+    /// every player already has, which is the first place a Linux user looks.
+    /// </summary>
+    private static string DataHome() => OperatingSystem.IsWindows()
+        ? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+        : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     /// <summary>
     /// Where an installed copy keeps its data, or null when this is not an installed copy.
@@ -71,6 +82,11 @@ public sealed class AsobuPaths(string root)
     /// </summary>
     public static string? InstalledDataDir(string exeDir)
     {
+        // Windows only. A Linux build ships as an AppImage, which runs from a read-only mount
+        // that disappears when it exits — there is no folder beside the app to keep anything in,
+        // so Linux data lives in the home directory and this never applies.
+        if (!OperatingSystem.IsWindows()) return null;
+
         var parent = Directory.GetParent(exeDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         if (parent is null) return null;
 

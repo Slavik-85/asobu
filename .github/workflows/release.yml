@@ -112,3 +112,103 @@ jobs:
           --tag v${{ steps.version.outputs.value }}
           --releaseName "Asobu ${{ steps.version.outputs.value }}"
           --publish
+
+  # The same application, packed as an AppImage.
+  #
+  # Runs after the Windows job rather than beside it, and merges into the release that job
+  # created. Two jobs creating the same tag at the same time is a race with a corrupted release
+  # at the end of it, and the couple of minutes this costs is a couple of minutes.
+  #
+  # Windows and Linux builds live in separate Velopack channels, so each platform's launcher
+  # only ever sees updates it can actually install.
+  linux:
+    needs: windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # Avalonia draws with Skia and shapes text with HarfBuzz, both of which want fontconfig
+      # present to find a font at all. It is on ubuntu-latest already; installed explicitly so
+      # a future runner image dropping it fails here rather than in front of a user.
+      - name: Install the packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfontconfig1 desktop-file-utils
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install the Velopack tool
+        run: dotnet tool install -g vpk
+
+      - name: Publish
+        env:
+          ASOBU_CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: >
+          dotnet publish src/Asobu.App/Asobu.App.csproj
+          -c Release -r linux-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.value }}
+          -o publish
+
+      # -a searches a binary as if it were text, which is the whole trick here.
+      - name: Refuse to ship a release with no CurseForge key
+        run: |
+          if ! grep -aq "CurseForgeApiKey" publish/Asobu.Core.dll; then
+            echo "::error::No CurseForge key in this build. Set the CURSEFORGE_API_KEY repository secret."
+            exit 1
+          fi
+          echo "CurseForge key is present in the build."
+
+      # dotnet marks the apphost executable on a Linux publish, but an AppImage whose entry
+      # point is not executable fails at the moment someone runs it rather than here.
+      - name: Make sure the entry point is executable
+        run: chmod +x publish/Asobu.App
+
+      - name: Fetch the previous release, so a delta can be built against it
+        continue-on-error: true
+        run: >
+          vpk download github
+          --repoUrl ${{ github.server_url }}/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --channel linux
+          --outputDir releases
+
+      # No splash image: that is the Windows installer's, and an AppImage has no installer to
+      # show one during. It is copied where the user wants it and run.
+      - name: Pack
+        run: >
+          vpk pack
+          --packId Asobu
+          --packTitle Asobu
+          --packAuthors "Asobu"
+          --packVersion ${{ steps.version.outputs.value }}
+          --packDir publish
+          --mainExe Asobu.App
+          --channel linux
+          --icon assets/asobu.png
+          --outputDir releases
+
+      - name: Add the AppImage to the release
+        run: >
+          vpk upload github
+          --repoUrl ${{ github.server_url }}/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --outputDir releases
+          --channel linux
+          --tag v${{ steps.version.outputs.value }}
+          --releaseName "Asobu ${{ steps.version.outputs.value }}"
+          --merge
+          --publish

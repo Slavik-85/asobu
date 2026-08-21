@@ -55,6 +55,15 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     public int MaximumMemoryMb { get; }
+
+    /// <summary>
+    /// The GPU preference is a Windows graphics setting written to the registry, and there is
+    /// no equivalent to offer elsewhere — Linux picks its GPU through PRIME or the driver's own
+    /// configuration, neither of which a launcher should be reaching into. So the card is not
+    /// shown rather than shown and inert.
+    /// </summary>
+    public bool ShowGraphics => OperatingSystem.IsWindows();
+
     public string DetectedGpus { get; }
     public IReadOnlyList<GpuOption> GpuOptions { get; }
     public IReadOnlyList<SignInOption> SignInOptions { get; }
