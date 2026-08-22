@@ -295,11 +295,43 @@ public static class LocalAddresses
                         && card.NetworkInterfaceType != NetworkInterfaceType.Loopback)
             .SelectMany(card => card.GetIPProperties().UnicastAddresses)
             .Select(address => address.Address)
-            .Where(address => address.AddressFamily == AddressFamily.InterNetwork
-                           && !IPAddress.IsLoopback(address))
-            .Select(address => $"{address}:{port}")
+            .Where(Worth)
+            .Select(address => address.AddressFamily == AddressFamily.InterNetworkV6
+                ? $"[{address}]:{port}"   // the brackets are what tells a port from the address
+                : $"{address}:{port}")
             .Distinct()
     ];
+
+    /// <summary>
+    /// Whether an address is one somebody else could plausibly use.
+    ///
+    /// IPv6 is worth offering because there is no NAT in front of it: where both ends have a real
+    /// one and the firewall allows it, the connection simply happens and nothing is relayed. But
+    /// only a real one. Link-local is meaningless off the wire it is on, unique-local is the IPv6
+    /// spelling of 192.168, and Teredo and 6to4 are tunnels that are usually either broken or so
+    /// slow that offering them only spends a probe finding that out.
+    /// </summary>
+    private static bool Worth(IPAddress address)
+    {
+        if (IPAddress.IsLoopback(address)) return false;
+
+        if (address.AddressFamily == AddressFamily.InterNetwork) return true;
+        if (address.AddressFamily != AddressFamily.InterNetworkV6) return false;
+
+        if (address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6Teredo) return false;
+
+        var bytes = address.GetAddressBytes();
+
+        // Unique local, fc00::/7: routable inside one network and nowhere else.
+        if ((bytes[0] & 0xFE) == 0xFC) return false;
+
+        // 6to4, 2002::/16.
+        if (bytes[0] == 0x20 && bytes[1] == 0x02) return false;
+
+        // Global unicast is 2000::/3. Everything outside it is multicast or otherwise not an
+        // address anybody dials.
+        return (bytes[0] & 0xE0) == 0x20;
+    }
 }
 
 /// <summary>

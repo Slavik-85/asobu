@@ -421,6 +421,12 @@ public partial class FriendsViewModel : ViewModelBase
     /// </summary>
     private RelayLink? _relay;
 
+    /// <summary>
+    /// Where the router agreed people could reach us, when it agreed to anything. Worth asking
+    /// once per world: a friend who gets in this way costs the relay nothing.
+    /// </summary>
+    private string? _mapped;
+
     /// <summary>What the friends page is doing about a join, while it is doing it.</summary>
     [ObservableProperty] public partial string? JoinStatus { get; set; }
 
@@ -480,6 +486,7 @@ public partial class FriendsViewModel : ViewModelBase
         MyWorld = null;
         _toldNetworkAboutWorld = false;
         _share = null;
+        _mapped = null;
         CloseRelay();
         _launcher.Session.StopVouchingForEveryone();
         _invited.Clear();
@@ -521,12 +528,14 @@ public partial class FriendsViewModel : ViewModelBase
         if (opening)
         {
             _share = await ShareRunningInstanceAsync();
-            await OpenRelayAsync(world!.DoormanPort);
+            _mapped = await PortMapper.MapAsync(world!.DoormanPort);
+            await OpenRelayAsync(world.DoormanPort);
         }
 
         if (world is null)
         {
             _share = null;
+            _mapped = null;
             CloseRelay();
         }
 
@@ -541,7 +550,8 @@ public partial class FriendsViewModel : ViewModelBase
                         ? InstanceFingerprint.Of(_launcher.Paths, playing)
                         : null,
                     _share,
-                    _relay?.Session);
+                    _relay?.Session,
+                    _mapped);
 
             // A world the server had forgotten comes back empty, so everybody who was let in has
             // to be handed to it again. Only on the turn it reopens, not every heartbeat.
