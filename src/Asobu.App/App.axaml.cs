@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -16,6 +16,12 @@ public partial class App : Application
     /// thing that means "stop".
     /// </summary>
     private bool _leaving;
+
+    /// <summary>
+    /// How long a game gets to save and close itself before it is taken down. Long enough for
+    /// Minecraft to write the world out, short enough that a stuck one does not hold the exit.
+    /// </summary>
+    private static readonly TimeSpan GoodbyeWait = TimeSpan.FromSeconds(8);
 
     public override void Initialize()
     {
@@ -47,7 +53,13 @@ public partial class App : Application
                 TrayToast.Show(window, () => Reopen(window));
             };
 
-            desktop.ShutdownRequested += (_, _) => main.Launcher.StopGames(TimeSpan.FromSeconds(8));
+            // Both, because they fire on different exits and neither covers the other.
+            // ShutdownRequested is the platform asking, as when the session ends. Exit is the one
+            // that follows Shutdown(), which is what the tray's Exit calls: hooking only the
+            // first meant choosing Exit left the game running, which is the whole thing this is
+            // here to prevent.
+            desktop.ShutdownRequested += (_, _) => main.Launcher.StopGames(GoodbyeWait);
+            desktop.Exit += (_, _) => main.Launcher.StopGames(GoodbyeWait);
 
             BuildTray(desktop, window);
         }
@@ -57,6 +69,8 @@ public partial class App : Application
 
     private void BuildTray(IClassicDesktopStyleApplicationLifetime desktop, Window window)
     {
+        var launcher = (window.DataContext as MainViewModel)?.Launcher;
+
         var open = new NativeMenuItem("Open");
         open.Click += (_, _) => Reopen(window);
 
@@ -64,6 +78,12 @@ public partial class App : Application
         exit.Click += (_, _) =>
         {
             _leaving = true;
+
+            // Before Shutdown rather than after, and not left to the lifetime events. Which of
+            // those fires depends on how the exit was asked for, and the game outliving Asobu is
+            // exactly the thing this menu entry exists to avoid.
+            launcher?.StopGames(GoodbyeWait);
+
             desktop.Shutdown();
         };
 
