@@ -34,7 +34,7 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         MinecraftSession session,
         string javaExecutable,
         string? joinServer = null,
-        string? sessionHost = null)
+        SessionUpstreams? sessionHosts = null)
     {
         var platform = RuleContext.Current;
         var gameDirectory = paths.InstanceGameDir(instance.Folder);
@@ -79,13 +79,20 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         // stand-in so a friend without a Microsoft account can be let into a world — see
         // SessionShim, which forwards everything it does not answer itself.
         //
-        // Both or neither: authlib wants the pair, and given only one it logs a complaint and
-        // quietly uses Mojang's. That is also the graceful failure for a version whose authlib
-        // predates these properties — the game simply carries on as it always did.
-        if (sessionHost is { Length: > 0 } shim)
+        // All four, because authlib takes them as a set and refuses a partial one out loud:
+        //
+        //     Ignoring hosts properties. All need to be set:
+        //     [minecraft.api.auth.host, minecraft.api.account.host, minecraft.api.session.host]
+        //
+        // Which list it names varies by version, so the safe move is to give it every one. That
+        // refusal is also the graceful failure on a version predating these properties: the game
+        // carries on exactly as it did before.
+        if (sessionHosts is { } shim)
         {
-            arguments.Add($"-Dminecraft.api.session.host={shim}");
-            arguments.Add($"-Dminecraft.api.services.host={shim}");
+            arguments.Add($"-Dminecraft.api.auth.host={shim.Auth}");
+            arguments.Add($"-Dminecraft.api.account.host={shim.Account}");
+            arguments.Add($"-Dminecraft.api.session.host={shim.Session}");
+            arguments.Add($"-Dminecraft.api.services.host={shim.Services}");
         }
 
         if (version.Logging?.Client is { } logging)

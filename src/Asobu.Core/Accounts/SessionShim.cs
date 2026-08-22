@@ -1,9 +1,19 @@
-﻿using System.Net;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
 namespace Asobu.Core.Accounts;
+
+/// <summary>
+/// The real services this stands in front of. Four rather than one, because the game is told about
+/// each separately and each has its own answers.
+/// </summary>
+public sealed record SessionUpstreams(
+    string Auth = "https://authserver.mojang.com",
+    string Account = "https://api.mojang.com",
+    string Session = "https://sessionserver.mojang.com",
+    string Services = "https://api.minecraftservices.com");
 
 /// <summary>
 /// A stand-in for Mojang's session server, listening on this machine only.
@@ -16,10 +26,15 @@ namespace Asobu.Core.Accounts;
 ///
 /// The alternative was patching the game: a Java agent flipping that flag, which means finding an
 /// obfuscated method whose name changes every version and again under every mod loader. This needs
-/// none of that. Since 1.16 authlib reads its endpoints from
-/// <c>minecraft.api.session.host</c> and <c>minecraft.api.services.host</c> — documented system
-/// properties, unobfuscated, honoured identically by vanilla and Forge — so the game can simply be
+/// none of that. authlib reads its endpoints from <c>minecraft.api.*.host</c> system properties —
+/// documented, unobfuscated, honoured the same by vanilla and Forge — so the game can simply be
 /// told where to ask, and this answers.
+///
+/// <para>
+/// One port per service, rather than one port and a table deciding which upstream each path
+/// belongs to. authlib wants a URL per service anyway, and a port that means exactly one upstream
+/// cannot mis-route a path nobody thought of — which, for an API this size, is most of them.
+/// </para>
 ///
 /// <para>
 /// What it will and will not say, because a service that vouches for people is only as good as its
@@ -27,34 +42,34 @@ namespace Asobu.Core.Accounts;
 /// </para>
 /// <list type="bullet">
 /// <item>It vouches for a name only while that name holds an invite the host signed. Nothing else.</item>
-/// <item>Everything it does not answer itself is forwarded to Mojang unchanged, so the same
-/// instance can still join a real server with a real account.</item>
+/// <item>Everything it does not answer itself is forwarded unchanged, so the same instance can
+/// still join a real server with a real account.</item>
 /// <item>It listens on the loopback address, so it is not reachable from another machine.</item>
 /// </list>
 /// </summary>
-public sealed class SessionShim(
-    HttpClient http,
-    string sessionHost = SessionShim.MojangSession,
-    string servicesHost = SessionShim.MojangServices) : IDisposable
+public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = null) : IDisposable
 {
-    /// <summary>Where the real answers come from when this has none of its own.</summary>
-    internal const string MojangSession = "https://sessionserver.mojang.com";
-    internal const string MojangServices = "https://api.minecraftservices.com";
-
-    private HttpListener? _listener;
+    private readonly SessionUpstreams _upstreams = upstreams ?? new SessionUpstreams();
     private readonly Dictionary<string, string> _vouched = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Which real service a request arriving on this port is meant for.</summary>
+    private readonly Dictionary<int, string> _routes = [];
+
+    private HttpListener? _listener;
     private CancellationTokenSource? _stop;
 
-    public string BaseUrl { get; private set; } = "";
+    public string AuthHost { get; private set; } = "";
+    public string AccountHost { get; private set; } = "";
+    public string SessionHost { get; private set; } = "";
+    public string ServicesHost { get; private set; } = "";
+
+    public bool IsRunning => SessionHost.Length > 0;
 
     /// <summary>
     /// Whether this launcher's own account may join a server without Mojang's blessing. Set for an
-    /// offline account, which has no blessing to get — it is the guest half of the same problem.
+    /// offline account, which has no blessing to get — the guest half of the same problem.
     /// </summary>
     public bool JoinsWithoutMojang { get; set; }
-
-    public bool IsRunning => BaseUrl.Length > 0;
 
     /// <summary>Let this name in for as long as their invite stands.</summary>
     public void Vouch(string username, string uuid)
@@ -73,39 +88,50 @@ public sealed class SessionShim(
     }
 
     /// <summary>
-    /// Opens on a free loopback port. False when the machine will not allow it — the caller then
-    /// simply launches without the properties, and offline guests cannot join, which is the
+    /// Opens one loopback port per service. False when the machine will not allow it — the caller
+    /// then launches without the properties, and offline guests cannot join, which is the
     /// behaviour there was before any of this.
     /// </summary>
     public bool TryStart()
     {
         if (IsRunning) return true;
 
-        // localhost rather than a wildcard: HttpListener needs an administrator-registered
-        // reservation for anything else on Windows, and a launcher should not want one.
         for (var attempt = 0; attempt < 20; attempt++)
         {
-            var port = Random.Shared.Next(20000, 60000);
-
             // A fresh listener each attempt: one whose Start threw is disposed, and reusing it
             // turns a busy port into an ObjectDisposedException on the next try.
             var listener = new HttpListener();
+            var first = Random.Shared.Next(20000, 60000);
+
             try
             {
-                listener.Prefixes.Add($"http://localhost:{port}/");
+                // localhost rather than a wildcard: HttpListener wants an administrator-registered
+                // reservation for anything else on Windows, and a launcher should not want one.
+                for (var offset = 0; offset < 4; offset++)
+                    listener.Prefixes.Add($"http://localhost:{first + offset}/");
+
                 listener.Start();
 
+                _routes[first] = _upstreams.Auth;
+                _routes[first + 1] = _upstreams.Account;
+                _routes[first + 2] = _upstreams.Session;
+                _routes[first + 3] = _upstreams.Services;
+
+                AuthHost = $"http://localhost:{first}";
+                AccountHost = $"http://localhost:{first + 1}";
+                SessionHost = $"http://localhost:{first + 2}";
+                ServicesHost = $"http://localhost:{first + 3}";
+
                 _listener = listener;
-                BaseUrl = $"http://localhost:{port}";
                 _stop = new CancellationTokenSource();
                 _ = ServeAsync(_stop.Token);
                 return true;
             }
             catch (HttpListenerException)
             {
-                // That port was taken, or this machine refuses the reservation. Another try costs
-                // nothing; twenty failures means it is not the port.
+                // One of those four was taken. Another block costs nothing to try.
                 listener.Close();
+                _routes.Clear();
             }
         }
 
@@ -135,42 +161,30 @@ public sealed class SessionShim(
         try
         {
             var path = context.Request.Url?.AbsolutePath ?? "";
-            var query = context.Request.Url?.Query ?? "";
+            var upstream = _routes.GetValueOrDefault(context.Request.LocalEndPoint.Port, _upstreams.Services);
 
             // The client asking permission to join. An account Mojang knows gets the real answer;
             // an offline one is told yes, because there is nobody to ask on its behalf.
-            if (path.EndsWith("/session/minecraft/join", StringComparison.OrdinalIgnoreCase))
+            if (path.EndsWith("/session/minecraft/join", StringComparison.OrdinalIgnoreCase) && JoinsWithoutMojang)
             {
-                if (JoinsWithoutMojang)
-                {
-                    context.Response.StatusCode = 204;
-                    context.Response.Close();
-                    return;
-                }
-
-                await ForwardAsync(context, sessionHost, cancellationToken).ConfigureAwait(false);
+                context.Response.StatusCode = 204;
+                context.Response.Close();
                 return;
             }
 
             // The server asking who just arrived. This is the question worth answering ourselves.
             if (path.EndsWith("/session/minecraft/hasJoined", StringComparison.OrdinalIgnoreCase))
             {
-                var name = System.Web.HttpUtility.ParseQueryString(query)["username"];
+                var name = System.Web.HttpUtility.ParseQueryString(context.Request.Url?.Query ?? "")["username"];
                 if (name is { Length: > 0 } && Vouching(name) is { } uuid)
                 {
                     await WriteJsonAsync(context, Profile(name, uuid)).ConfigureAwait(false);
                     return;
                 }
-
-                await ForwardAsync(context, sessionHost, cancellationToken).ConfigureAwait(false);
-                return;
             }
 
-            // Skins, capes, chat signing keys, everything else: none of our business.
-            await ForwardAsync(
-                context,
-                path.StartsWith("/session/", StringComparison.OrdinalIgnoreCase) ? sessionHost : servicesHost,
-                cancellationToken).ConfigureAwait(false);
+            // Skins, capes, chat signing keys, real sign-ins: none of our business.
+            await ForwardAsync(context, upstream, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -225,7 +239,7 @@ public sealed class SessionShim(
         context.Response.Close();
     }
 
-    /// <summary>Hands the request on to Mojang and copies the answer back, unread.</summary>
+    /// <summary>Hands the request on to the real service and copies the answer back, unread.</summary>
     private async Task ForwardAsync(HttpListenerContext context, string host, CancellationToken cancellationToken)
     {
         var request = context.Request;

@@ -18,7 +18,7 @@ public class SessionShimTests : IDisposable
 
     public SessionShimTests()
     {
-        _shim = new SessionShim(_http, _mojang.Url, _mojang.Url);
+        _shim = new SessionShim(_http, new SessionUpstreams(_mojang.Url, _mojang.Url, _mojang.Url, _mojang.Url));
         Assert.True(_shim.TryStart(), "the shim could not open a loopback port");
     }
 
@@ -29,7 +29,7 @@ public class SessionShimTests : IDisposable
         _http.Dispose();
     }
 
-    private Task<HttpResponseMessage> AskAsync(string path) => _http.GetAsync(_shim.BaseUrl + path);
+    private Task<HttpResponseMessage> AskAsync(string path) => _http.GetAsync(_shim.SessionHost + path);
 
     // ---- The uuid ----
 
@@ -112,7 +112,7 @@ public class SessionShimTests : IDisposable
     {
         _shim.JoinsWithoutMojang = false;
 
-        var answer = await _http.PostAsync(_shim.BaseUrl + "/session/minecraft/join", new StringContent("{}"));
+        var answer = await _http.PostAsync(_shim.SessionHost + "/session/minecraft/join", new StringContent("{}"));
 
         Assert.Contains(_mojang.Asked, path => path.EndsWith("/session/minecraft/join", StringComparison.Ordinal));
         Assert.Equal(HttpStatusCode.NoContent, answer.StatusCode);
@@ -123,7 +123,7 @@ public class SessionShimTests : IDisposable
     {
         _shim.JoinsWithoutMojang = true;
 
-        var answer = await _http.PostAsync(_shim.BaseUrl + "/session/minecraft/join", new StringContent("{}"));
+        var answer = await _http.PostAsync(_shim.SessionHost + "/session/minecraft/join", new StringContent("{}"));
 
         Assert.Equal(HttpStatusCode.NoContent, answer.StatusCode);
         Assert.Empty(_mojang.Asked);

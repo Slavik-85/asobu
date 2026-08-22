@@ -372,11 +372,14 @@ public sealed class AsobuLauncher
         // so the stand-in answers on its behalf. "legacy" is what an offline session carries; a
         // Microsoft one says "msa" and still goes to Mojang for everything.
         Session.JoinsWithoutMojang = session.UserType == "legacy";
-        var sessionHost = Session.TryStart() ? Session.BaseUrl : null;
+
+        var sessionHosts = Session.TryStart()
+            ? new SessionUpstreams(Session.AuthHost, Session.AccountHost, Session.SessionHost, Session.ServicesHost)
+            : null;
 
         progress?.Report(new InstallProgress("Starting Minecraft", 1));
         var plan = _launchBuilder.Build(
-            version, instance, settings, session, javaExecutable, joinServer, sessionHost);
+            version, instance, settings, session, javaExecutable, joinServer, sessionHosts);
 
         // Every line the game prints passes the port watch on its way to whoever asked for it.
         // Hooked here rather than at the call sites so that opening a world to LAN is noticed
