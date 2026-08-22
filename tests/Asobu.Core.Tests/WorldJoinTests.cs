@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -60,7 +60,7 @@ public class WorldJoinTests : IDisposable
     {
         using var join = await WorldJoin.ReachAsync([Door], Pass());
 
-        Assert.Equal($"127.0.0.1:{join.Door.Port}", $"127.0.0.1:{_doorman.Port}");
+        Assert.Equal(Door, join.Door);
         Assert.StartsWith("127.0.0.1:", join.Address);
 
         // And the game can walk through it into the world.
@@ -76,7 +76,7 @@ public class WorldJoinTests : IDisposable
     {
         using var join = await WorldJoin.ReachAsync([Elsewhere, Door], Pass());
 
-        Assert.Equal(_doorman.Port, join.Door.Port);
+        Assert.Equal(Door, join.Door);
         Assert.Equal("the world says hello", await SpeakThroughAsync(join));
     }
 

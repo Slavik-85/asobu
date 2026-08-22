@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -249,10 +249,18 @@ public class WorldTunnelTests
             _ = _doorman.RunAsync(_stop.Token);
         }
 
+        /// <summary>How the guest's end gets hold of the door: straight to it, on this machine.</summary>
+        private static Func<CancellationToken, Task<Stream>> Dial(int port) => async token =>
+        {
+            var client = new TcpClient();
+            await client.ConnectAsync(IPAddress.Loopback, port, token);
+            return client.GetStream();
+        };
+
         /// <summary>Opens the guest's end with the given pass and connects a pretend game to it.</summary>
         public async Task<Wire> DialAsync(string token)
         {
-            _guest = new WorldGuest(new IPEndPoint(IPAddress.Loopback, _doorman.Port), token);
+            _guest = new WorldGuest(Dial(_doorman.Port), token);
             _ = _guest.RunAsync(_stop.Token);
 
             var game = new TcpClient();

@@ -114,6 +114,11 @@ type Server struct {
 	// for the same reason as the inbox — see hosting.go.
 	hosting map[string]*hostedWorld
 
+	// Worlds being relayed, and guests waiting to be paired with one. Its own lock, because a
+	// relayed connection is held for as long as somebody is playing and the server's one big
+	// lock cannot be held for an evening. See relay.go.
+	relay *relayHub
+
 	limiter limiter
 
 	// Bumped whenever anything a friends list shows changes. A watcher tells us the revision
@@ -849,6 +854,7 @@ func main() {
 		pending: map[string]pendingAuth{},
 		inbox:   map[string][]message{},
 		hosting: map[string]*hostedWorld{},
+		relay:   newRelayHub(),
 		changed: make(chan struct{}),
 	}
 	s.load()
@@ -886,6 +892,10 @@ func main() {
 	mux.HandleFunc("DELETE /v1/friends/{uuid}", locked(s.handleFriendRemove))
 	mux.HandleFunc("POST /v1/chat", locked(s.handleChatSend))
 	mux.HandleFunc("POST /v1/chat/key", locked(s.handlePublishKey))
+	// Not locked: it holds a connection open for as long as somebody is playing, and takes the
+	// lock itself for the moment it needs it.
+	mux.HandleFunc("GET /v1/relay", s.handleRelay)
+
 	mux.HandleFunc("POST /v1/host/open", locked(s.handleHostOpen))
 	mux.HandleFunc("POST /v1/host/close", locked(s.handleHostClose))
 	mux.HandleFunc("POST /v1/host/invites", locked(s.handleHostInvite))

@@ -207,6 +207,14 @@ func cleanAddresses(offered []string) []string {
 		if len(kept) == mostAddresses {
 			break
 		}
+		// The server offering to carry this one, rather than an address to try. Nothing here
+		// reads it; the launcher that published it and the launcher that uses it agree on what
+		// it means.
+		if strings.HasPrefix(candidate, "relay:") && len(candidate) <= 40 {
+			kept = append(kept, candidate)
+			continue
+		}
+
 		host, port, err := net.SplitHostPort(candidate)
 		if err != nil || net.ParseIP(host) == nil {
 			continue

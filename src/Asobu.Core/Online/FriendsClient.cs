@@ -287,10 +287,24 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// </summary>
     public Task OpenWorldAsync(
         string name, int players, int max, int port, string? version, string? fingerprint, string? share,
-        CancellationToken cancellationToken = default) =>
-        SendAsync<OkReply>(HttpMethod.Post, "host/open",
-            new { name, players, max, port, version, fingerprint, share, local = LocalAddresses.For(port) },
-            cancellationToken);
+        string? relay = null, CancellationToken cancellationToken = default)
+    {
+        // Own addresses first, the relay last: the race that picks between them settles on
+        // whichever answers soonest, and a friend on the same network should never be sent the
+        // long way round through a server.
+        List<string> local = [.. LocalAddresses.For(port)];
+        if (relay is { Length: > 0 } session) local.Add(WorldJoin.RelayPrefix + session);
+
+        return SendAsync<OkReply>(HttpMethod.Post, "host/open",
+            new { name, players, max, port, version, fingerprint, share, local }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Opens the host's end of the relay, so friends who cannot reach this machine still can.
+    /// Null when not signed in, since the server will not carry for somebody it cannot name.
+    /// </summary>
+    public RelayLink? OpenRelay(Func<int> doormanPort) =>
+        _token is { Length: > 0 } token ? new RelayLink(WorldJoin.RelayUrl, token, doormanPort) : null;
 
     public Task CloseWorldAsync(CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "host/close", new { }, cancellationToken);

@@ -1,4 +1,4 @@
-using System.Buffers.Text;
+﻿using System.Buffers.Text;
 using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -311,13 +311,18 @@ public static class LocalAddresses
 /// </summary>
 public sealed class WorldGuest : IDisposable
 {
-    private readonly IPEndPoint _doorman;
+    private readonly Func<CancellationToken, Task<Stream>> _reach;
     private readonly string _token;
     private readonly TcpListener _listener;
 
-    public WorldGuest(IPEndPoint doorman, string token)
+    /// <summary>
+    /// <paramref name="reach"/> is however the host is got hold of: a socket to their machine when
+    /// there is a route to it, or a relayed connection when there is not. Everything past that
+    /// point is the same either way, which is the point of taking it as a stream.
+    /// </summary>
+    public WorldGuest(Func<CancellationToken, Task<Stream>> reach, string token)
     {
-        _doorman = doorman;
+        _reach = reach;
         _token = token;
 
         _listener = new TcpListener(IPAddress.Loopback, 0);
@@ -350,10 +355,7 @@ public sealed class WorldGuest : IDisposable
 
         try
         {
-            using var host = new TcpClient();
-            await host.ConnectAsync(_doorman, cancellationToken).ConfigureAwait(false);
-
-            await using var toHost = host.GetStream();
+            await using var toHost = await _reach(cancellationToken).ConfigureAwait(false);
 
             await Handshake.WriteLineAsync(toHost, $"{Handshake.Greeting} {_token}", cancellationToken).ConfigureAwait(false);
 

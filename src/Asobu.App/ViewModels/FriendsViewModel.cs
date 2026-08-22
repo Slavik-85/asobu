@@ -415,6 +415,12 @@ public partial class FriendsViewModel : ViewModelBase
     /// </summary>
     private string? _share;
 
+    /// <summary>
+    /// The host's end of the relay, held open while a world is. It is what lets somebody on the
+    /// other side of the world join, since neither machine can be reached from the internet.
+    /// </summary>
+    private RelayLink? _relay;
+
     /// <summary>What the friends page is doing about a join, while it is doing it.</summary>
     [ObservableProperty] public partial string? JoinStatus { get; set; }
 
@@ -474,6 +480,7 @@ public partial class FriendsViewModel : ViewModelBase
         MyWorld = null;
         _toldNetworkAboutWorld = false;
         _share = null;
+        CloseRelay();
         _launcher.Session.StopVouchingForEveryone();
         _invited.Clear();
         foreach (var row in Friends) row.IsInvited = false;
@@ -511,8 +518,17 @@ public partial class FriendsViewModel : ViewModelBase
 
         // Made once, as the world opens. Reading every file in the instance and asking the server
         // for a code is not something to repeat every few seconds.
-        if (opening) _share = await ShareRunningInstanceAsync();
-        if (world is null) _share = null;
+        if (opening)
+        {
+            _share = await ShareRunningInstanceAsync();
+            await OpenRelayAsync(world!.DoormanPort);
+        }
+
+        if (world is null)
+        {
+            _share = null;
+            CloseRelay();
+        }
 
         try
         {
@@ -524,7 +540,8 @@ public partial class FriendsViewModel : ViewModelBase
                     _launcher.Running is { } playing
                         ? InstanceFingerprint.Of(_launcher.Paths, playing)
                         : null,
-                    _share);
+                    _share,
+                    _relay?.Session);
 
             // A world the server had forgotten comes back empty, so everybody who was let in has
             // to be handed to it again. Only on the turn it reopens, not every heartbeat.
@@ -533,6 +550,31 @@ public partial class FriendsViewModel : ViewModelBase
         catch (Exception)
         {
         }
+    }
+
+    /// <summary>
+    /// Opens the relay for this world. Failing is not fatal: friends who can reach this machine
+    /// directly still can, and the rest are told nobody could be reached, which is what would
+    /// have happened anyway.
+    ///
+    /// The port is read each time rather than captured, because a world reopened during the same
+    /// session gets a new door and the relay has to reach the current one.
+    /// </summary>
+    private async Task OpenRelayAsync(int doormanPort)
+    {
+        CloseRelay();
+
+        var link = _launcher.Friends.OpenRelay(() => MyWorld?.DoormanPort ?? doormanPort);
+        if (link is null) return;
+
+        if (await link.OpenAsync()) _relay = link;
+        else link.Dispose();
+    }
+
+    private void CloseRelay()
+    {
+        _relay?.Dispose();
+        _relay = null;
     }
 
     /// <summary>

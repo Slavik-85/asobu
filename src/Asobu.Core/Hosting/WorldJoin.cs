@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 
 namespace Asobu.Core.Hosting;
@@ -26,12 +26,18 @@ public sealed class WorldJoin : IDisposable
     /// Long enough for a distant host on a bad line, short enough that a dead address does not
     /// hold up a join that was going to work anyway.
     /// </summary>
-    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(8);
+
+    /// <summary>How the host says "the server will carry this one".</summary>
+    public const string RelayPrefix = "relay:";
+
+    /// <summary>Same 443 as the rest of the API, so no network has a reason to object to it.</summary>
+    public const string RelayUrl = "wss://api.asobu.cc/v1/relay";
 
     private readonly WorldGuest _guest;
     private readonly CancellationTokenSource _stop = new();
 
-    private WorldJoin(WorldGuest guest, IPEndPoint door)
+    private WorldJoin(WorldGuest guest, string door)
     {
         _guest = guest;
         Door = door;
@@ -40,7 +46,7 @@ public sealed class WorldJoin : IDisposable
     }
 
     /// <summary>Which of the host's addresses turned out to be the one that works.</summary>
-    public IPEndPoint Door { get; }
+    public string Door { get; }
 
     /// <summary>Give the game this, and it joins the friend's world.</summary>
     public string Address => $"127.0.0.1:{_guest.Port}";
@@ -55,20 +61,15 @@ public sealed class WorldJoin : IDisposable
     public static async Task<WorldJoin> ReachAsync(
         IEnumerable<string> addresses, string pass, CancellationToken cancellationToken = default)
     {
-        // The port is checked separately because TryParse is happy to read a bare "1.2.3.4" and
-        // hand back port zero, which is not an address anybody is listening on.
-        var candidates = addresses
-            .Select(text => IPEndPoint.TryParse(text, out var endpoint) && endpoint.Port > 0 ? endpoint : null)
-            .OfType<IPEndPoint>()
-            .ToList();
+        var routes = addresses.Select(Route.Read).OfType<Route>().ToList();
 
-        if (candidates.Count == 0)
+        if (routes.Count == 0)
             throw new WorldJoinException("They haven't said where to find them yet. Try again in a moment.");
 
         using var race = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        var probes = candidates.Select(endpoint => ProbeAsync(endpoint, pass, race.Token)).ToList();
-        IPEndPoint? door = null;
+        var probes = routes.Select(route => ProbeAsync(route, pass, race.Token)).ToList();
+        Route? door = null;
         var refused = false;
 
         while (probes.Count > 0)
@@ -76,10 +77,10 @@ public sealed class WorldJoin : IDisposable
             var finished = await Task.WhenAny(probes).ConfigureAwait(false);
             probes.Remove(finished);
 
-            var (endpoint, outcome) = await finished.ConfigureAwait(false);
+            var (route, outcome) = await finished.ConfigureAwait(false);
             if (outcome == Outcome.Reached)
             {
-                door = endpoint;
+                door = route;
                 break;
             }
 
@@ -94,9 +95,49 @@ public sealed class WorldJoin : IDisposable
         if (door is null)
             throw new WorldJoinException(refused
                 ? "They haven't invited you, or the invite has run out. Ask them to invite you again."
-                : "Couldn't reach their machine. They may have closed the world, or their network is in the way.");
+                : "Couldn't reach them at all. They may have closed the world, or gone offline.");
 
-        return new WorldJoin(new WorldGuest(door, pass), door);
+        return new WorldJoin(new WorldGuest(door.Open, pass), door.Label);
+    }
+
+    /// <summary>
+    /// One way of getting hold of the host: straight to their machine, or through the relay when
+    /// nothing can reach it. Both end up as a stream, so everything after this stops caring which.
+    /// </summary>
+    private sealed record Route(string Label, Func<CancellationToken, Task<Stream>> Open)
+    {
+        /// <summary>
+        /// Reads one of the addresses the host published. "relay:abc" is the server offering to
+        /// carry it; anything else is an address to try directly. Null for anything unreadable,
+        /// including a bare IP with no port, which TryParse otherwise accepts as port zero.
+        /// </summary>
+        public static Route? Read(string address)
+        {
+            if (address.StartsWith(RelayPrefix, StringComparison.Ordinal))
+            {
+                var session = address[RelayPrefix.Length..];
+                if (session.Length == 0) return null;
+
+                return new Route(address, async token =>
+                {
+                    var socket = await RelayLink
+                        .ConnectAsync($"{RelayUrl}?role=guest&session={session}", null, token)
+                        .ConfigureAwait(false);
+
+                    return new WebSocketStream(socket);
+                });
+            }
+
+            if (!IPEndPoint.TryParse(address, out var endpoint) || endpoint.Port <= 0) return null;
+
+            return new Route(address, async token =>
+            {
+                var client = new TcpClient();
+                await client.ConnectAsync(endpoint, token).ConfigureAwait(false);
+
+                return client.GetStream();
+            });
+        }
     }
 
     private enum Outcome
@@ -118,26 +159,25 @@ public sealed class WorldJoin : IDisposable
     /// comes back — because a bare connection proves only that something is listening on that
     /// port, which on somebody's home network is not the same as it being their world.
     /// </summary>
-    private static async Task<(IPEndPoint Endpoint, Outcome Outcome)> ProbeAsync(
-        IPEndPoint endpoint, string pass, CancellationToken cancellationToken)
+    private static async Task<(Route Route, Outcome Outcome)> ProbeAsync(
+        Route route, string pass, CancellationToken cancellationToken)
     {
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(ProbeTimeout);
 
-            using var client = new TcpClient();
-            await client.ConnectAsync(endpoint, timeout.Token).ConfigureAwait(false);
-
-            await using var stream = client.GetStream();
+            await using var stream = await route.Open(timeout.Token).ConfigureAwait(false);
             await Handshake.WriteLineAsync(stream, $"{Handshake.Greeting} {pass}", timeout.Token).ConfigureAwait(false);
 
             var answer = await Handshake.ReadLineAsync(stream, timeout.Token).ConfigureAwait(false);
-            return (endpoint, answer == Handshake.Accepted ? Outcome.Reached : Outcome.Refused);
+            return (route, answer == Handshake.Accepted ? Outcome.Reached : Outcome.Refused);
         }
-        catch (Exception e) when (e is SocketException or IOException or OperationCanceledException or ObjectDisposedException)
+        catch (Exception e) when (e is SocketException or IOException or OperationCanceledException
+                                   or ObjectDisposedException or System.Net.WebSockets.WebSocketException
+                                   or HttpRequestException)
         {
-            return (endpoint, Outcome.Unreachable);
+            return (route, Outcome.Unreachable);
         }
     }
 
