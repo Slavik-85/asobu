@@ -102,6 +102,9 @@ public sealed class AsobuLauncher
     /// </summary>
     public Instance? Running { get; private set; }
 
+    /// <summary>Games started by this launcher and still alive.</summary>
+    private readonly List<Process> _games = [];
+
     /// <summary>
     /// Asobu's stand-in for Mojang's session server, so an invited friend without a Microsoft
     /// account can be let into a world. Started on the first launch and left running; it forwards
@@ -397,16 +400,63 @@ public sealed class AsobuLauncher
         });
 
         Running = instance;
+        lock (_games) _games.Add(process);
+
         process.Exited += (_, _) =>
         {
             LanPorts.Forget();
             Running = null;
+            lock (_games) _games.Remove(process);
         };
 
         instance.LastPlayed = DateTimeOffset.UtcNow;
         Instances.Save(instance);
 
         return process;
+    }
+
+    /// <summary>
+    /// Closes any game this launcher started, on the way out.
+    ///
+    /// Minecraft normally outlives its launcher, and for most launchers that is the right way
+    /// round. Not for this one: the tunnel a friend is connected through, the door in front of the
+    /// world, and the stand-in that vouched for whoever is standing in it all live in this process.
+    /// A game left running once this closes is one whose multiplayer has quietly stopped working
+    /// and whose owner has no way of knowing.
+    ///
+    /// Asked to close rather than killed. Closing the window is how Minecraft is meant to be told
+    /// to stop, and it saves the world on the way; killing it outright would throw away whatever
+    /// had happened since the last autosave. The kill is only for a game that will not go.
+    /// </summary>
+    public void StopGames(TimeSpan within)
+    {
+        Process[] games;
+        lock (_games) games = [.. _games];
+
+        foreach (var game in games)
+        {
+            try { if (!game.HasExited) game.CloseMainWindow(); }
+            catch (Exception e) when (e is InvalidOperationException or PlatformNotSupportedException)
+            {
+                // No window to close — a headless or already-gone process. The wait below sorts it.
+            }
+        }
+
+        var deadline = DateTime.UtcNow + within;
+        foreach (var game in games)
+        {
+            try
+            {
+                var left = deadline - DateTime.UtcNow;
+                if (left > TimeSpan.Zero) game.WaitForExit(left);
+
+                if (!game.HasExited) game.Kill(entireProcessTree: true);
+            }
+            catch (Exception e) when (e is InvalidOperationException or NotSupportedException or SystemException)
+            {
+                // Already gone, or not ours to kill. Either way there is nothing left to do.
+            }
+        }
     }
 
     /// <summary>
