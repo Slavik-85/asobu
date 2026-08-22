@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Asobu.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -61,7 +61,7 @@ public partial class TourViewModel : ViewModelBase
             "Search Modrinth and CurseForge together, filtered to a version and a loader so everything you see actually fits."),
 
         new("FriendsButton", "Your friends, from anywhere",
-            "Signing in with Microsoft puts you on the Asobu network. Add people by their Minecraft name and see who's around."),
+            "Sign in and you are on the Asobu network. Add people by their Minecraft name, or by name and tag for an offline account, and see who's around."),
 
         new("AccountChip", "Who you're playing as",
             "Add as many accounts as you like and switch whenever. The one selected here is the one Play uses."),

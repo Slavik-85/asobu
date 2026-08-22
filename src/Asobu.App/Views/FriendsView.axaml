@@ -74,8 +74,11 @@
           <!-- Both at one font size, which is what actually puts them on the same line. Centring
                each vertically only centres its own box, and a 12.5px box beside a 13px one is
                shorter — so the two sit at slightly different heights however they are aligned.
-               The label keeps its muted colour and gives up only the half-pixel. -->
-          <StackPanel Orientation="Horizontal" Spacing="9" Margin="34,0"
+               The label keeps its muted colour and gives up only the half-pixel.
+
+               Spacing of four, which is about what a space is at this size. Nine read as a gap
+               between two things; this is one sentence and should read as one. -->
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="34,0"
                       HorizontalAlignment="Center" VerticalAlignment="Center">
             <TextBlock Text="You are" Classes="label" FontSize="13" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding MyHandle}" FontWeight="SemiBold" FontSize="13"
@@ -118,7 +121,7 @@
         <TextBlock Text="No friends yet" Classes="h2" HorizontalAlignment="Center"
                    Foreground="{DynamicResource TextMuted}"/>
         <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
-                   Text="Anyone who has signed in to Asobu with Microsoft can be added — just their Minecraft username, up there."/>
+                   Text="Anyone on Asobu can be added, up there. A Microsoft account goes by its Minecraft username; an offline one by its name and tag, like Player#4963."/>
       </StackPanel>
 
       <ScrollViewer Grid.Row="3" ctrl:SmoothScroll.Enabled="True" Margin="0,16,0,0"
