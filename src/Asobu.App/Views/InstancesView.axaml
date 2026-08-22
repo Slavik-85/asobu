@@ -207,7 +207,10 @@
         </StackPanel>
 
         <!-- Launching from a card shows no page, so progress surfaces here instead. -->
-        <Border Classes="card" VerticalAlignment="Bottom" Margin="0,0,0,20" Padding="16,12"
+        <!-- Stops short of the friends button in the corner. That button reaches 74px in from the
+             window edge and this page is already inset 30, so the last 44 belong to it; Kill sat
+             underneath and could not be pressed. The extra 12 keeps them from touching. -->
+        <Border Classes="card" VerticalAlignment="Bottom" Margin="0,0,56,20" Padding="16,12"
                 IsVisible="{Binding IsLaunchingFromLibrary}">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
             <StackPanel Grid.Column="0" Spacing="7" VerticalAlignment="Center">
