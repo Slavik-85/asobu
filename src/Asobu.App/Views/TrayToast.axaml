@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Asobu.App.Views.TrayToast"
+        Width="308" Height="86"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        CanResize="False"
+        ShowActivated="False">
+
+  <!-- Its own window rather than an OS notification. Windows toasts want a packaged app
+       identity and Linux ones want a notification daemon that may not be there, so a plain
+       window is the one thing both platforms are guaranteed to be able to draw. -->
+  <Border Background="{DynamicResource Surface}"
+          BorderBrush="{DynamicResource Border}"
+          BorderThickness="1"
+          CornerRadius="12"
+          Margin="6"
+          BoxShadow="0 6 20 0 #33000000"
+          PointerPressed="Toast_Pressed">
+    <Grid ColumnDefinitions="Auto,*" Margin="14,12">
+      <Image Grid.Column="0" Source="/Assets/asobu.png" Width="30" Height="30"
+             VerticalAlignment="Center" Margin="0,0,12,0"/>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+        <TextBlock Text="Asobu is still running" FontWeight="SemiBold" FontSize="13"
+                   Foreground="{DynamicResource Text}"/>
+        <TextBlock Text="Find it in the tray. Click here to open it again."
+                   FontSize="12" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextMuted}"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>
