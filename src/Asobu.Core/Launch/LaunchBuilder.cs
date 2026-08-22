@@ -85,7 +85,7 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
             arguments.AddRange(structured.Jvm
                 .Where(a => RuleEvaluator.Allows(a, platform))
                 .SelectMany(a => a.Values)
-                .Select(value => Substitute(value, values)));
+                .Select(value => Substitute(value, JvmValues(values, version))));
         }
         else
         {
@@ -118,6 +118,39 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         if (joinServer is { Length: > 0 } address) arguments.AddRange(JoinArguments(version, address));
 
         return new LaunchPlan(javaExecutable, arguments, gameDirectory);
+    }
+
+    /// <summary>
+    /// The same substitutions, except that <c>version_name</c> names the client jar rather than the
+    /// profile.
+    ///
+    /// Only Forge reads it from a JVM argument, and what it does with it is this:
+    ///
+    /// <code>-DignoreList=…,client-extra,fmlcore,…,forge-,${version_name}.jar</code>
+    ///
+    /// BootstrapLauncher matches that list against the file names on the class path and keeps
+    /// whatever matches <i>off</i> the module path. The entry is there to exclude the vanilla
+    /// client jar, which Forge loads itself through its own union filesystem. Substituting the
+    /// profile — "1.19.2-forge-43.5.0" — produces a name no file has, so nothing is excluded, the
+    /// vanilla jar lands on the module path beside Forge's own view of it, and two modules end up
+    /// exporting com.mojang.blaze3d.system. Java refuses to start:
+    ///
+    /// <code>Module minecraft contains package com.mojang.blaze3d.system</code>
+    ///
+    /// Taken from JarVersionId rather than from the instance, because that is the same property
+    /// the class path is built from — so the name here cannot drift from the file actually there.
+    ///
+    /// Game arguments keep the profile: <c>--version</c> is what F3 shows, and it should say which
+    /// profile is running rather than which jar it was built on.
+    /// </summary>
+    private static Dictionary<string, string> JvmValues(Dictionary<string, string> values, VersionJson version)
+    {
+        if (version.JarVersionId == version.Id) return values;
+
+        return new Dictionary<string, string>(values, StringComparer.Ordinal)
+        {
+            ["version_name"] = version.JarVersionId,
+        };
     }
 
     /// <summary>
