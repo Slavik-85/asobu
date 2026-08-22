@@ -1,6 +1,7 @@
 ﻿using System.IO.Compression;
 using System.Diagnostics;
 using Asobu.Core.Accounts;
+using Asobu.Core.Hosting;
 using Asobu.Core.Diagnostics;
 using Asobu.Core.Instances;
 using Asobu.Core.Java;
@@ -86,6 +87,12 @@ public sealed class AsobuLauncher
 
     /// <summary>Shared client, already carrying Asobu's user agent.</summary>
     public HttpClient Http { get; }
+
+    /// <summary>
+    /// Which port the running game has opened to LAN, read from its own output. Lives here
+    /// because the page that starts the game and the page that hosts it are different ones.
+    /// </summary>
+    public LanPortWatch LanPorts { get; } = new();
 
     /// <summary>
     /// Pictures kept on disk between runs. Every screen that shows artwork goes through this
@@ -354,7 +361,17 @@ public sealed class AsobuLauncher
 
         progress?.Report(new InstallProgress("Starting Minecraft", 1));
         var plan = _launchBuilder.Build(version, instance, settings, session, javaExecutable, joinServer);
-        var process = _gameLauncher.Start(plan, instance, onOutput);
+
+        // Every line the game prints passes the port watch on its way to whoever asked for it.
+        // Hooked here rather than at the call sites so that opening a world to LAN is noticed
+        // however the game was started.
+        var process = _gameLauncher.Start(plan, instance, line =>
+        {
+            LanPorts.Note(line);
+            onOutput?.Invoke(line);
+        });
+
+        process.Exited += (_, _) => LanPorts.Forget();
 
         instance.LastPlayed = DateTimeOffset.UtcNow;
         Instances.Save(instance);

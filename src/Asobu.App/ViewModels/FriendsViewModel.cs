@@ -418,7 +418,7 @@ public partial class FriendsViewModel : ViewModelBase
         var stopping = new CancellationTokenSource();
         _hostLoop = stopping;
 
-        var host = new WorldHost(_hostSecret, account.Username);
+        var host = new WorldHost(_hostSecret, account.Username, ports: _launcher.LanPorts);
         host.Changed += world => Dispatcher.UIThread.Post(() => _ = PublishWorldAsync(world));
         _worldHost = host;
 

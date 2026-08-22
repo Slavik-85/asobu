@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -9,10 +9,52 @@ namespace Asobu.Core.Hosting;
 public sealed record LanWorld(int Port, string Name);
 
 /// <summary>
-/// What the world says about itself when asked. The name comes from the beacon; this is the part
-/// that changes, plus the version, which decides who can join at all.
+/// What the world says about itself when asked: how busy it is, what it is called, and which
+/// version it runs — the last of which decides who can join at all.
 /// </summary>
-public sealed record WorldStatus(int Players, int MaxPlayers, string? Version = null);
+public sealed record WorldStatus(int Players, int MaxPlayers, string? Version = null, string? Name = null);
+
+/// <summary>
+/// Where the world is, read from the game's own output.
+///
+/// The beacon was the first answer and it is the wrong one for our own game. It depends on the
+/// machine looping multicast back to another process, across whichever of its interfaces the game
+/// happened to pick — on a machine with a VPN, WSL and two hypervisors that is six interfaces and
+/// a coin toss, and on this developer's it simply never arrived. The launcher started the game and
+/// is already reading every line it prints, so the port is sitting in hand:
+///
+/// <code>[Render thread/INFO] [minecraft/IntegratedServer]: Started serving on 60731</code>
+///
+/// It also fixes something the beacon could never get right. Two launchers on one machine both
+/// hear the same announcement and both claim the world; only one of them started the game.
+/// </summary>
+public sealed class LanPortWatch
+{
+    /// <summary>
+    /// 1.13 and later say "Started serving on 60731"; 1.8.9 says "Started on 0.0.0.0:60731". One
+    /// pattern for both, because the alternative is a table of spellings per version.
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex Published = new(
+        @"Started (?:serving )?on (?:[^\s:]*:)?(\d{1,5})\b",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The port the running game opened to LAN, or null when it has not opened one.</summary>
+    public int? Port { get; private set; }
+
+    /// <summary>Every line the game prints goes past here. Almost none of them match.</summary>
+    public void Note(string line)
+    {
+        if (Published.Match(line) is { Success: true } found
+            && int.TryParse(found.Groups[1].Value, out var port)
+            && port is > 0 and <= 65535)
+        {
+            Port = port;
+        }
+    }
+
+    /// <summary>The game is gone, so whatever it had open is gone with it.</summary>
+    public void Forget() => Port = null;
+}
 
 /// <summary>
 /// Finds the world the player just opened to LAN, by listening for the game's own announcement.
@@ -194,6 +236,24 @@ public static class ServerPing
         var version = document.RootElement.TryGetProperty("version", out var v)
             && v.TryGetProperty("name", out var named) ? named.GetString() : null;
 
-        return new WorldStatus(online, max, version);
+        var name = document.RootElement.TryGetProperty("description", out var described)
+            ? Flatten(described)
+            : null;
+
+        return new WorldStatus(online, max, version, string.IsNullOrWhiteSpace(name) ? null : name.Trim());
     }
+
+    /// <summary>
+    /// The description is a chat component: sometimes a bare string, sometimes a tree of pieces
+    /// with colours on them. Only the words are wanted, so this walks it and keeps those.
+    /// </summary>
+    private static string Flatten(JsonElement component) => component.ValueKind switch
+    {
+        JsonValueKind.String => component.GetString() ?? "",
+        JsonValueKind.Array => string.Concat(component.EnumerateArray().Select(Flatten)),
+        JsonValueKind.Object =>
+            (component.TryGetProperty("text", out var text) ? text.GetString() ?? "" : "")
+            + (component.TryGetProperty("extra", out var extra) ? Flatten(extra) : ""),
+        _ => "",
+    };
 }

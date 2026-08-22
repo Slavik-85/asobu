@@ -1,4 +1,4 @@
-namespace Asobu.Core.Hosting;
+﻿namespace Asobu.Core.Hosting;
 
 /// <summary>
 /// What the friends network should be told about the world right now. Null everywhere else in
@@ -44,11 +44,26 @@ public sealed class WorldHost : IDisposable
         byte[] secret,
         string hostUsername,
         Func<CancellationToken, Task<LanWorld?>>? findWorld = null,
-        Func<int, CancellationToken, Task<WorldStatus?>>? askStatus = null)
+        Func<int, CancellationToken, Task<WorldStatus?>>? askStatus = null,
+        LanPortWatch? ports = null)
     {
         _secret = secret;
         _hostUsername = hostUsername;
-        _findWorld = findWorld ?? (token => LanBeacon.FindAsync(Window, token));
+
+        // The game we started is the one we can hear. The beacon stays as a second answer for a
+        // version that stops printing the line, but it is not the one being relied on — see
+        // LanPortWatch for why listening for it turned out to be the wrong way round.
+        _findWorld = findWorld ?? (async token =>
+        {
+            if (ports?.Port is { } port)
+            {
+                // Keeps the loop's cadence. Without it there is nothing to wait on and this spins.
+                await Task.Delay(Window, token).ConfigureAwait(false);
+                return new LanWorld(port, "");
+            }
+
+            return await LanBeacon.FindAsync(Window, token).ConfigureAwait(false);
+        });
         _askStatus = askStatus ?? ((port, token) =>
             ServerPing.QueryAsync("127.0.0.1", port, TimeSpan.FromSeconds(3), token));
     }
@@ -101,8 +116,12 @@ public sealed class WorldHost : IDisposable
 
         var status = await _askStatus(world.Port, cancellationToken).ConfigureAwait(false);
 
+        // The name comes from whichever source had one: the beacon carries it, the log does not,
+        // and the world itself will say when asked.
+        var name = world.Name is { Length: > 0 } announced ? announced : status?.Name ?? "A world";
+
         Publish(new HostedWorld(
-            world.Name, status?.Players ?? 0, status?.MaxPlayers ?? 0, _doorman!.Port, status?.Version));
+            name, status?.Players ?? 0, status?.MaxPlayers ?? 0, _doorman!.Port, status?.Version));
     }
 
     private void OpenDoor(int lanPort, CancellationToken cancellationToken)
