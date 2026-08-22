@@ -41,6 +41,13 @@ public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffse
 /// </summary>
 public sealed record FriendWorld(string Name, int Players, int Max)
 {
+    /// <summary>
+    /// What the world reports itself as — "1.21.8", or whatever a modded server calls itself.
+    /// Used to grey out instances that could not join it. Null from a host who could not be
+    /// asked, in which case nothing is greyed rather than everything.
+    /// </summary>
+    public string? Version { get; init; }
+
     /// <summary>Where the host's door might be, cheapest first: their network, then the internet.</summary>
     public IReadOnlyList<string> Addresses { get; init; } = [];
 
@@ -267,9 +274,10 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// without anybody having to notice.
     /// </summary>
     public Task OpenWorldAsync(
-        string name, int players, int max, int port, CancellationToken cancellationToken = default) =>
+        string name, int players, int max, int port, string? version,
+        CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "host/open",
-            new { name, players, max, port, local = LocalAddresses.For(port) }, cancellationToken);
+            new { name, players, max, port, version, local = LocalAddresses.For(port) }, cancellationToken);
 
     public Task CloseWorldAsync(CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "host/close", new { }, cancellationToken);

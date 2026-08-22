@@ -40,6 +40,17 @@ public partial class MainViewModel : ViewModelBase
         {
             _ = CloseFriendsAsync();
             GoAccounts();
+        },
+        AskInstall,
+
+        // Joining a friend's world lands in the same place joining a server does: the drawer
+        // closes, the instances page takes over, and there is still only one way to start
+        // Minecraft in this launcher.
+        async (instance, address) =>
+        {
+            await CloseFriendsAsync();
+            GoInstances();
+            return await InstancesPage.PlayOnServerAsync(instance, address);
         });
 
         // A second browser rather than the same one wearing a hat: the sidebar's Browse keeps

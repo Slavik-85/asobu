@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
@@ -59,7 +59,7 @@
                VerticalAlignment="Center" IsVisible="{Binding IsConnecting}"/>
 
     <!-- ============ The list itself ============ -->
-    <Grid RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsConnected}" IsEnabled="{Binding !IsChatting}">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" IsVisible="{Binding IsConnected}" IsEnabled="{Binding !IsChatting}">
 
       <!-- An offline account's own handle, kept on screen rather than said once when it joined.
            The four digits are not chosen and not memorable, and they are the half a friend cannot
@@ -110,12 +110,26 @@
         <Button Grid.Column="1" Classes="primary" Content="Add" Command="{Binding AddFriendCommand}"/>
       </Grid>
 
-      <TextBlock Grid.Row="2" Text="{Binding Notice}" Classes="notice" TextWrapping="Wrap" Margin="2,8,2,0"
+      <!-- Your own world, when you have one open. Nobody switched this on: the launcher noticed
+           the game announcing a world and put a door in front of it. So the banner's job is to
+           say that it happened, because an invisible thing that opened your machine to friends
+           would be a surprise rather than a feature. -->
+      <Border Grid.Row="2" Classes="handleBar" IsVisible="{Binding IsHostingWorld}" Margin="0,10,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="6" Margin="12,0"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="Hosting" Classes="label" FontSize="13" VerticalAlignment="Center"/>
+          <TextBlock Text="{Binding MyWorldLabel}" FontWeight="SemiBold" FontSize="13"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource Accent}"/>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Grid.Row="3" Text="{Binding Notice}" Classes="notice" TextWrapping="Wrap" Margin="2,8,2,0"
                  Classes.good="{Binding NoticeIsGood}"
                  IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 
       <!-- Empty network -->
-      <StackPanel Grid.Row="3" VerticalAlignment="Center" Spacing="8" Margin="10"
+      <StackPanel Grid.Row="4" VerticalAlignment="Center" Spacing="8" Margin="10"
                   IsVisible="{Binding IsEmpty}">
         <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
         <TextBlock Text="No friends yet" Classes="h2" HorizontalAlignment="Center"
@@ -124,7 +138,7 @@
                    Text="Anyone on Asobu can be added, up there. A Microsoft account goes by its Minecraft username; an offline one by its name and tag, like Player#4963."/>
       </StackPanel>
 
-      <ScrollViewer Grid.Row="3" ctrl:SmoothScroll.Enabled="True" Margin="0,16,0,0"
+      <ScrollViewer Grid.Row="4" ctrl:SmoothScroll.Enabled="True" Margin="0,16,0,0"
                     IsVisible="{Binding !IsEmpty}">
         <StackPanel Spacing="18">
 
@@ -188,11 +202,35 @@
                       </Panel>
                       <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+
+                        <!-- The world takes the presence line's place rather than sitting under
+                             it: somebody with a world open is online by definition, so saying
+                             both would spend a second line agreeing with itself. -->
                         <TextBlock Text="{Binding PresenceLabel}" Classes="label"
-                                   Classes.online="{Binding Online}"/>
+                                   Classes.online="{Binding Online}" IsVisible="{Binding !IsHosting}"/>
+                        <TextBlock Text="{Binding WorldLabel}" Classes="label"
+                                   IsVisible="{Binding IsHosting}" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource Accent}"/>
                       </StackPanel>
                       <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2"
                                   VerticalAlignment="Center">
+                        <!-- Only for a world you were actually invited to. A friend hosting
+                             something you cannot join shows the world and no button, which reads
+                             as "not for you" rather than as a button that does nothing. -->
+                        <Button Classes="confirmRemove" VerticalAlignment="Center" Content="Join"
+                                Background="{DynamicResource Accent}" Foreground="{DynamicResource OnAccent}"
+                                IsVisible="{Binding CanJoin}"
+                                Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).JoinCommand}"
+                                CommandParameter="{Binding}"/>
+
+                        <!-- Appears only while you have a world open, because that is the only
+                             time there is anything to invite anybody to. -->
+                        <Button Classes="quiet" VerticalAlignment="Center"
+                                Content="{Binding InviteLabel}"
+                                IsVisible="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).IsHostingWorld}"
+                                Command="{Binding $parent[ItemsControl].((vm:FriendsViewModel)DataContext).InviteCommand}"
+                                CommandParameter="{Binding}"/>
+
                         <!-- What they said while you were looking at something else. -->
                         <Border Classes="unreadBadge" IsVisible="{Binding HasUnread}">
                           <TextBlock Text="{Binding UnreadLabel}" FontSize="10.5" FontWeight="SemiBold"

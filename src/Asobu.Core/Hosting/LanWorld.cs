@@ -8,8 +8,11 @@ namespace Asobu.Core.Hosting;
 /// <summary>A world somebody has opened to LAN, as the game itself announces it.</summary>
 public sealed record LanWorld(int Port, string Name);
 
-/// <summary>How busy a world is. The name comes from the beacon; only the count needs asking.</summary>
-public sealed record WorldStatus(int Players, int MaxPlayers);
+/// <summary>
+/// What the world says about itself when asked. The name comes from the beacon; this is the part
+/// that changes, plus the version, which decides who can join at all.
+/// </summary>
+public sealed record WorldStatus(int Players, int MaxPlayers, string? Version = null);
 
 /// <summary>
 /// Finds the world the player just opened to LAN, by listening for the game's own announcement.
@@ -141,7 +144,7 @@ public static class ServerPing
             var at = 0;
             if (McProtocol.ReadVarInt(packet.Body, ref at) != 0x00) return null;
 
-            return ReadCounts(McProtocol.ReadString(packet.Body, ref at));
+            return ReadStatus(McProtocol.ReadString(packet.Body, ref at));
         }
         catch (Exception e) when (e is SocketException or IOException or OperationCanceledException or JsonException)
         {
@@ -175,11 +178,11 @@ public static class ServerPing
     }
 
     /// <summary>
-    /// Reads only the counts. The reply also carries a description, a favicon and a sample of
-    /// player names, all of which would need chat-component parsing to use and none of which is
-    /// wanted here — the beacon already said what the world is called.
+    /// Reads the counts and the version. The reply also carries a description, a favicon and a
+    /// sample of player names, none of which is wanted here — the beacon already said what the
+    /// world is called, and the rest would need chat-component parsing to use.
     /// </summary>
-    private static WorldStatus? ReadCounts(string json)
+    private static WorldStatus? ReadStatus(string json)
     {
         using var document = JsonDocument.Parse(json);
 
@@ -188,6 +191,9 @@ public static class ServerPing
         var online = players.TryGetProperty("online", out var o) && o.TryGetInt32(out var count) ? count : 0;
         var max = players.TryGetProperty("max", out var m) && m.TryGetInt32(out var limit) ? limit : 0;
 
-        return new WorldStatus(online, max);
+        var version = document.RootElement.TryGetProperty("version", out var v)
+            && v.TryGetProperty("name", out var named) ? named.GetString() : null;
+
+        return new WorldStatus(online, max, version);
     }
 }

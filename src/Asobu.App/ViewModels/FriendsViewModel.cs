@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 using Asobu.App.Controls;
 using Asobu.Core;
 using Asobu.Core.Accounts;
+using Asobu.Core.Hosting;
+using Asobu.Core.Instances;
+using Asobu.Core.Mods;
 using Asobu.Core.Online;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -29,6 +32,37 @@ public partial class FriendRow(Friend friend) : ViewModelBase
     public string Name => friend.Handle;
 
     public bool Online => friend.Online;
+
+    /// <summary>
+    /// The bare Minecraft name, without the tag. This is what they will arrive at a world under,
+    /// so it is what a pass has to be signed for — the handle would never match.
+    /// </summary>
+    public string PlayerName => friend.Name;
+
+    /// <summary>The world they have open, kept current in place so a count ticking over doesn't rebuild the row.</summary>
+    [ObservableProperty] public partial FriendWorld? World { get; set; }
+
+    /// <summary>They have let me in. Set only for a world of theirs, never for mine.</summary>
+    public bool CanJoin => World is { AmInvited: true };
+
+    public bool IsHosting => World is not null;
+
+    /// <summary>"Skyblock · 2/8", the whole of what a friend's world looks like in a list.</summary>
+    public string WorldLabel => World is null ? "" : $"{World.Name} · {World.Busy}";
+
+    /// <summary>Whether I have invited them to mine. Mine to set, so it is not read from them.</summary>
+    [ObservableProperty] public partial bool IsInvited { get; set; }
+
+    public string InviteLabel => IsInvited ? "Invited" : "Invite";
+
+    partial void OnIsInvitedChanged(bool value) => OnPropertyChanged(nameof(InviteLabel));
+
+    partial void OnWorldChanged(FriendWorld? value)
+    {
+        OnPropertyChanged(nameof(CanJoin));
+        OnPropertyChanged(nameof(IsHosting));
+        OnPropertyChanged(nameof(WorldLabel));
+    }
 
     /// <summary>Their chat key, or null when they have not published one.</summary>
     public string? PublicKey => friend.PublicKey;
@@ -87,6 +121,13 @@ public partial class FriendsViewModel : ViewModelBase
     private readonly AccountsViewModel _accounts;
     private readonly Action _goAccounts;
 
+    /// <summary>
+    /// The same sheet the Servers tab uses, and joining goes the same way — through the instances
+    /// page, because the progress, the log and the running state all live over there.
+    /// </summary>
+    private readonly AskInstall _askJoin;
+    private readonly Func<Instance, string, Task<string?>> _join;
+
     /// <summary>Chat history on this computer. Never sent anywhere; see ChatArchive.</summary>
     private readonly ChatArchive _archive;
 
@@ -102,11 +143,18 @@ public partial class FriendsViewModel : ViewModelBase
     /// <summary>What the list currently shows, so an unchanged answer doesn't rebuild it.</summary>
     private string _shown = "";
 
-    public FriendsViewModel(AsobuLauncher launcher, AccountsViewModel accounts, Action goAccounts)
+    public FriendsViewModel(
+        AsobuLauncher launcher,
+        AccountsViewModel accounts,
+        Action goAccounts,
+        AskInstall askJoin,
+        Func<Instance, string, Task<string?>> join)
     {
         _launcher = launcher;
         _accounts = accounts;
         _goAccounts = goAccounts;
+        _askJoin = askJoin;
+        _join = join;
         _archive = new ChatArchive(launcher.Paths);
     }
 
@@ -282,6 +330,7 @@ public partial class FriendsViewModel : ViewModelBase
         {
             IsConnected = true;
             StartWatching();
+            StartHosting();
             _ = EnsureChatKeyAsync();
             return RefreshAsync(quiet: true);
         });
@@ -292,6 +341,7 @@ public partial class FriendsViewModel : ViewModelBase
     {
         // Whatever the old account was watching for is no longer anybody's business here.
         StopWatching();
+        StopHosting();
         _revision = 0;
 
         IsConnected = false;
@@ -318,6 +368,198 @@ public partial class FriendsViewModel : ViewModelBase
         RaiseGates();
 
         _ = TryResumeAsync();
+    }
+
+    // ---- Hosting a world ----
+
+    /// <summary>
+    /// How long a pass is good for. Long enough that nobody is thrown out mid-session, short
+    /// enough that a copy left lying around stops working the same day.
+    ///
+    /// ponytail: un-inviting takes the world off their screen at once, but a pass they already
+    /// held keeps opening the door until this runs out. Add a revocation set on the doorman if
+    /// that gap ever matters.
+    /// </summary>
+    private static readonly TimeSpan PassLife = TimeSpan.FromHours(12);
+
+    private WorldHost? _worldHost;
+    private CancellationTokenSource? _hostLoop;
+    private byte[]? _hostSecret;
+
+    /// <summary>The tunnel into a friend's world, held open for as long as the game is in it.</summary>
+    private WorldJoin? _joined;
+
+    /// <summary>The world this launcher has open, or null. Nobody presses anything to set it.</summary>
+    [ObservableProperty] public partial HostedWorld? MyWorld { get; set; }
+
+    public bool IsHostingWorld => MyWorld is not null;
+
+    public string MyWorldLabel => MyWorld is null
+        ? ""
+        : $"{MyWorld.Name} · {(MyWorld.MaxPlayers > 0 ? $"{MyWorld.Players}/{MyWorld.MaxPlayers}" : MyWorld.Players.ToString())}";
+
+    partial void OnMyWorldChanged(HostedWorld? value)
+    {
+        OnPropertyChanged(nameof(IsHostingWorld));
+        OnPropertyChanged(nameof(MyWorldLabel));
+    }
+
+    /// <summary>
+    /// Starts listening for a world being opened to LAN. Runs for as long as the launcher is
+    /// signed in rather than being switched on: the whole promise is that opening a world is the
+    /// only step, so there is nothing here for anybody to remember to press first.
+    /// </summary>
+    private void StartHosting()
+    {
+        if (_worldHost is not null || _accounts.Active is not { } account) return;
+
+        _hostSecret = HostSecret.For(new TokenVault(_launcher.Paths), account.Uuid);
+
+        var stopping = new CancellationTokenSource();
+        _hostLoop = stopping;
+
+        var host = new WorldHost(_hostSecret, account.Username);
+        host.Changed += world => Dispatcher.UIThread.Post(() => _ = PublishWorldAsync(world));
+        _worldHost = host;
+
+        _ = host.RunAsync(stopping.Token);
+    }
+
+    private void StopHosting()
+    {
+        _hostLoop?.Cancel();
+        _hostLoop = null;
+
+        _worldHost?.Dispose();
+        _worldHost = null;
+
+        _joined?.Dispose();
+        _joined = null;
+
+        MyWorld = null;
+        foreach (var row in Friends) row.IsInvited = false;
+    }
+
+    /// <summary>
+    /// Tells the network what is open, or that nothing is. Failing here is not worth showing: the
+    /// next heartbeat says the same thing a few seconds later, and a world that stops being
+    /// announced drops off everyone's list on its own.
+    /// </summary>
+    private async Task PublishWorldAsync(HostedWorld? world)
+    {
+        MyWorld = world;
+        if (world is null)
+        {
+            foreach (var row in Friends) row.IsInvited = false;
+        }
+
+        if (!IsConnected) return;
+
+        try
+        {
+            if (world is null)
+                await _launcher.Friends.CloseWorldAsync();
+            else
+                await _launcher.Friends.OpenWorldAsync(
+                    world.Name, world.Players, world.MaxPlayers, world.DoormanPort, world.Version);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>Lets somebody in, or shuts the door on them again.</summary>
+    [RelayCommand]
+    private async Task InviteAsync(FriendRow? row)
+    {
+        if (row is null || _hostSecret is null || MyWorld is null) return;
+
+        try
+        {
+            if (row.IsInvited)
+            {
+                await _launcher.Friends.UninviteAsync(row.Uuid);
+                row.IsInvited = false;
+                return;
+            }
+
+            // Signed for their name as well as their id, because the doorman checks the name the
+            // player actually arrives under — a pass naming nobody would open for anybody holding it.
+            var pass = InviteToken.Mint(
+                _hostSecret, row.Uuid, row.PlayerName, DateTimeOffset.UtcNow.Add(PassLife));
+
+            await _launcher.Friends.InviteAsync(row.Uuid, pass);
+            row.IsInvited = true;
+        }
+        catch (FriendsException e)
+        {
+            Notice = e.Message;
+            NoticeIsGood = false;
+        }
+    }
+
+    /// <summary>
+    /// Joins a friend's world, through the same sheet the Servers tab uses. Finding a way through
+    /// happens after an instance is chosen rather than before: it takes a moment, and a moment
+    /// spent before the question is a moment spent on a join that might be cancelled.
+    /// </summary>
+    [RelayCommand]
+    private void Join(FriendRow? row)
+    {
+        if (row?.World is not { AmInvited: true } world) return;
+
+        _askJoin(
+            $"Join {row.Name}",
+            async instance =>
+            {
+                WorldJoin reached;
+                try
+                {
+                    reached = await WorldJoin.ReachAsync(world.Addresses, world.Pass!);
+                }
+                catch (WorldJoinException e)
+                {
+                    return e.Message;
+                }
+
+                // Held on the page rather than in the sheet: the tunnel has to outlive the click
+                // that made it, for as long as the player is in the world.
+                _joined?.Dispose();
+                _joined = reached;
+
+                return await _join(instance, reached.Address);
+            },
+            _ => Task.FromResult(SupportFor(world)));
+    }
+
+    /// <summary>
+    /// Which instances could join, in the shape the sheet already understands.
+    ///
+    /// A world that could not be asked its version, or that reports itself as something no
+    /// instance is named after — a modded server often does — greys nothing rather than
+    /// everything. Refusing every instance over a name we failed to recognise would block a join
+    /// that was going to work.
+    /// </summary>
+    private ModSupport SupportFor(FriendWorld world)
+    {
+        var mine = _launcher.Instances.LoadAll()
+            .Select(instance => instance.MinecraftVersion)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var matching = mine
+            .Where(version => version.Equals(world.Version, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var accepted = (matching.Count > 0 ? matching : mine)
+            .Select(version => new ModVersion(
+                ModProvider.Modrinth, world.Name, version, [version],
+
+                // No loader named, which the sheet reads as "runs on any".
+                [], null, 0, null, "", null, 0, ModChannel.Release))
+            .ToList();
+
+        return ModSupport.From(accepted);
     }
 
     // ---- Chat ----
@@ -768,6 +1010,7 @@ public partial class FriendsViewModel : ViewModelBase
 
             IsConnected = true;
             StartWatching();
+            StartHosting();
             await EnsureChatKeyAsync();
             PruneArchive();
 
@@ -836,6 +1079,8 @@ public partial class FriendsViewModel : ViewModelBase
                 }
                 IsConnected = true;
                 StartWatching();
+                StartHosting();
+            StartHosting();
                 await EnsureChatKeyAsync();
                 PruneArchive();
             }
@@ -900,13 +1145,21 @@ public partial class FriendsViewModel : ViewModelBase
             friends.Select(f => f.Uuid + f.Online)
                 .Concat(snapshot.Incoming.Select(f => "i" + f.Uuid))
                 .Concat(snapshot.Outgoing.Select(f => "o" + f.Uuid)));
-        if (signature == _shown) return;
-        _shown = signature;
+        if (signature != _shown)
+        {
+            _shown = signature;
 
-        Rebuild(Friends, friends);
-        Rebuild(Incoming, snapshot.Incoming);
-        Rebuild(Outgoing, snapshot.Outgoing);
-        RaiseCounts();
+            Rebuild(Friends, friends);
+            Rebuild(Incoming, snapshot.Incoming);
+            Rebuild(Outgoing, snapshot.Outgoing);
+            RaiseCounts();
+        }
+
+        // Worlds are refreshed on every snapshot, not only when the rows are rebuilt. A player
+        // count ticking over is exactly the sort of thing that changes every few seconds, and
+        // rebuilding the list for it would yank rows out from under whoever was reaching for one.
+        var worlds = friends.ToDictionary(f => f.Uuid, f => f.World, StringComparer.OrdinalIgnoreCase);
+        foreach (var row in Friends) row.World = worlds.GetValueOrDefault(row.Uuid);
     }
 
     private void Rebuild(ObservableCollection<FriendRow> rows, IEnumerable<Friend> people)
@@ -915,11 +1168,16 @@ public partial class FriendsViewModel : ViewModelBase
         // comes online, and without this every unread badge would vanish the moment a friend's
         // presence changed — including the badge belonging to the message that caused it.
         var unread = rows.ToDictionary(row => row.Uuid, row => row.Unread, StringComparer.OrdinalIgnoreCase);
+        var invited = rows.Where(row => row.IsInvited).Select(row => row.Uuid).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         rows.Clear();
         foreach (var person in people)
         {
-            var row = new FriendRow(person) { Unread = unread.GetValueOrDefault(person.Uuid) };
+            var row = new FriendRow(person)
+            {
+                Unread = unread.GetValueOrDefault(person.Uuid),
+                IsInvited = invited.Contains(person.Uuid),
+            };
             rows.Add(row);
             _ = LoadFaceAsync(row);
         }

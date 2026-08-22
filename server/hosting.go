@@ -23,6 +23,10 @@ type hostedWorld struct {
 	players int
 	max     int
 
+	// What the world reports itself as. Passed along untouched — this server has no opinion on
+	// which versions can play together, and the launcher that asks is the one that knows.
+	version string
+
 	// Where the host's door might be reached: their own addresses as they see them, then the one
 	// this server saw them arrive from. Ordered cheapest first — a friend on the same network, or
 	// on the same VPN, connects without ever leaving it.
@@ -70,6 +74,7 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 		Players int      `json:"players"`
 		Max     int      `json:"max"`
 		Port    int      `json:"port"`
+		Version string   `json:"version"`
 		Local   []string `json:"local"`
 	}
 	if !readBody(w, r, &body) {
@@ -90,14 +95,17 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := trimRunes(strings.TrimSpace(body.Name), 64)
+	version := trimRunes(strings.TrimSpace(body.Version), 32)
 	// Only wake the watchers when a friends list would actually read differently. A heartbeat
 	// that says exactly what the last one said is not news, and this fires every few seconds.
 	changed := world.name != name ||
 		world.players != body.Players ||
 		world.max != body.Max ||
+		world.version != version ||
 		strings.Join(world.addresses, ",") != strings.Join(addresses, ",")
 
-	world.name, world.players, world.max, world.addresses = name, body.Players, body.Max, addresses
+	world.name, world.players, world.max, world.version = name, body.Players, body.Max, version
+	world.addresses = addresses
 	world.beat = time.Now()
 
 	if changed {

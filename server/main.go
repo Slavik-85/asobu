@@ -620,6 +620,7 @@ type wireWorld struct {
 	Name    string `json:"name"`
 	Players int    `json:"players"`
 	Max     int    `json:"max"`
+	Version string `json:"version,omitempty"`
 
 	Addresses []string `json:"addresses,omitempty"`
 	Pass      string   `json:"pass,omitempty"`
@@ -641,7 +642,9 @@ func (s *Server) wire(uuid, viewer string) wireFriend {
 		PublicKey: u.PublicKey,
 	}
 	if world := s.world(uuid); world != nil {
-		f.World = &wireWorld{Name: world.name, Players: world.players, Max: world.max}
+		f.World = &wireWorld{
+			Name: world.name, Players: world.players, Max: world.max, Version: world.version,
+		}
 		if pass, invited := world.invites[viewer]; invited {
 			f.World.Addresses, f.World.Pass = world.addresses, pass
 		}

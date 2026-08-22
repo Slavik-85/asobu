@@ -4,7 +4,7 @@ namespace Asobu.Core.Hosting;
 /// What the friends network should be told about the world right now. Null everywhere else in
 /// this file means "no world is open", which is a state the host reaches by pressing Escape.
 /// </summary>
-public sealed record HostedWorld(string Name, int Players, int MaxPlayers, int DoormanPort);
+public sealed record HostedWorld(string Name, int Players, int MaxPlayers, int DoormanPort, string? Version = null);
 
 /// <summary>
 /// Watches for the player opening a world to LAN, puts a door in front of it, and keeps the
@@ -101,7 +101,8 @@ public sealed class WorldHost : IDisposable
 
         var status = await _askStatus(world.Port, cancellationToken).ConfigureAwait(false);
 
-        Publish(new HostedWorld(world.Name, status?.Players ?? 0, status?.MaxPlayers ?? 0, _doorman!.Port));
+        Publish(new HostedWorld(
+            world.Name, status?.Players ?? 0, status?.MaxPlayers ?? 0, _doorman!.Port, status?.Version));
     }
 
     private void OpenDoor(int lanPort, CancellationToken cancellationToken)
