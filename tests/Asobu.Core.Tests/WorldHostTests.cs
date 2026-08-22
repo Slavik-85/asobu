@@ -191,6 +191,55 @@ public class WorldHostTests
         Assert.Null(fake.Beats[^1]);
     }
 
+    /// <summary>
+    /// The port comes from a line the game printed once, so the log cannot say the world was
+    /// closed again — only the world going quiet can. Closing to the title screen without quitting
+    /// the game has to end hosting, or friends keep seeing a world that leads nowhere.
+    /// </summary>
+    [Fact]
+    public async Task A_world_that_stops_answering_stops_being_hosted()
+    {
+        using var fake = new Fake { Beacon = new LanWorld(58212, "Slavik - Skyblock") };
+        await fake.TurnAsync();
+
+        fake.Status = null;
+        await fake.TurnAsync();
+        await fake.TurnAsync();
+
+        Assert.Null(fake.Host.Current);
+        Assert.Null(fake.Beats[^1]);
+    }
+
+    [Fact]
+    public async Task One_unanswered_question_is_not_a_closed_world()
+    {
+        using var fake = new Fake { Beacon = new LanWorld(58212, "Slavik - Skyblock") };
+        await fake.TurnAsync();
+
+        fake.Status = null;
+        await fake.TurnAsync();
+
+        Assert.NotNull(fake.Host.Current);
+    }
+
+    [Fact]
+    public async Task Answering_again_forgets_the_silence()
+    {
+        using var fake = new Fake { Beacon = new LanWorld(58212, "Slavik - Skyblock") };
+        await fake.TurnAsync();
+
+        fake.Status = null;
+        await fake.TurnAsync();
+
+        fake.Status = new WorldStatus(2, 8);
+        await fake.TurnAsync();
+
+        fake.Status = null;
+        await fake.TurnAsync();
+
+        Assert.NotNull(fake.Host.Current);
+    }
+
     [Fact]
     public async Task Nothing_is_published_for_somebody_who_never_opened_a_world()
     {

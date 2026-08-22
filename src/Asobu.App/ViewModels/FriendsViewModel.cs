@@ -398,6 +398,16 @@ public partial class FriendsViewModel : ViewModelBase
     /// </summary>
     private bool _toldNetworkAboutWorld;
 
+    /// <summary>
+    /// Everyone let into the world this session, and the pass each was given.
+    ///
+    /// Kept here rather than only on the server because the server forgets a world it has not
+    /// heard about for forty-five seconds, and the next heartbeat then starts a fresh one with
+    /// nobody on the list. A friend who was invited would quietly lose the Join button over a
+    /// network hiccup they never saw. This is what puts them back.
+    /// </summary>
+    private readonly Dictionary<string, string> _invited = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The world this launcher has open, or null. Nobody presses anything to set it.</summary>
     [ObservableProperty] public partial HostedWorld? MyWorld { get; set; }
 
@@ -450,6 +460,7 @@ public partial class FriendsViewModel : ViewModelBase
         MyWorld = null;
         _toldNetworkAboutWorld = false;
         _launcher.Session.StopVouchingForEveryone();
+        _invited.Clear();
         foreach (var row in Friends) row.IsInvited = false;
     }
 
@@ -459,8 +470,10 @@ public partial class FriendsViewModel : ViewModelBase
         MyWorld = world;
         if (world is null)
         {
-            // The world is gone, so nobody is being let into it any more.
+            // The world is gone, so nobody is being let into it any more. Until then an invite
+            // stands for the whole session — the Join button on a friend's screen stays put.
             _launcher.Session.StopVouchingForEveryone();
+            _invited.Clear();
             foreach (var row in Friends) row.IsInvited = false;
         }
     }
@@ -478,6 +491,7 @@ public partial class FriendsViewModel : ViewModelBase
         if (!IsConnected) return;
         if (world is null && !_toldNetworkAboutWorld) return;
 
+        var opening = world is not null && !_toldNetworkAboutWorld;
         _toldNetworkAboutWorld = world is not null;
 
         try
@@ -490,9 +504,23 @@ public partial class FriendsViewModel : ViewModelBase
                     _launcher.Running is { } playing
                         ? InstanceFingerprint.Of(_launcher.Paths, playing)
                         : null);
+
+            // A world the server had forgotten comes back empty, so everybody who was let in has
+            // to be handed to it again. Only on the turn it reopens, not every heartbeat.
+            if (opening) await ReissueInvitesAsync();
         }
         catch (Exception)
         {
+        }
+    }
+
+    /// <summary>Hands the network the invites it has already been given, in case it forgot.</summary>
+    private async Task ReissueInvitesAsync()
+    {
+        foreach (var (uuid, pass) in _invited.ToList())
+        {
+            try { await _launcher.Friends.InviteAsync(uuid, pass); }
+            catch (FriendsException) { /* The next reopen tries again. */ }
         }
     }
 
@@ -508,6 +536,7 @@ public partial class FriendsViewModel : ViewModelBase
             {
                 await _launcher.Friends.UninviteAsync(row.Uuid);
                 _launcher.Session.StopVouching(row.PlayerName);
+                _invited.Remove(row.Uuid);
                 row.IsInvited = false;
                 return;
             }
@@ -518,6 +547,7 @@ public partial class FriendsViewModel : ViewModelBase
                 _hostSecret, row.Uuid, row.PlayerName, DateTimeOffset.UtcNow.Add(PassLife));
 
             await _launcher.Friends.InviteAsync(row.Uuid, pass);
+            _invited[row.Uuid] = pass;
 
             // Only for a friend Mojang cannot vouch for. Doing it for a real account would hand
             // the world a made-up id for somebody who has a real one.

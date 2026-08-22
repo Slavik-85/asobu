@@ -30,6 +30,9 @@ public sealed class WorldHost : IDisposable
     private int _servingLanPort;
     private int _missed;
 
+    /// <summary>Turns in a row the world has not answered when asked how it is doing.</summary>
+    private int _silent;
+
     /// <summary>
     /// Two missed windows before hosting is called off, not one. Each window already spans several
     /// announcements, so one empty window is a hiccup rather than news — and acting on it would
@@ -127,6 +130,21 @@ public sealed class WorldHost : IDisposable
         if (_doorman is null || _servingLanPort != world.Port) OpenDoor(world.Port, cancellationToken);
 
         var status = await _askStatus(world.Port, cancellationToken).ConfigureAwait(false);
+
+        // A port the log told us about, that nothing answers on any more, is a world that was
+        // closed without the game exiting — back to the title screen, or off to somebody else's
+        // server. The log line cannot say that; only the silence can. Two turns of it, for the
+        // same reason the beacon gets two: one missed answer is a hiccup, not an ending.
+        if (status is null && Current is not null && ++_silent >= MissesBeforeClosing)
+        {
+            CloseDoor();
+            Publish(null);
+
+            Beat?.Invoke(Current);
+            return;
+        }
+
+        if (status is not null) _silent = 0;
 
         // The name comes from whichever source had one: the beacon carries it, the log does not,
         // and the world itself will say when asked.
