@@ -626,6 +626,10 @@ type wireWorld struct {
 	// sent straight into the world instead of being asked which of theirs to use.
 	Fingerprint string `json:"fingerprint,omitempty"`
 
+	// A share code for the host's instance. Only for somebody who was invited: it describes what
+	// they are running, which is not everybody's business.
+	Share string `json:"share,omitempty"`
+
 	Addresses []string `json:"addresses,omitempty"`
 	Pass      string   `json:"pass,omitempty"`
 }
@@ -651,7 +655,7 @@ func (s *Server) wire(uuid, viewer string) wireFriend {
 			Fingerprint: world.fingerprint,
 		}
 		if pass, invited := world.invites[viewer]; invited {
-			f.World.Addresses, f.World.Pass = world.addresses, pass
+			f.World.Addresses, f.World.Pass, f.World.Share = world.addresses, pass, world.share
 		}
 	}
 	return f

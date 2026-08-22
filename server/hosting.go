@@ -31,6 +31,10 @@ type hostedWorld struct {
 	// matching instance can be sent straight in. Opaque here, like everything else.
 	fingerprint string
 
+	// A share code for the host's instance, so a friend with nothing like it can be handed one.
+	// Opaque here, like the rest.
+	share string
+
 	// Where the host's door might be reached: their own addresses as they see them, then the one
 	// this server saw them arrive from. Ordered cheapest first — a friend on the same network, or
 	// on the same VPN, connects without ever leaving it.
@@ -80,6 +84,7 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 		Port        int      `json:"port"`
 		Version     string   `json:"version"`
 		Fingerprint string   `json:"fingerprint"`
+		Share       string   `json:"share"`
 		Local       []string `json:"local"`
 	}
 	if !readBody(w, r, &body) {
@@ -102,6 +107,7 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 	name := trimRunes(strings.TrimSpace(body.Name), 64)
 	version := trimRunes(strings.TrimSpace(body.Version), 32)
 	fingerprint := trimRunes(strings.TrimSpace(body.Fingerprint), 64)
+	share := trimRunes(strings.TrimSpace(body.Share), 64)
 	// Only wake the watchers when a friends list would actually read differently. A heartbeat
 	// that says exactly what the last one said is not news, and this fires every few seconds.
 	changed := world.name != name ||
@@ -109,10 +115,12 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 		world.max != body.Max ||
 		world.version != version ||
 		world.fingerprint != fingerprint ||
+		world.share != share ||
 		strings.Join(world.addresses, ",") != strings.Join(addresses, ",")
 
 	world.name, world.players, world.max, world.version = name, body.Players, body.Max, version
 	world.fingerprint = fingerprint
+	world.share = share
 	world.addresses = addresses
 	world.beat = time.Now()
 

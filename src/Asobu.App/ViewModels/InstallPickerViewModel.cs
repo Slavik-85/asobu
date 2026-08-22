@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -31,11 +31,16 @@ namespace Asobu.App.ViewModels;
 /// instances already have it — an answer worth having before choosing, not a rule about what may
 /// be chosen.
 /// </param>
+/// <param name="action">
+/// What the button says. The sheet is shared with joining a world and a server, where "Install"
+/// describes nothing the person is about to do.
+/// </param>
 public delegate void AskInstall(
     string title,
     Func<Instance, Task<string?>> install,
     Func<CancellationToken, Task<ModSupport>> support,
-    CatalogueMod? subject = null);
+    CatalogueMod? subject = null,
+    string action = "Install");
 
 /// <summary>One instance to choose between.</summary>
 public partial class InstanceChoice(Instance instance) : ViewModelBase
@@ -85,6 +90,17 @@ public partial class InstallPickerViewModel(AsobuLauncher launcher, Action newIn
     public ObservableCollection<InstanceChoice> Incompatible { get; } = [];
 
     [ObservableProperty] public partial string Title { get; set; } = "";
+
+    /// <summary>The word on the button: "Install" for a mod, "Join" for a world or a server.</summary>
+    [ObservableProperty] public partial string Action { get; set; } = "Install";
+
+    /// <summary>
+    /// What is said while it happens. Taken from the button rather than passed in beside it,
+    /// because two words that could disagree are two words that eventually will.
+    /// </summary>
+    public string Busy => Action == "Join" ? "Joining…" : "Adding…";
+
+    partial void OnActionChanged(string value) => OnPropertyChanged(nameof(Busy));
     [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial InstanceChoice? Chosen { get; set; }
     [ObservableProperty] public partial bool IsOpen { get; set; }
@@ -110,9 +126,11 @@ public partial class InstallPickerViewModel(AsobuLauncher launcher, Action newIn
         string title,
         Func<Instance, Task<string?>> install,
         Func<CancellationToken, Task<ModSupport>> support,
-        CatalogueMod? subject = null)
+        CatalogueMod? subject = null,
+        string action = "Install")
     {
         Title = title;
+        Action = action;
         _install = install;
 
         _all = [.. launcher.Instances.LoadAll().Select(instance => new InstanceChoice(instance))];

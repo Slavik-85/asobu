@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -95,7 +95,8 @@ public partial class ServersViewModel : ViewModelBase
         _askJoin(
             $"Join {row.Name}",
             instance => _join(instance, row.Server.Address),
-            _ => Task.FromResult(SupportFor(row.Server)));
+            _ => Task.FromResult(SupportFor(row.Server)),
+            action: "Join");
     }
 
     /// <summary>

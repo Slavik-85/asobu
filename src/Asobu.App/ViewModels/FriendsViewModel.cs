@@ -10,6 +10,7 @@ using Asobu.Core;
 using Asobu.Core.Accounts;
 using Asobu.Core.Hosting;
 using Asobu.Core.Instances;
+using Asobu.Core.Minecraft;
 using Asobu.Core.Mods;
 using Asobu.Core.Online;
 using Avalonia.Media.Imaging;
@@ -408,6 +409,19 @@ public partial class FriendsViewModel : ViewModelBase
     /// </summary>
     private readonly Dictionary<string, string> _invited = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// A share code for the instance being hosted, made once when the world opens. It is what
+    /// lets a friend who has nothing like it be given one instead of being asked to guess.
+    /// </summary>
+    private string? _share;
+
+    /// <summary>What the friends page is doing about a join, while it is doing it.</summary>
+    [ObservableProperty] public partial string? JoinStatus { get; set; }
+
+    public bool IsJoining => JoinStatus is { Length: > 0 };
+
+    partial void OnJoinStatusChanged(string? value) => OnPropertyChanged(nameof(IsJoining));
+
     /// <summary>The world this launcher has open, or null. Nobody presses anything to set it.</summary>
     [ObservableProperty] public partial HostedWorld? MyWorld { get; set; }
 
@@ -459,6 +473,7 @@ public partial class FriendsViewModel : ViewModelBase
 
         MyWorld = null;
         _toldNetworkAboutWorld = false;
+        _share = null;
         _launcher.Session.StopVouchingForEveryone();
         _invited.Clear();
         foreach (var row in Friends) row.IsInvited = false;
@@ -494,6 +509,11 @@ public partial class FriendsViewModel : ViewModelBase
         var opening = world is not null && !_toldNetworkAboutWorld;
         _toldNetworkAboutWorld = world is not null;
 
+        // Made once, as the world opens. Reading every file in the instance and asking the server
+        // for a code is not something to repeat every few seconds.
+        if (opening) _share = await ShareRunningInstanceAsync();
+        if (world is null) _share = null;
+
         try
         {
             if (world is null)
@@ -503,7 +523,8 @@ public partial class FriendsViewModel : ViewModelBase
                     world.Name, world.Players, world.MaxPlayers, world.DoormanPort, world.Version,
                     _launcher.Running is { } playing
                         ? InstanceFingerprint.Of(_launcher.Paths, playing)
-                        : null);
+                        : null,
+                    _share);
 
             // A world the server had forgotten comes back empty, so everybody who was let in has
             // to be handed to it again. Only on the turn it reopens, not every heartbeat.
@@ -511,6 +532,26 @@ public partial class FriendsViewModel : ViewModelBase
         }
         catch (Exception)
         {
+        }
+    }
+
+    /// <summary>
+    /// Describes the running instance and asks for a code for it. Null when there is nothing to
+    /// describe or the server would not take it: a friend then gets asked which of their own
+    /// instances to use, which is worse but still works.
+    /// </summary>
+    private async Task<string?> ShareRunningInstanceAsync()
+    {
+        if (_launcher.Running is not { } playing) return null;
+
+        try
+        {
+            var described = await _launcher.Shares.DescribeAsync(playing);
+            return (await _launcher.Shares.PublishAsync(described)).Code;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 
@@ -573,11 +614,14 @@ public partial class FriendsViewModel : ViewModelBase
     {
         if (row?.World is not { AmInvited: true } world) return;
 
-        // An instance that would play the same as theirs is not a question worth asking: the only
-        // person who could answer it is the host, and they already have.
-        if (Matching(world) is { } ready)
+        // Which instance to use is not a question worth asking. The only person who could answer
+        // it is the host, and they already have: either one here plays the same as theirs, or
+        // theirs can be built from the code they published.
+        var instance = Matching(world) ?? await BuildTheirInstanceAsync(world);
+
+        if (instance is not null)
         {
-            if (await ReachAndJoinAsync(ready, world) is { Length: > 0 } trouble)
+            if (await ReachAndJoinAsync(instance, world) is { Length: > 0 } trouble)
             {
                 Notice = trouble;
                 NoticeIsGood = false;
@@ -586,10 +630,59 @@ public partial class FriendsViewModel : ViewModelBase
             return;
         }
 
+        // Only when the host published nothing to copy, or copying it failed. Asking is a poor
+        // answer, but it is better than a button that does nothing.
         _askJoin(
             $"Join {row.Name}",
-            instance => ReachAndJoinAsync(instance, world),
-            _ => Task.FromResult(SupportFor(world)));
+            picked => ReachAndJoinAsync(picked, world),
+            _ => Task.FromResult(SupportFor(world)),
+            action: "Join");
+    }
+
+    /// <summary>
+    /// Builds a copy of what the host is running, from the code they published with the world.
+    ///
+    /// Null when there is no code, or the copy could not be made. Mods come from Modrinth and
+    /// CurseForge by hash, so anything the host added by hand is not something this can fetch;
+    /// the import says so, and what it does build is still a real instance.
+    /// </summary>
+    private async Task<Instance?> BuildTheirInstanceAsync(FriendWorld world)
+    {
+        if (world.Share is not { Length: > 0 } code) return null;
+
+        JoinStatus = "Fetching their instance\u2026";
+        try
+        {
+            var shared = await _launcher.Shares.FetchAsync(code);
+            if (shared is null)
+            {
+                Notice = "Their instance is no longer shared. Ask them to reopen the world.";
+                NoticeIsGood = false;
+                return null;
+            }
+
+            var telling = new Progress<InstallProgress>(step => JoinStatus = step.Stage);
+            var built = await _launcher.Importer.ImportSharedAsync(shared, telling);
+
+            if (built.Instance is null)
+            {
+                Notice = built.Reason ?? "Couldn't build a copy of their instance.";
+                NoticeIsGood = false;
+                return null;
+            }
+
+            return built.Instance;
+        }
+        catch (Exception e)
+        {
+            Notice = e.Message;
+            NoticeIsGood = false;
+            return null;
+        }
+        finally
+        {
+            JoinStatus = null;
+        }
     }
 
     /// <summary>The instance of mine that would play the same as the host's, if I have one.</summary>

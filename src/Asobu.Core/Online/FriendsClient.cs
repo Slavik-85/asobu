@@ -54,6 +54,12 @@ public sealed record FriendWorld(string Name, int Players, int Max)
     /// </summary>
     public string? Fingerprint { get; init; }
 
+    /// <summary>
+    /// A share code for the host's instance, so somebody who has nothing like it can be given one
+    /// rather than asked to guess. Null when the host could not publish one.
+    /// </summary>
+    public string? Share { get; init; }
+
     /// <summary>Where the host's door might be, cheapest first: their network, then the internet.</summary>
     public IReadOnlyList<string> Addresses { get; init; } = [];
 
@@ -280,10 +286,10 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// without anybody having to notice.
     /// </summary>
     public Task OpenWorldAsync(
-        string name, int players, int max, int port, string? version, string? fingerprint,
+        string name, int players, int max, int port, string? version, string? fingerprint, string? share,
         CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "host/open",
-            new { name, players, max, port, version, fingerprint, local = LocalAddresses.For(port) },
+            new { name, players, max, port, version, fingerprint, share, local = LocalAddresses.For(port) },
             cancellationToken);
 
     public Task CloseWorldAsync(CancellationToken cancellationToken = default) =>

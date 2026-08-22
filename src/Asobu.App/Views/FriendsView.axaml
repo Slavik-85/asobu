@@ -124,6 +124,12 @@
         </StackPanel>
       </Border>
 
+      <!-- Building a copy of the host's instance takes a while, and a Join button that goes
+           quiet for a minute reads as broken. -->
+      <TextBlock Grid.Row="3" Text="{Binding JoinStatus}" Classes="notice" TextWrapping="Wrap"
+                 Margin="2,8,2,0" IsVisible="{Binding IsJoining}"
+                 Foreground="{DynamicResource Accent}"/>
+
       <TextBlock Grid.Row="3" Text="{Binding Notice}" Classes="notice" TextWrapping="Wrap" Margin="2,8,2,0"
                  Classes.good="{Binding NoticeIsGood}"
                  IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
