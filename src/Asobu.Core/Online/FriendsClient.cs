@@ -287,7 +287,8 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// </summary>
     public Task OpenWorldAsync(
         string name, int players, int max, int port, string? version, string? fingerprint, string? share,
-        string? relay = null, string? mapped = null, CancellationToken cancellationToken = default)
+        string? relay = null, string? mapped = null, string? punch = null,
+        CancellationToken cancellationToken = default)
     {
         // Own addresses first, then the way in the router opened, then the relay. The race that
         // picks between them settles on whichever answers soonest, so a friend on the same network
@@ -295,6 +296,7 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
         // never costs the server a byte.
         List<string> local = [.. LocalAddresses.For(port)];
         if (mapped is { Length: > 0 } outside) local.Add(outside);
+        if (punch is { Length: > 0 } seen) local.Add(WorldJoin.PunchPrefix + seen);
         if (relay is { Length: > 0 } session) local.Add(WorldJoin.RelayPrefix + session);
 
         return SendAsync<OkReply>(HttpMethod.Post, "host/open",

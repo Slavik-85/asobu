@@ -141,6 +141,11 @@ public sealed class WorldDoorman : IDisposable
         // zero because the port is published through the friends network rather than agreed in
         // advance — a fixed one would only be a thing to collide with.
         _listener = new TcpListener(IPAddress.Any, 0);
+
+        // Willing to share the port before it is taken, because punching needs a second socket
+        // dialling out from this same one to open the way back in. Set before Start, since after
+        // it the port is already claimed.
+        Reflection.Share(_listener.Server);
         _listener.Start();
 
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -277,6 +282,55 @@ public sealed class WorldDoorman : IDisposable
     }
 
     public void Dispose() => _listener.Dispose();
+}
+
+/// <summary>
+/// Knocking on somebody so that their answer is let back in.
+///
+/// A router drops an incoming connection nobody asked for. It stops dropping them once something
+/// inside has sent to that address, because then the reply looks like one. So both machines fire
+/// at each other at the same moment and each router believes its own user started it. These
+/// attempts are expected to fail; opening the way is the whole of their job.
+/// </summary>
+public static class Punch
+{
+    /// <summary>A few, because the first can arrive before the other side has fired at all.</summary>
+    private const int Attempts = 5;
+
+    private static readonly TimeSpan Between = TimeSpan.FromMilliseconds(250);
+
+    public static async Task AtAsync(int fromPort, string address, CancellationToken cancellationToken)
+    {
+        if (!IPEndPoint.TryParse(address, out var peer)) return;
+
+        for (var attempt = 0; attempt < Attempts && !cancellationToken.IsCancellationRequested; attempt++)
+        {
+            using var socket = Reflection.Bind(fromPort);
+
+            try
+            {
+                // Short, because this is not trying to succeed. A connection that does is closed
+                // straight away; the guest's own attempt is the one that carries the session.
+                using var brief = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                brief.CancelAfter(Between);
+
+                await socket.ConnectAsync(peer, brief.Token).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is SocketException or OperationCanceledException or ObjectDisposedException)
+            {
+                // Refused, ignored, or timed out. The packet still left, which is what matters.
+            }
+
+            try
+            {
+                await Task.Delay(Between, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
 }
 
 /// <summary>

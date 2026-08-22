@@ -109,6 +109,13 @@ public sealed class RelayLink(string url, string bearer, Func<int> doormanPort) 
                 if (note is null) return;
 
                 if (Field(note, "open") is { Length: > 0 } ticket) _ = CarryAsync(ticket);
+
+                // A guest about to dial us directly. Firing at them first is what stops our
+                // router from dropping their connection as unsolicited, and it is worth doing
+                // even though most guests also have the relay to fall back on: one that gets
+                // through this way costs the server nothing at all.
+                if (Field(note, "punch") is { Length: > 0 } peer)
+                    _ = Punch.AtAsync(doormanPort(), peer, _stop.Token);
             }
         }
         catch (Exception e) when (e is WebSocketException or OperationCanceledException or IOException or ObjectDisposedException)

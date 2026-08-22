@@ -427,6 +427,12 @@ public partial class FriendsViewModel : ViewModelBase
     /// </summary>
     private string? _mapped;
 
+    /// <summary>
+    /// The door's own address as the internet sees it, asked for from the door's own socket. It is
+    /// where a friend punches through to, and it costs the server nothing when it works.
+    /// </summary>
+    private string? _punch;
+
     /// <summary>What the friends page is doing about a join, while it is doing it.</summary>
     [ObservableProperty] public partial string? JoinStatus { get; set; }
 
@@ -487,6 +493,7 @@ public partial class FriendsViewModel : ViewModelBase
         _toldNetworkAboutWorld = false;
         _share = null;
         _mapped = null;
+        _punch = null;
         CloseRelay();
         _launcher.Session.StopVouchingForEveryone();
         _invited.Clear();
@@ -529,6 +536,7 @@ public partial class FriendsViewModel : ViewModelBase
         {
             _share = await ShareRunningInstanceAsync();
             _mapped = await PortMapper.MapAsync(world!.DoormanPort);
+            _punch = await Reflection.AddressAsync(world.DoormanPort);
             await OpenRelayAsync(world.DoormanPort);
         }
 
@@ -536,6 +544,7 @@ public partial class FriendsViewModel : ViewModelBase
         {
             _share = null;
             _mapped = null;
+            _punch = null;
             CloseRelay();
         }
 
@@ -551,7 +560,8 @@ public partial class FriendsViewModel : ViewModelBase
                         : null,
                     _share,
                     _relay?.Session,
-                    _mapped);
+                    _mapped,
+                    _punch);
 
             // A world the server had forgotten comes back empty, so everybody who was let in has
             // to be handed to it again. Only on the turn it reopens, not every heartbeat.

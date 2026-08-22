@@ -896,6 +896,10 @@ func main() {
 	// lock itself for the moment it needs it.
 	mux.HandleFunc("GET /v1/relay", s.handleRelay)
 
+	// Neither is locked: reflect touches no state, and punch takes the relay's own lock.
+	mux.HandleFunc("GET /v1/reflect", s.handleReflect)
+	mux.HandleFunc("POST /v1/relay/punch", s.handleRelayPunch)
+
 	mux.HandleFunc("POST /v1/host/open", locked(s.handleHostOpen))
 	mux.HandleFunc("POST /v1/host/close", locked(s.handleHostClose))
 	mux.HandleFunc("POST /v1/host/invites", locked(s.handleHostInvite))

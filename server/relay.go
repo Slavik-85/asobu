@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -69,6 +71,75 @@ func newRelayHub() *relayHub {
 		sessions: map[string]*relaySession{},
 		tickets:  map[string]*relayTicket{},
 	}
+}
+
+// handleReflect tells a caller the address the internet sees them at, port included.
+//
+// Punching needs this. A router rewrites the source port of everything leaving it, and neither
+// end can know what it was rewritten to without being told by somebody outside. The caller dials
+// this from the very socket it means to punch with, so the address that comes back is the one
+// that socket is reachable at for as long as the mapping lives.
+//
+// It reveals nothing the caller did not already tell us by connecting, so it needs no sign-in.
+func (s *Server) handleReflect(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"address": net.JoinHostPort(clientIP(r), clientPort(r)),
+	})
+}
+
+// clientPort is the source port the caller arrived on. Caddy is what the internet connects to, so
+// the socket this process sees is Caddy's; the real one is passed along in a header it is
+// configured to add.
+func clientPort(r *http.Request) string {
+	// Checked rather than trusted: a misconfigured proxy passes the placeholder through as text,
+	// and an address ending in something that is not a number is worse than no answer, because it
+	// looks like one.
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Port"))
+	if n, err := strconv.Atoi(forwarded); err == nil && n > 0 && n <= 65535 {
+		return forwarded
+	}
+	if _, port, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return port
+	}
+	return "0"
+}
+
+// handleRelayPunch asks a host to fire at a guest, so the guest's connection is let through the
+// host's router instead of being dropped as unsolicited.
+//
+// The relay session doubles as the way to reach the host, since it is already open whenever
+// anybody is hosting and the guest already knows its name.
+func (s *Server) handleRelayPunch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Session string `json:"session"`
+	}
+	if !readBody(w, r, &body) {
+		return
+	}
+
+	// Where to fire is taken from the connection rather than from the body. A caller that could
+	// name any address would be a way to have a stranger's machine send traffic wherever they
+	// liked, and asking them is pointless anyway when this end can see it.
+	address := net.JoinHostPort(clientIP(r), clientPort(r))
+
+	s.relay.mu.Lock()
+	session := s.relay.sessions[body.Session]
+	s.relay.mu.Unlock()
+
+	if session == nil {
+		fail(w, http.StatusNotFound, "that world is not being relayed")
+		return
+	}
+
+	asking, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := writeRelayJSON(asking, session.control, map[string]string{"punch": address}); err != nil {
+		fail(w, http.StatusBadGateway, "could not reach them")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // handleRelay is the whole relay, told apart by what the caller says it is.

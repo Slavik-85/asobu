@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 
 namespace Asobu.Core.Hosting;
 
@@ -31,6 +32,12 @@ public sealed class WorldJoin : IDisposable
     /// <summary>How the host says "the server will carry this one".</summary>
     public const string RelayPrefix = "relay:";
 
+    /// <summary>How the host says "dial me here, but tell me first so I can open the way".</summary>
+    public const string PunchPrefix = "punch:";
+
+    /// <summary>Where a guest says it is about to dial, so the host can fire back at it.</summary>
+    private const string PunchUrl = "https://api.asobu.cc/v1/relay/punch";
+
     /// <summary>Same 443 as the rest of the API, so no network has a reason to object to it.</summary>
     public const string RelayUrl = "wss://api.asobu.cc/v1/relay";
 
@@ -61,7 +68,12 @@ public sealed class WorldJoin : IDisposable
     public static async Task<WorldJoin> ReachAsync(
         IEnumerable<string> addresses, string pass, CancellationToken cancellationToken = default)
     {
-        var routes = addresses.Select(Route.Read).OfType<Route>().ToList();
+        // The relay session is how a punching guest reaches the host to say it is coming, so it
+        // has to be found before the routes that need it are built.
+        var session = addresses
+            .FirstOrDefault(a => a.StartsWith(RelayPrefix, StringComparison.Ordinal))?[RelayPrefix.Length..];
+
+        var routes = addresses.Select(address => Route.Read(address, session)).OfType<Route>().ToList();
 
         if (routes.Count == 0)
             throw new WorldJoinException("They haven't said where to find them yet. Try again in a moment.");
@@ -111,8 +123,18 @@ public sealed class WorldJoin : IDisposable
         /// carry it; anything else is an address to try directly. Null for anything unreadable,
         /// including a bare IP with no port, which TryParse otherwise accepts as port zero.
         /// </summary>
-        public static Route? Read(string address)
+        public static Route? Read(string address, string? relaySession)
         {
+            // Somewhere to dial that will not answer until the host has been told to expect it.
+            if (address.StartsWith(PunchPrefix, StringComparison.Ordinal))
+            {
+                var where = address[PunchPrefix.Length..];
+                if (relaySession is not { Length: > 0 } session) return null;
+                if (!IPEndPoint.TryParse(where, out var peer) || peer.Port <= 0) return null;
+
+                return new Route(address, token => PunchThroughAsync(peer, session, token));
+            }
+
             if (address.StartsWith(RelayPrefix, StringComparison.Ordinal))
             {
                 var session = address[RelayPrefix.Length..];
@@ -139,6 +161,97 @@ public sealed class WorldJoin : IDisposable
             });
         }
     }
+
+    /// <summary>
+    /// Dials the host directly, having first asked them to dial back.
+    ///
+    /// The order is the whole trick. A router drops an incoming connection nobody asked for, so
+    /// the host is told where this is coming from and fires at it; their router then treats what
+    /// arrives as an answer rather than a stranger. Both sides do it at once, and one of the two
+    /// gets through.
+    ///
+    /// Everything happens from one local port: the request that tells the host where to fire
+    /// leaves from it, so what the server sees is this port's own mapping, and the connection
+    /// afterwards leaves from it too, so what arrives at the host matches what they were told.
+    /// </summary>
+    private static async Task<Stream> PunchThroughAsync(
+        IPEndPoint host, string session, CancellationToken cancellationToken)
+    {
+        var mine = FreePort();
+
+        await AnnounceAsync(mine, session, cancellationToken).ConfigureAwait(false);
+
+        // Several tries, because the first may leave before the host's own has, and a router
+        // that has not yet seen anything go out will still be dropping what comes back.
+        for (var attempt = 0; ; attempt++)
+        {
+            var socket = Reflection.Bind(mine);
+            try
+            {
+                using var brief = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                brief.CancelAfter(TimeSpan.FromMilliseconds(700));
+
+                await socket.ConnectAsync(host, brief.Token).ConfigureAwait(false);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch (Exception) when (attempt < PunchAttempts)
+            {
+                socket.Dispose();
+                await Task.Delay(300, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tells the host to expect us, from the socket they should expect. The server reads the
+    /// address off the connection rather than being told it, so this cannot be used to point
+    /// somebody else's machine at a third party.
+    /// </summary>
+    private static async Task AnnounceAsync(int fromPort, string session, CancellationToken cancellationToken)
+    {
+        using var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (context, token) =>
+            {
+                var socket = Reflection.Bind(fromPort);
+                try
+                {
+                    await socket.ConnectAsync(context.DnsEndPoint, token).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            },
+        };
+
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(6) };
+        using var body = new StringContent(
+            JsonSerializer.Serialize(new { session }), System.Text.Encoding.UTF8, "application/json");
+
+        using var _ = await http.PostAsync(PunchUrl, body, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A port nothing is using, released again so the punch can claim it properly.</summary>
+    private static int FreePort()
+    {
+        using var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+
+        var port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        return port;
+    }
+
+    private const int PunchAttempts = 6;
 
     private enum Outcome
     {

@@ -210,6 +210,13 @@ func cleanAddresses(offered []string) []string {
 		// The server offering to carry this one, rather than an address to try. Nothing here
 		// reads it; the launcher that published it and the launcher that uses it agree on what
 		// it means.
+		if strings.HasPrefix(candidate, "punch:") && len(candidate) <= 64 {
+			if _, _, err := net.SplitHostPort(strings.TrimPrefix(candidate, "punch:")); err == nil {
+				kept = append(kept, candidate)
+			}
+			continue
+		}
+
 		if strings.HasPrefix(candidate, "relay:") && len(candidate) <= 40 {
 			kept = append(kept, candidate)
 			continue
