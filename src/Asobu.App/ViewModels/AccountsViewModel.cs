@@ -60,6 +60,14 @@ public partial class AccountsViewModel(AsobuLauncher launcher) : ViewModelBase
     /// <summary>The offline name sheet, which the "Offline" menu entry opens.</summary>
     [ObservableProperty] public partial bool IsOfflineOpen { get; set; }
 
+    /// <summary>
+    /// True while signing in with a Microsoft account already on the list. Device code has no way
+    /// to ask for a particular account — Microsoft's page just uses whoever the browser is already
+    /// signed in as — so somebody adding a second account gets their first one back and no hint as
+    /// to why. Set once as the sheet opens, which is the only moment it is read.
+    /// </summary>
+    [ObservableProperty] public partial bool IsAddingAnother { get; set; }
+
     // ---- The add menu. Its own overlay rather than a Flyout: Avalonia tears a popup down the
     // instant it closes, so a flyout can be faded in but never out.
 
@@ -248,6 +256,7 @@ public partial class AccountsViewModel(AsobuLauncher launcher) : ViewModelBase
 
         Error = null;
         CopyNotice = null;
+        IsAddingAnother = Cards.Any(c => c.Account.Kind == AccountKind.Microsoft);
         IsSigningIn = true;
 
         var request = new CancellationTokenSource();
@@ -280,8 +289,18 @@ public partial class AccountsViewModel(AsobuLauncher launcher) : ViewModelBase
 
     private void Add(Account account)
     {
-        // Signing in again as someone already listed replaces them rather than duplicating.
-        if (Cards.FirstOrDefault(c => c.Account.Uuid == account.Uuid) is { } existing) Cards.Remove(existing);
+        // Signing in again as someone already listed replaces them rather than duplicating — the
+        // fresh token is worth keeping. Said out loud, though: a silent swap after somebody set out
+        // to add their *other* account looks exactly like the launcher refusing to hold two.
+        if (Cards.FirstOrDefault(c => c.Account.Uuid == account.Uuid) is { } existing)
+        {
+            Cards.Remove(existing);
+
+            if (account.Kind == AccountKind.Microsoft && IsAddingAnother)
+                Error = $"Signed in as {account.Username} again — Microsoft's page used the account "
+                    + "your browser was already signed in to. Choose \"Use another account\" there, "
+                    + "or open it in a private window, to add a different one.";
+        }
 
         var card = new AccountCard(account);
         Cards.Add(card);

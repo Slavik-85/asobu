@@ -172,6 +172,13 @@
               <TextBlock Classes="label" TextWrapping="Wrap"
                          Text="Enter this code on Microsoft's page, then come back. This window is waiting."/>
 
+              <!-- Only when there is already a Microsoft account to be confused with. Microsoft's
+                   page follows the browser's session, so without this the second account quietly
+                   turns out to be the first one again. -->
+              <TextBlock Classes="label" TextWrapping="Wrap" IsVisible="{Binding IsAddingAnother}"
+                         Foreground="{DynamicResource Accent}"
+                         Text="Adding a different account? That page uses whoever your browser is signed in as. Pick &quot;Use another account&quot; on it, or open it in a private window."/>
+
               <!-- Code centred in the panel with the copy button pinned to the right edge, so the
                    thing being read stays optically centred rather than shoved off-axis. -->
               <Panel>
