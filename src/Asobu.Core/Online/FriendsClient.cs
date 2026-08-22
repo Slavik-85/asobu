@@ -2,6 +2,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Asobu.Core.Accounts;
+using Asobu.Core.Hosting;
 
 namespace Asobu.Core.Online;
 
@@ -26,6 +27,30 @@ public sealed record Friend(string Uuid, string Name, bool Online, DateTimeOffse
 
     /// <summary>What to show, and what somebody would type to find them.</summary>
     public string Handle => IsOffline ? $"{Name}#{Tag}" : Name;
+
+    /// <summary>The world they have open, or null. Most friends, most of the time, have none.</summary>
+    public FriendWorld? World { get; init; }
+}
+
+/// <summary>
+/// A friend's open world, seen from outside.
+///
+/// Everyone on their list sees the name and how busy it is. <see cref="Addresses"/> and
+/// <see cref="Pass"/> arrive only for somebody who was invited, so an uninvited friend sees the
+/// world happening and nothing they could use to turn up at it.
+/// </summary>
+public sealed record FriendWorld(string Name, int Players, int Max)
+{
+    /// <summary>Where the host's door might be, cheapest first: their network, then the internet.</summary>
+    public IReadOnlyList<string> Addresses { get; init; } = [];
+
+    /// <summary>The pass their host signed for me, meaningless to anyone else.</summary>
+    public string? Pass { get; init; }
+
+    public bool AmInvited => Pass is { Length: > 0 } && Addresses.Count > 0;
+
+    /// <summary>"2/8", or just the count when the world never said what its limit was.</summary>
+    public string Busy => Max > 0 ? $"{Players}/{Max}" : Players.ToString();
 }
 
 /// <summary>What the network calls an offline account once it has let one in.</summary>
@@ -232,6 +257,33 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// </summary>
     public Task PublishKeyAsync(string publicKey, CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "chat/key", new { publicKey }, cancellationToken);
+
+    /// <summary>
+    /// Says a world is open, and keeps saying it. Also the player count, which is the thing that
+    /// changes — so there is no separate heartbeat, because one request is fewer than two.
+    ///
+    /// Stops being true on its own. A launcher that is killed, or a machine that loses its
+    /// network, stops calling this and the world drops off everyone's list a minute later
+    /// without anybody having to notice.
+    /// </summary>
+    public Task OpenWorldAsync(
+        string name, int players, int max, int port, CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Post, "host/open",
+            new { name, players, max, port, local = LocalAddresses.For(port) }, cancellationToken);
+
+    public Task CloseWorldAsync(CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Post, "host/close", new { }, cancellationToken);
+
+    /// <summary>
+    /// Hands one friend a pass. The server carries it and cannot read it — it was signed by this
+    /// machine and will be checked by this machine, so nothing in the middle can make another.
+    /// </summary>
+    public Task InviteAsync(string uuid, string pass, CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Post, "host/invites", new { uuid, pass }, cancellationToken);
+
+    /// <summary>Shuts the door to somebody. Anyone already inside stays there.</summary>
+    public Task UninviteAsync(string uuid, CancellationToken cancellationToken = default) =>
+        SendAsync<OkReply>(HttpMethod.Delete, "host/invites/" + uuid, null, cancellationToken);
 
     public Task AddAsync(string name, CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "friends/requests", new { name }, cancellationToken);

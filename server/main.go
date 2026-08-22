@@ -110,6 +110,10 @@ type Server struct {
 	// See chat.go.
 	inbox map[string][]message
 
+	// Worlds open right now: whose, where their door is, and who they let in. Never persisted,
+	// for the same reason as the inbox — see hosting.go.
+	hosting map[string]*hostedWorld
+
 	limiter limiter
 
 	// Bumped whenever anything a friends list shows changes. A watcher tells us the revision
@@ -602,14 +606,33 @@ type wireFriend struct {
 	// finished starting. Their friend's client refuses to send rather than falling back to
 	// plaintext, which would quietly undo the whole thing.
 	PublicKey string `json:"publicKey,omitempty"`
+
+	// The world they have open, if they have one. Absent is the common case.
+	World *wireWorld `json:"world,omitempty"`
 }
 
-func (s *Server) wire(uuid string) wireFriend {
+// What a friend can see of somebody's open world.
+//
+// Everyone on their list sees that it is open and how busy it is; that is the point of showing it.
+// Where to reach it, and the pass to get in, appear only for somebody who was actually invited —
+// so an uninvited friend sees a world happening and nothing they could use to turn up at it.
+type wireWorld struct {
+	Name    string `json:"name"`
+	Players int    `json:"players"`
+	Max     int    `json:"max"`
+
+	Addresses []string `json:"addresses,omitempty"`
+	Pass      string   `json:"pass,omitempty"`
+}
+
+// wire describes one person to one viewer. The viewer matters because an open world shows a
+// different amount of itself depending on whether they were invited to it.
+func (s *Server) wire(uuid, viewer string) wireFriend {
 	u := s.state.Users[uuid]
 	if u == nil {
 		return wireFriend{UUID: uuid, Name: "?"}
 	}
-	return wireFriend{
+	f := wireFriend{
 		UUID:      u.UUID,
 		Name:      u.Name,
 		Tag:       u.Tag,
@@ -617,6 +640,13 @@ func (s *Server) wire(uuid string) wireFriend {
 		LastSeen:  u.LastSeen,
 		PublicKey: u.PublicKey,
 	}
+	if world := s.world(uuid); world != nil {
+		f.World = &wireWorld{Name: world.name, Players: world.players, Max: world.max}
+		if pass, invited := world.invites[viewer]; invited {
+			f.World.Addresses, f.World.Pass = world.addresses, pass
+		}
+	}
+	return f
 }
 
 func (s *Server) handleFriendsList(w http.ResponseWriter, r *http.Request) {
@@ -634,13 +664,13 @@ func (s *Server) writeFriends(w http.ResponseWriter, me *User) {
 	for _, f := range s.state.Friends {
 		switch {
 		case f.Accepted && f.From == me.UUID:
-			friends = append(friends, s.wire(f.To))
+			friends = append(friends, s.wire(f.To, me.UUID))
 		case f.Accepted && f.To == me.UUID:
-			friends = append(friends, s.wire(f.From))
+			friends = append(friends, s.wire(f.From, me.UUID))
 		case f.To == me.UUID:
-			incoming = append(incoming, s.wire(f.From))
+			incoming = append(incoming, s.wire(f.From, me.UUID))
 		case f.From == me.UUID:
-			outgoing = append(outgoing, s.wire(f.To))
+			outgoing = append(outgoing, s.wire(f.To, me.UUID))
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -806,6 +836,7 @@ func main() {
 		path:    statePath,
 		pending: map[string]pendingAuth{},
 		inbox:   map[string][]message{},
+		hosting: map[string]*hostedWorld{},
 		changed: make(chan struct{}),
 	}
 	s.load()
@@ -843,6 +874,10 @@ func main() {
 	mux.HandleFunc("DELETE /v1/friends/{uuid}", locked(s.handleFriendRemove))
 	mux.HandleFunc("POST /v1/chat", locked(s.handleChatSend))
 	mux.HandleFunc("POST /v1/chat/key", locked(s.handlePublishKey))
+	mux.HandleFunc("POST /v1/host/open", locked(s.handleHostOpen))
+	mux.HandleFunc("POST /v1/host/close", locked(s.handleHostClose))
+	mux.HandleFunc("POST /v1/host/invites", locked(s.handleHostInvite))
+	mux.HandleFunc("DELETE /v1/host/invites/{uuid}", locked(s.handleHostUninvite))
 	mux.HandleFunc("POST /v1/shares", locked(s.handleShareCreate))
 	mux.HandleFunc("GET /v1/shares/{code}", locked(s.handleShareRead))
 	mux.HandleFunc("DELETE /v1/shares/{code}", locked(s.handleShareDelete))

@@ -1,6 +1,7 @@
 using System.Buffers.Text;
 using System.Globalization;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -276,6 +277,29 @@ public sealed class WorldDoorman : IDisposable
     }
 
     public void Dispose() => _listener.Dispose();
+}
+
+/// <summary>
+/// Every address this machine's door can be reached at, as this machine sees them.
+///
+/// Offered to friends ahead of the address the server saw us arrive from, because a friend on the
+/// same network — or the same VPN, which is how most people work around this problem today —
+/// connects without the traffic ever leaving it. The server adds the public one after these.
+/// </summary>
+public static class LocalAddresses
+{
+    public static IReadOnlyList<string> For(int port) =>
+    [
+        .. NetworkInterface.GetAllNetworkInterfaces()
+            .Where(card => card.OperationalStatus == OperationalStatus.Up
+                        && card.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(card => card.GetIPProperties().UnicastAddresses)
+            .Select(address => address.Address)
+            .Where(address => address.AddressFamily == AddressFamily.InterNetwork
+                           && !IPAddress.IsLoopback(address))
+            .Select(address => $"{address}:{port}")
+            .Distinct()
+    ];
 }
 
 /// <summary>
