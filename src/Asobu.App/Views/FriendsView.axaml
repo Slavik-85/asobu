@@ -66,12 +66,21 @@
            guess — somebody who closed the launcher and wants to be added has nowhere else to look
            for them. A Microsoft account needs none of this: its name is its name. -->
       <Border Grid.Row="0" Classes="handleBar" IsVisible="{Binding ShowsHandle}" Margin="0,0,0,10">
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-          <TextBlock Grid.Column="0" Text="You are" Classes="label" VerticalAlignment="Center"/>
-          <TextBlock Grid.Column="1" Text="{Binding MyHandle}" FontWeight="SemiBold" FontSize="13"
-                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                     ToolTip.Tip="What friends type to find you"/>
-          <Button Grid.Column="2" Classes="iconGhost" Click="CopyHandle_Click"
+        <!-- The pair is centred in the bar and the button floats over the right of it, rather
+             than the three sharing a row: in a row the handle takes the middle column and sits
+             wherever "You are" leaves it, which is next to the label and nowhere near the middle.
+             The side margins keep the centred text clear of the button it is centred under. -->
+        <Panel>
+          <StackPanel Orientation="Horizontal" Spacing="9" Margin="34,0"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="You are" Classes="label" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding MyHandle}" FontWeight="SemiBold" FontSize="13"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="What friends type to find you"/>
+          </StackPanel>
+
+          <Button Classes="iconGhost" Click="CopyHandle_Click"
+                  HorizontalAlignment="Right" VerticalAlignment="Center"
                   ToolTip.Tip="Copy your handle">
             <Viewbox Classes="icon">
               <Canvas Width="24" Height="24">
@@ -80,7 +89,7 @@
               </Canvas>
             </Viewbox>
           </Button>
-        </Grid>
+        </Panel>
       </Border>
 
       <!-- Add by name. Enter works because it's the only button in a one-line form. -->

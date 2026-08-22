@@ -20,13 +20,17 @@ public partial class AccountCard(Account account) : ViewModelBase
 
     public string Username => Account.Username;
     /// <summary>
-    /// "Microsoft", or "Offline · Name#1038" once an offline account is on the network. The tag is
-    /// four digits nobody chose and nobody remembers, and this is the other place somebody would
-    /// think to look for it.
+    /// "Microsoft", or "Offline · #1038" once an offline account is on the network. The tag is four
+    /// digits nobody chose and nobody remembers, and this is the other place somebody would think
+    /// to look for it.
+    ///
+    /// The digits alone, not the whole handle: the name is already on the line above, and repeating
+    /// it made the label longer than the card and cut the tag off — losing exactly the part that
+    /// was worth showing.
     /// </summary>
     public string KindLabel => Account.Kind == AccountKind.Microsoft
         ? "Microsoft"
-        : Account.NetworkTag is { Length: > 0 } tag ? $"Offline · {Account.Username}#{tag}" : "Offline";
+        : Account.NetworkTag is { Length: > 0 } tag ? $"Offline · #{tag}" : "Offline";
 
     [ObservableProperty] public partial Bitmap? Face { get; set; }
     [ObservableProperty] public partial bool IsActive { get; set; }
