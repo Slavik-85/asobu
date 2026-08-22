@@ -71,9 +71,13 @@
              wherever "You are" leaves it, which is next to the label and nowhere near the middle.
              The side margins keep the centred text clear of the button it is centred under. -->
         <Panel>
+          <!-- Both at one font size, which is what actually puts them on the same line. Centring
+               each vertically only centres its own box, and a 12.5px box beside a 13px one is
+               shorter — so the two sit at slightly different heights however they are aligned.
+               The label keeps its muted colour and gives up only the half-pixel. -->
           <StackPanel Orientation="Horizontal" Spacing="9" Margin="34,0"
                       HorizontalAlignment="Center" VerticalAlignment="Center">
-            <TextBlock Text="You are" Classes="label" VerticalAlignment="Center"/>
+            <TextBlock Text="You are" Classes="label" FontSize="13" VerticalAlignment="Center"/>
             <TextBlock Text="{Binding MyHandle}" FontWeight="SemiBold" FontSize="13"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                        ToolTip.Tip="What friends type to find you"/>
