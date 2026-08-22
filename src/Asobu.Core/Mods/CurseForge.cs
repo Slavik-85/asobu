@@ -1,4 +1,4 @@
-using Asobu.Core.Minecraft;
+﻿using Asobu.Core.Minecraft;
 using System.Globalization;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -88,6 +88,7 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
         return response?.Data is null
             ? []
             : [.. response.Data
+                .Where(mod => FitsLoader(mod, query))
                 .OrderByDescending(mod => NameScore(mod.Name, query.Text))
                 .Select(mod => new ModListing(
                 ModProvider.CurseForge,
@@ -574,6 +575,38 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
     }
 
     /// <summary>CurseForge identifies loaders by number: 1 Forge, 4 Fabric, 5 Quilt, 6 NeoForge.</summary>
+    /// <summary>
+    /// Whether one result belongs in an "Everything" search made on an instance's behalf.
+    ///
+    /// A mixed search cannot carry modLoaderType: CurseForge answers a resource-pack query
+    /// filtered by Fabric with nothing at all, so asking for the loader across every class would
+    /// empty the list rather than narrow the mods in it. That is why the filter was dropped for
+    /// mixed searches — and why Fabric mods turned up while browsing for Forge.
+    ///
+    /// Done here instead, on what came back. Each result lists the loaders of its own newest files,
+    /// so this costs no extra request.
+    ///
+    /// Only mods are held to it, and only where the result actually says. A mod naming no loader
+    /// is not evidence of anything, and being wrong that way shows a row too many rather than
+    /// hiding one that would have worked.
+    /// </summary>
+    private static bool FitsLoader(Mod mod, ModQuery query)
+    {
+        if (query.Kind != ModKind.Any) return true;      // a single-kind search was filtered already
+        if (LoaderType(query.Loader) is not { } wanted) return true;
+
+        var kind = mod.ClassId is { } classId ? ModContent.KindForClass(classId) : ModKind.Any;
+        if (kind != ModKind.Mod) return true;
+
+        var named = mod.LatestFilesIndexes?
+            .Select(index => index.ModLoader)
+            .Where(loader => loader is > 0)
+            .Distinct()
+            .ToList();
+
+        return named is not { Count: > 0 } || named.Contains(wanted);
+    }
+
     private static int? LoaderType(string? loader) => loader?.ToLowerInvariant() switch
     {
         "forge" => 1,
@@ -613,6 +646,15 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
     private sealed class SearchResponse
     {
         [JsonPropertyName("data")] public List<Mod>? Data { get; init; }
+    }
+
+    /// <summary>
+    /// One of a project's newest files, of which only the loader is wanted here. CurseForge
+    /// returns these on every search result, which is what makes filtering a mixed search free.
+    /// </summary>
+    private sealed class FileIndex
+    {
+        [JsonPropertyName("modLoader")] public int? ModLoader { get; init; }
     }
 
     private sealed class FingerprintResponse
@@ -669,6 +711,12 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
 
         /// <summary>The project's own gallery, for showing a mod off at banner size.</summary>
         [JsonPropertyName("screenshots")] public List<Screenshot>? Screenshots { get; init; }
+
+        /// <summary>
+        /// The newest file per loader and game version. Read only for the loaders it names, which
+        /// is how a mixed search can drop the mods that would not run here without asking again.
+        /// </summary>
+        [JsonPropertyName("latestFilesIndexes")] public List<FileIndex>? LatestFilesIndexes { get; init; }
 
         [JsonPropertyName("categories")] public List<Category>? Categories { get; init; }
 

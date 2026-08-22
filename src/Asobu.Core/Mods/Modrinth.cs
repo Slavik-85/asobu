@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+﻿using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -105,7 +105,9 @@ public sealed class Modrinth(HttpClient http) : IModSource
 
             return results?.Hits is null
                 ? []
-                : [.. results.Hits.Select(hit => new ModListing(
+                : [.. results.Hits
+                    .Where(hit => FitsLoader(hit, query))
+                    .Select(hit => new ModListing(
                     ModProvider.Modrinth,
                     hit.ProjectId ?? hit.Slug ?? "",
                     hit.Title ?? hit.Slug ?? "",
@@ -123,6 +125,36 @@ public sealed class Modrinth(HttpClient http) : IModSource
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// Whether one hit belongs in an "Everything" search that is being made on an instance's behalf.
+    ///
+    /// A facet cannot do this. Facets apply to the whole query, and asking for a loader alongside
+    /// every project type would return nothing at all: a resource pack carries no loader category,
+    /// so requiring one excludes every pack, shader and world rather than narrowing the mods among
+    /// them. Which is why a mixed search dropped the loader entirely — and then listed Fabric mods
+    /// to somebody browsing for Forge.
+    ///
+    /// So it is done here, on what the search already said. Every hit lists its own categories and
+    /// loader slugs live among them, so no second request is needed to know.
+    ///
+    /// Only mods are held to it. Everything else in a mixed search runs on any loader or none.
+    /// </summary>
+    private static bool FitsLoader(SearchHit hit, ModQuery query)
+    {
+        if (query.Kind != ModKind.Any) return true;      // a single-kind search was faceted already
+        if (query.Loader is not { Length: > 0 } loader) return true;
+        if (loader.Equals("vanilla", StringComparison.OrdinalIgnoreCase)) return true;
+
+        if (ModContent.KindForProjectType(hit.ProjectType) != ModKind.Mod) return true;
+
+        // A mod that names no loader at all is not evidence of anything, so it stays. Being wrong
+        // in that direction shows one extra row; the other way hides a mod that would have worked.
+        var loaders = hit.Categories?.Where(Minecraft.Loaders.IsLoaderName).ToList();
+        if (loaders is not { Count: > 0 }) return true;
+
+        return loaders.Any(named => named.Equals(loader, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Modrinth calls this the search index. "follows" is its notion of popularity.</summary>
