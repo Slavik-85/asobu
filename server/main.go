@@ -622,6 +622,10 @@ type wireWorld struct {
 	Max     int    `json:"max"`
 	Version string `json:"version,omitempty"`
 
+	// Version, loader and mod list rolled into one, so a friend with a matching instance can be
+	// sent straight into the world instead of being asked which of theirs to use.
+	Fingerprint string `json:"fingerprint,omitempty"`
+
 	Addresses []string `json:"addresses,omitempty"`
 	Pass      string   `json:"pass,omitempty"`
 }
@@ -644,6 +648,7 @@ func (s *Server) wire(uuid, viewer string) wireFriend {
 	if world := s.world(uuid); world != nil {
 		f.World = &wireWorld{
 			Name: world.name, Players: world.players, Max: world.max, Version: world.version,
+			Fingerprint: world.fingerprint,
 		}
 		if pass, invited := world.invites[viewer]; invited {
 			f.World.Addresses, f.World.Pass = world.addresses, pass

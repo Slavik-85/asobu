@@ -48,6 +48,12 @@ public sealed record FriendWorld(string Name, int Players, int Max)
     /// </summary>
     public string? Version { get; init; }
 
+    /// <summary>
+    /// Stands for the world's version, loader and mod list together. A friend holding an instance
+    /// with the same one can join straight away instead of being asked which to use.
+    /// </summary>
+    public string? Fingerprint { get; init; }
+
     /// <summary>Where the host's door might be, cheapest first: their network, then the internet.</summary>
     public IReadOnlyList<string> Addresses { get; init; } = [];
 
@@ -274,10 +280,11 @@ public sealed class FriendsClient(HttpClient http, AsobuPaths paths)
     /// without anybody having to notice.
     /// </summary>
     public Task OpenWorldAsync(
-        string name, int players, int max, int port, string? version,
+        string name, int players, int max, int port, string? version, string? fingerprint,
         CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "host/open",
-            new { name, players, max, port, version, local = LocalAddresses.For(port) }, cancellationToken);
+            new { name, players, max, port, version, fingerprint, local = LocalAddresses.For(port) },
+            cancellationToken);
 
     public Task CloseWorldAsync(CancellationToken cancellationToken = default) =>
         SendAsync<OkReply>(HttpMethod.Post, "host/close", new { }, cancellationToken);

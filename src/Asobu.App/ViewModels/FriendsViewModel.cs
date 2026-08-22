@@ -486,7 +486,10 @@ public partial class FriendsViewModel : ViewModelBase
                 await _launcher.Friends.CloseWorldAsync();
             else
                 await _launcher.Friends.OpenWorldAsync(
-                    world.Name, world.Players, world.MaxPlayers, world.DoormanPort, world.Version);
+                    world.Name, world.Players, world.MaxPlayers, world.DoormanPort, world.Version,
+                    _launcher.Running is { } playing
+                        ? InstanceFingerprint.Of(_launcher.Paths, playing)
+                        : null);
         }
         catch (Exception)
         {
@@ -536,32 +539,59 @@ public partial class FriendsViewModel : ViewModelBase
     /// spent before the question is a moment spent on a join that might be cancelled.
     /// </summary>
     [RelayCommand]
-    private void Join(FriendRow? row)
+    private async Task JoinAsync(FriendRow? row)
     {
         if (row?.World is not { AmInvited: true } world) return;
 
+        // An instance that would play the same as theirs is not a question worth asking: the only
+        // person who could answer it is the host, and they already have.
+        if (Matching(world) is { } ready)
+        {
+            if (await ReachAndJoinAsync(ready, world) is { Length: > 0 } trouble)
+            {
+                Notice = trouble;
+                NoticeIsGood = false;
+            }
+
+            return;
+        }
+
         _askJoin(
             $"Join {row.Name}",
-            async instance =>
-            {
-                WorldJoin reached;
-                try
-                {
-                    reached = await WorldJoin.ReachAsync(world.Addresses, world.Pass!);
-                }
-                catch (WorldJoinException e)
-                {
-                    return e.Message;
-                }
-
-                // Held on the page rather than in the sheet: the tunnel has to outlive the click
-                // that made it, for as long as the player is in the world.
-                _joined?.Dispose();
-                _joined = reached;
-
-                return await _join(instance, reached.Address);
-            },
+            instance => ReachAndJoinAsync(instance, world),
             _ => Task.FromResult(SupportFor(world)));
+    }
+
+    /// <summary>The instance of mine that would play the same as the host's, if I have one.</summary>
+    private Instance? Matching(FriendWorld world)
+    {
+        if (world.Fingerprint is not { Length: > 0 } theirs) return null;
+
+        return _launcher.Instances.LoadAll()
+            .FirstOrDefault(instance => InstanceFingerprint.Of(_launcher.Paths, instance) == theirs);
+    }
+
+    /// <summary>
+    /// Opens the tunnel and starts the game in it. Returns what went wrong, or null.
+    /// </summary>
+    private async Task<string?> ReachAndJoinAsync(Instance instance, FriendWorld world)
+    {
+        WorldJoin reached;
+        try
+        {
+            reached = await WorldJoin.ReachAsync(world.Addresses, world.Pass!);
+        }
+        catch (WorldJoinException e)
+        {
+            return e.Message;
+        }
+
+        // Held on the page rather than in the sheet: the tunnel has to outlive the click that
+        // made it, for as long as the player is in the world.
+        _joined?.Dispose();
+        _joined = reached;
+
+        return await _join(instance, reached.Address);
     }
 
     /// <summary>

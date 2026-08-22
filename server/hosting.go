@@ -27,6 +27,10 @@ type hostedWorld struct {
 	// which versions can play together, and the launcher that asks is the one that knows.
 	version string
 
+	// Stands for the world's version, loader and mod list together, so a friend holding a
+	// matching instance can be sent straight in. Opaque here, like everything else.
+	fingerprint string
+
 	// Where the host's door might be reached: their own addresses as they see them, then the one
 	// this server saw them arrive from. Ordered cheapest first — a friend on the same network, or
 	// on the same VPN, connects without ever leaving it.
@@ -70,12 +74,13 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name    string   `json:"name"`
-		Players int      `json:"players"`
-		Max     int      `json:"max"`
-		Port    int      `json:"port"`
-		Version string   `json:"version"`
-		Local   []string `json:"local"`
+		Name        string   `json:"name"`
+		Players     int      `json:"players"`
+		Max         int      `json:"max"`
+		Port        int      `json:"port"`
+		Version     string   `json:"version"`
+		Fingerprint string   `json:"fingerprint"`
+		Local       []string `json:"local"`
 	}
 	if !readBody(w, r, &body) {
 		return
@@ -96,15 +101,18 @@ func (s *Server) handleHostOpen(w http.ResponseWriter, r *http.Request) {
 
 	name := trimRunes(strings.TrimSpace(body.Name), 64)
 	version := trimRunes(strings.TrimSpace(body.Version), 32)
+	fingerprint := trimRunes(strings.TrimSpace(body.Fingerprint), 64)
 	// Only wake the watchers when a friends list would actually read differently. A heartbeat
 	// that says exactly what the last one said is not news, and this fires every few seconds.
 	changed := world.name != name ||
 		world.players != body.Players ||
 		world.max != body.Max ||
 		world.version != version ||
+		world.fingerprint != fingerprint ||
 		strings.Join(world.addresses, ",") != strings.Join(addresses, ",")
 
 	world.name, world.players, world.max, world.version = name, body.Players, body.Max, version
+	world.fingerprint = fingerprint
 	world.addresses = addresses
 	world.beat = time.Now()
 

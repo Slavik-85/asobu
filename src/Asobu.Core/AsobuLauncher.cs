@@ -97,6 +97,12 @@ public sealed class AsobuLauncher
     public LanPortWatch LanPorts { get; } = new();
 
     /// <summary>
+    /// The instance the game is playing, or null. Kept so the friends page can say what a world
+    /// is made of without having to guess which of several instances opened it.
+    /// </summary>
+    public Instance? Running { get; private set; }
+
+    /// <summary>
     /// Asobu's stand-in for Mojang's session server, so an invited friend without a Microsoft
     /// account can be let into a world. Started on the first launch and left running; it forwards
     /// everything it does not answer itself, so a real account is unaffected by its presence.
@@ -390,7 +396,12 @@ public sealed class AsobuLauncher
             onOutput?.Invoke(line);
         });
 
-        process.Exited += (_, _) => LanPorts.Forget();
+        Running = instance;
+        process.Exited += (_, _) =>
+        {
+            LanPorts.Forget();
+            Running = null;
+        };
 
         instance.LastPlayed = DateTimeOffset.UtcNow;
         Instances.Save(instance);
