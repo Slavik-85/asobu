@@ -389,6 +389,12 @@ public partial class FriendsViewModel : ViewModelBase
     /// <summary>The tunnel into a friend's world, held open for as long as the game is in it.</summary>
     private WorldJoin? _joined;
 
+    /// <summary>
+    /// Whether the network has been told about a world. Kept so closing one is announced once
+    /// rather than every few seconds for the rest of the evening.
+    /// </summary>
+    private bool _toldNetworkAboutWorld;
+
     /// <summary>The world this launcher has open, or null. Nobody presses anything to set it.</summary>
     [ObservableProperty] public partial HostedWorld? MyWorld { get; set; }
 
@@ -419,7 +425,9 @@ public partial class FriendsViewModel : ViewModelBase
         _hostLoop = stopping;
 
         var host = new WorldHost(_hostSecret, account.Username, ports: _launcher.LanPorts);
-        host.Changed += world => Dispatcher.UIThread.Post(() => _ = PublishWorldAsync(world));
+
+        host.Changed += world => Dispatcher.UIThread.Post(() => ShowWorld(world));
+        host.Beat += world => Dispatcher.UIThread.Post(() => _ = PublishWorldAsync(world));
         _worldHost = host;
 
         _ = host.RunAsync(stopping.Token);
@@ -437,23 +445,34 @@ public partial class FriendsViewModel : ViewModelBase
         _joined = null;
 
         MyWorld = null;
+        _toldNetworkAboutWorld = false;
         foreach (var row in Friends) row.IsInvited = false;
     }
 
-    /// <summary>
-    /// Tells the network what is open, or that nothing is. Failing here is not worth showing: the
-    /// next heartbeat says the same thing a few seconds later, and a world that stops being
-    /// announced drops off everyone's list on its own.
-    /// </summary>
-    private async Task PublishWorldAsync(HostedWorld? world)
+    /// <summary>What the banner says. Only differences reach here, so it does not flicker.</summary>
+    private void ShowWorld(HostedWorld? world)
     {
         MyWorld = world;
         if (world is null)
         {
             foreach (var row in Friends) row.IsInvited = false;
         }
+    }
 
+    /// <summary>
+    /// Tells the network what is open, or that nothing is — every few seconds, not only when
+    /// something changes. The server forgets a world it has not heard about lately, which is what
+    /// makes a launcher that is killed stop hosting without anybody noticing.
+    ///
+    /// Failing is not worth showing: the next beat says the same thing a few seconds later, and
+    /// that retry is the whole recovery story.
+    /// </summary>
+    private async Task PublishWorldAsync(HostedWorld? world)
+    {
         if (!IsConnected) return;
+        if (world is null && !_toldNetworkAboutWorld) return;
+
+        _toldNetworkAboutWorld = world is not null;
 
         try
         {

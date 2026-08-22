@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Asobu.Core.Hosting;
 
 namespace Asobu.Core.Tests;
@@ -20,6 +20,7 @@ public class WorldHostTests
         public LanWorld? Beacon;
         public WorldStatus? Status = new(2, 8);
         public readonly List<HostedWorld?> Published = [];
+        public readonly List<HostedWorld?> Beats = [];
 
         public readonly WorldHost Host;
 
@@ -30,6 +31,7 @@ public class WorldHostTests
                 (_, _) => Task.FromResult<WorldStatus?>(Status));
 
             Host.Changed += world => Published.Add(world);
+            Host.Beat += world => Beats.Add(world);
         }
 
         public Task TurnAsync() => Host.OnceAsync(CancellationToken.None);
@@ -154,6 +156,39 @@ public class WorldHostTests
 
         Assert.Equal(2, fake.Published.Count);
         Assert.Equal(3, fake.Published[^1]!.Players);
+    }
+
+    /// <summary>
+    /// The network forgets a world it has not heard about lately, so it has to be told on every
+    /// turn — not only when something about the world changed. Driving both off the same event
+    /// meant a world with a steady player count was announced once and forgotten a minute later,
+    /// with the banner still up and invites answering "you do not have a world open".
+    /// </summary>
+    [Fact]
+    public async Task The_network_is_told_every_turn_even_when_nothing_changes()
+    {
+        using var fake = new Fake { Beacon = new LanWorld(58212, "Slavik - Skyblock") };
+
+        await fake.TurnAsync();
+        await fake.TurnAsync();
+        await fake.TurnAsync();
+
+        Assert.Single(fake.Published);
+        Assert.Equal(3, fake.Beats.Count);
+        Assert.All(fake.Beats, world => Assert.NotNull(world));
+    }
+
+    [Fact]
+    public async Task The_beat_says_nothing_is_open_once_the_world_closes()
+    {
+        using var fake = new Fake { Beacon = new LanWorld(58212, "Slavik - Skyblock") };
+        await fake.TurnAsync();
+
+        fake.Beacon = null;
+        await fake.TurnAsync();
+        await fake.TurnAsync();
+
+        Assert.Null(fake.Beats[^1]);
     }
 
     [Fact]

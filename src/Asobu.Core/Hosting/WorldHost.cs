@@ -71,8 +71,19 @@ public sealed class WorldHost : IDisposable
     /// <summary>The world being hosted, or null when there isn't one.</summary>
     public HostedWorld? Current { get; private set; }
 
-    /// <summary>Fires whenever <see cref="Current"/> becomes something else worth publishing.</summary>
+    /// <summary>Fires whenever <see cref="Current"/> becomes something else worth showing.</summary>
     public event Action<HostedWorld?>? Changed;
+
+    /// <summary>
+    /// Fires every turn, whether anything changed or not.
+    ///
+    /// Separate from <see cref="Changed"/> because the two have opposite needs. A screen wants to
+    /// hear only about differences; the network wants to be told the world is still there, because
+    /// it forgets a world nobody has vouched for lately. Driving the heartbeat off Changed meant a
+    /// world with a steady player count was announced once and then quietly forgotten a minute
+    /// later — the banner stayed up, and inviting somebody answered "you do not have a world open".
+    /// </summary>
+    public event Action<HostedWorld?>? Beat;
 
     /// <summary>Runs until cancelled. The door goes up and comes down underneath it.</summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -105,6 +116,7 @@ public sealed class WorldHost : IDisposable
                 Publish(null);
             }
 
+            Beat?.Invoke(Current);
             return;
         }
 
@@ -122,6 +134,8 @@ public sealed class WorldHost : IDisposable
 
         Publish(new HostedWorld(
             name, status?.Players ?? 0, status?.MaxPlayers ?? 0, _doorman!.Port, status?.Version));
+
+        Beat?.Invoke(Current);
     }
 
     private void OpenDoor(int lanPort, CancellationToken cancellationToken)
