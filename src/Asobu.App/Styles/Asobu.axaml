@@ -1790,6 +1790,16 @@
     <Setter Property="Stroke" Value="{DynamicResource TextMuted}"/>
   </Style>
 
+  <!-- An offline account's handle, sitting over the add box. Quiet on purpose: it is a thing to
+       glance at when somebody asks how to add you, not a thing to look at all the time. -->
+  <Style Selector="Border.handleBar">
+    <Setter Property="Padding" Value="12,7"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+  </Style>
+
   <!-- Where the dragged band would land. -->
   <Style Selector="Border.dropLine">
     <Setter Property="Height" Value="2"/>

@@ -19,7 +19,14 @@ public partial class AccountCard(Account account) : ViewModelBase
     public Account Account { get; } = account;
 
     public string Username => Account.Username;
-    public string KindLabel => Account.Kind == AccountKind.Microsoft ? "Microsoft" : "Offline";
+    /// <summary>
+    /// "Microsoft", or "Offline · Name#1038" once an offline account is on the network. The tag is
+    /// four digits nobody chose and nobody remembers, and this is the other place somebody would
+    /// think to look for it.
+    /// </summary>
+    public string KindLabel => Account.Kind == AccountKind.Microsoft
+        ? "Microsoft"
+        : Account.NetworkTag is { Length: > 0 } tag ? $"Offline · {Account.Username}#{tag}" : "Offline";
 
     [ObservableProperty] public partial Bitmap? Face { get; set; }
     [ObservableProperty] public partial bool IsActive { get; set; }
@@ -27,6 +34,13 @@ public partial class AccountCard(Account account) : ViewModelBase
     public bool HasFace => Face is not null;
 
     partial void OnFaceChanged(Bitmap? value) => OnPropertyChanged(nameof(HasFace));
+
+    /// <summary>
+    /// Says the label changed, for the moment an offline account gains its tag. The card is built
+    /// once and the tag arrives later, so without this the page goes on saying plain "Offline"
+    /// until something else rebuilds it.
+    /// </summary>
+    public void RefreshKindLabel() => OnPropertyChanged(nameof(KindLabel));
 }
 
 public partial class AccountsViewModel(AsobuLauncher launcher) : ViewModelBase
@@ -80,6 +94,14 @@ public partial class AccountsViewModel(AsobuLauncher launcher) : ViewModelBase
     /// page recording the network identity an offline account was just given, for instance.
     /// </summary>
     public void SaveAccounts() => launcher.Accounts.Save(Cards.Select(c => c.Account));
+
+    /// <summary>Re-reads every card's label, after one of them was given a network identity.</summary>
+    public void RefreshLabels()
+    {
+        foreach (var card in Cards) card.RefreshKindLabel();
+
+        OnPropertyChanged(nameof(ActiveKindLabel));
+    }
 
     public string ActiveLabel => Active?.Username ?? "Not signed in";
     public string ActiveKindLabel => Active is null

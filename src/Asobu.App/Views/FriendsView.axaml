@@ -59,10 +59,32 @@
                VerticalAlignment="Center" IsVisible="{Binding IsConnecting}"/>
 
     <!-- ============ The list itself ============ -->
-    <Grid RowDefinitions="Auto,Auto,*" IsVisible="{Binding IsConnected}" IsEnabled="{Binding !IsChatting}">
+    <Grid RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsConnected}" IsEnabled="{Binding !IsChatting}">
+
+      <!-- An offline account's own handle, kept on screen rather than said once when it joined.
+           The four digits are not chosen and not memorable, and they are the half a friend cannot
+           guess — somebody who closed the launcher and wants to be added has nowhere else to look
+           for them. A Microsoft account needs none of this: its name is its name. -->
+      <Border Grid.Row="0" Classes="handleBar" IsVisible="{Binding ShowsHandle}" Margin="0,0,0,10">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+          <TextBlock Grid.Column="0" Text="You are" Classes="label" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="{Binding MyHandle}" FontWeight="SemiBold" FontSize="13"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="What friends type to find you"/>
+          <Button Grid.Column="2" Classes="iconGhost" Click="CopyHandle_Click"
+                  ToolTip.Tip="Copy your handle">
+            <Viewbox Classes="icon">
+              <Canvas Width="24" Height="24">
+                <Path Data="M9 9 H19 V19 H9 Z M5 15 V5 H15" StrokeThickness="2"
+                      StrokeLineCap="Round" StrokeJoin="Round"/>
+              </Canvas>
+            </Viewbox>
+          </Button>
+        </Grid>
+      </Border>
 
       <!-- Add by name. Enter works because it's the only button in a one-line form. -->
-      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
         <TextBox Grid.Column="0" Text="{Binding NewFriendName}"
                  PlaceholderText="Minecraft username, or Name#0000">
           <TextBox.KeyBindings>
@@ -72,12 +94,12 @@
         <Button Grid.Column="1" Classes="primary" Content="Add" Command="{Binding AddFriendCommand}"/>
       </Grid>
 
-      <TextBlock Grid.Row="1" Text="{Binding Notice}" Classes="notice" TextWrapping="Wrap" Margin="2,8,2,0"
+      <TextBlock Grid.Row="2" Text="{Binding Notice}" Classes="notice" TextWrapping="Wrap" Margin="2,8,2,0"
                  Classes.good="{Binding NoticeIsGood}"
                  IsVisible="{Binding Notice, Converter={x:Static conv:ObjectConverters.IsNotNull}}"/>
 
       <!-- Empty network -->
-      <StackPanel Grid.Row="2" VerticalAlignment="Center" Spacing="8" Margin="10"
+      <StackPanel Grid.Row="3" VerticalAlignment="Center" Spacing="8" Margin="10"
                   IsVisible="{Binding IsEmpty}">
         <TextBlock Text="&#x1F338;" FontSize="34" HorizontalAlignment="Center"/>
         <TextBlock Text="No friends yet" Classes="h2" HorizontalAlignment="Center"
@@ -86,7 +108,7 @@
                    Text="Anyone who has signed in to Asobu with Microsoft can be added — just their Minecraft username, up there."/>
       </StackPanel>
 
-      <ScrollViewer Grid.Row="2" ctrl:SmoothScroll.Enabled="True" Margin="0,16,0,0"
+      <ScrollViewer Grid.Row="3" ctrl:SmoothScroll.Enabled="True" Margin="0,16,0,0"
                     IsVisible="{Binding !IsEmpty}">
         <StackPanel Spacing="18">
 

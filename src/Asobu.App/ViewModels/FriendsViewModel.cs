@@ -762,6 +762,7 @@ public partial class FriendsViewModel : ViewModelBase
             account.NetworkUuid = identity.Uuid;
             account.NetworkTag = identity.Tag;
             _accounts.SaveAccounts();
+            _accounts.RefreshLabels();
 
             RaiseGates();
 
@@ -822,6 +823,7 @@ public partial class FriendsViewModel : ViewModelBase
                         account.NetworkUuid = identity.Uuid;
                         account.NetworkTag = identity.Tag;
                         _accounts.SaveAccounts();
+            _accounts.RefreshLabels();
                         RaiseGates();
                     }
                     else

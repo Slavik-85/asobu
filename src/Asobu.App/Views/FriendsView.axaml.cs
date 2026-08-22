@@ -1,8 +1,11 @@
-﻿using System.Collections.Specialized;
+﻿using System;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using Asobu.App.ViewModels;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 
@@ -10,6 +13,26 @@ namespace Asobu.App.Views;
 
 public partial class FriendsView : UserControl
 {
+    /// <summary>
+    /// Puts this account's handle on the clipboard, so it can be sent to whoever is adding you.
+    /// The clipboard belongs to the window, which is why this is here rather than in the model.
+    /// </summary>
+    private async void CopyHandle_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not FriendsViewModel { MyHandle: { Length: > 0 } handle }) return;
+
+        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+
+        try
+        {
+            await clipboard.SetTextAsync(handle);
+        }
+        catch (Exception)
+        {
+            // Another application holding the clipboard. The handle is on screen to be read.
+        }
+    }
+
     /// <summary>The collection currently being watched, so its handler can be taken off again.</summary>
     private INotifyCollectionChanged? _watching;
 

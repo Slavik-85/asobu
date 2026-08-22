@@ -2698,6 +2698,7 @@ public partial class InstancesViewModel : ViewModelBase
             account.NetworkUuid = identity.Uuid;
             account.NetworkTag = identity.Tag;
             _accounts.SaveAccounts();
+            _accounts.RefreshLabels();
             return;
         }
 
