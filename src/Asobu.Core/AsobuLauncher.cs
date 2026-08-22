@@ -78,6 +78,8 @@ public sealed class AsobuLauncher
         Microsoft = new MicrosoftAuth(xbox, Paths, Settings.MicrosoftClientId ?? "");
         DeviceCode = new DeviceCodeAuth(http, new TokenVault(Paths), xbox);
 
+        Session = new SessionShim(http);
+
         Friends = new FriendsClient(http, Paths);
         Shares = new ShareClient(http, Paths, Friends);
 
@@ -93,6 +95,13 @@ public sealed class AsobuLauncher
     /// because the page that starts the game and the page that hosts it are different ones.
     /// </summary>
     public LanPortWatch LanPorts { get; } = new();
+
+    /// <summary>
+    /// Asobu's stand-in for Mojang's session server, so an invited friend without a Microsoft
+    /// account can be let into a world. Started on the first launch and left running; it forwards
+    /// everything it does not answer itself, so a real account is unaffected by its presence.
+    /// </summary>
+    public SessionShim Session { get; }
 
     /// <summary>
     /// Pictures kept on disk between runs. Every screen that shows artwork goes through this
@@ -359,8 +368,15 @@ public sealed class AsobuLauncher
         // know which java binary is being launched.
         GpuPreferences.Apply(javaExecutable, settings.Gpu);
 
+        // An offline account has nobody to vouch for it, and a world opened to LAN always asks —
+        // so the stand-in answers on its behalf. "legacy" is what an offline session carries; a
+        // Microsoft one says "msa" and still goes to Mojang for everything.
+        Session.JoinsWithoutMojang = session.UserType == "legacy";
+        var sessionHost = Session.TryStart() ? Session.BaseUrl : null;
+
         progress?.Report(new InstallProgress("Starting Minecraft", 1));
-        var plan = _launchBuilder.Build(version, instance, settings, session, javaExecutable, joinServer);
+        var plan = _launchBuilder.Build(
+            version, instance, settings, session, javaExecutable, joinServer, sessionHost);
 
         // Every line the game prints passes the port watch on its way to whoever asked for it.
         // Hooked here rather than at the call sites so that opening a world to LAN is noticed

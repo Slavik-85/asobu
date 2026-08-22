@@ -33,7 +33,8 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         LauncherSettings settings,
         MinecraftSession session,
         string javaExecutable,
-        string? joinServer = null)
+        string? joinServer = null,
+        string? sessionHost = null)
     {
         var platform = RuleContext.Current;
         var gameDirectory = paths.InstanceGameDir(instance.Folder);
@@ -73,6 +74,19 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
             $"-Xms{settings.MinMemoryMb}M",
             $"-Xmx{settings.MaxMemoryMb}M",
         };
+
+        // Where the game asks whether a player is who they say they are. Pointed at Asobu's own
+        // stand-in so a friend without a Microsoft account can be let into a world — see
+        // SessionShim, which forwards everything it does not answer itself.
+        //
+        // Both or neither: authlib wants the pair, and given only one it logs a complaint and
+        // quietly uses Mojang's. That is also the graceful failure for a version whose authlib
+        // predates these properties — the game simply carries on as it always did.
+        if (sessionHost is { Length: > 0 } shim)
+        {
+            arguments.Add($"-Dminecraft.api.session.host={shim}");
+            arguments.Add($"-Dminecraft.api.services.host={shim}");
+        }
 
         if (version.Logging?.Client is { } logging)
         {

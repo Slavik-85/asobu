@@ -39,6 +39,9 @@ public partial class FriendRow(Friend friend) : ViewModelBase
     /// </summary>
     public string PlayerName => friend.Name;
 
+    /// <summary>An account Mojang does not vouch for, so this launcher has to.</summary>
+    public bool IsOffline => friend.IsOffline;
+
     /// <summary>The world they have open, kept current in place so a count ticking over doesn't rebuild the row.</summary>
     [ObservableProperty] public partial FriendWorld? World { get; set; }
 
@@ -446,6 +449,7 @@ public partial class FriendsViewModel : ViewModelBase
 
         MyWorld = null;
         _toldNetworkAboutWorld = false;
+        _launcher.Session.StopVouchingForEveryone();
         foreach (var row in Friends) row.IsInvited = false;
     }
 
@@ -455,6 +459,8 @@ public partial class FriendsViewModel : ViewModelBase
         MyWorld = world;
         if (world is null)
         {
+            // The world is gone, so nobody is being let into it any more.
+            _launcher.Session.StopVouchingForEveryone();
             foreach (var row in Friends) row.IsInvited = false;
         }
     }
@@ -498,6 +504,7 @@ public partial class FriendsViewModel : ViewModelBase
             if (row.IsInvited)
             {
                 await _launcher.Friends.UninviteAsync(row.Uuid);
+                _launcher.Session.StopVouching(row.PlayerName);
                 row.IsInvited = false;
                 return;
             }
@@ -508,6 +515,12 @@ public partial class FriendsViewModel : ViewModelBase
                 _hostSecret, row.Uuid, row.PlayerName, DateTimeOffset.UtcNow.Add(PassLife));
 
             await _launcher.Friends.InviteAsync(row.Uuid, pass);
+
+            // Only for a friend Mojang cannot vouch for. Doing it for a real account would hand
+            // the world a made-up id for somebody who has a real one.
+            if (row.IsOffline)
+                _launcher.Session.Vouch(row.PlayerName, SessionShim.OfflineUuid(row.PlayerName));
+
             row.IsInvited = true;
         }
         catch (FriendsException e)
