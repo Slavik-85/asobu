@@ -50,6 +50,11 @@
   </Target>
 
   <ItemGroup>
+    <!-- So the tests can reach the wire-format helpers, which are no part of the public surface. -->
+    <InternalsVisibleTo Include="Asobu.Core.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Identity.Client" Version="4.87.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.0" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.87.0" />
