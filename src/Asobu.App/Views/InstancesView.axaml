@@ -133,8 +133,24 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         <Image IsVisible="{Binding HasCustomIcon}" Stretch="UniformToFill"
                                Source="{Binding IconImagePath, Converter={x:Static ctrl:ImagePathConverter.Instance}}"/>
+
+                        <!-- Sits on the artwork rather than under the name, so a wall of cards
+                             can be read at a glance for which ones are awake. -->
+                        <Border Classes="playingPill" IsVisible="{Binding IsPlaying}"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,8,0">
+                          <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Ellipse Classes="playingDot"/>
+                            <TextBlock Text="Playing" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource OnAccent}" VerticalAlignment="Center"/>
+                          </StackPanel>
+                        </Border>
                       </Panel>
                     </Border>
+
+                    <!-- Around the whole card, reaching back out through the template's padding.
+                         Not hit testable, so it never comes between a click and the card. -->
+                    <Border Grid.Row="0" Grid.RowSpan="3" Classes="playingRing" Margin="-10"
+                            IsVisible="{Binding IsPlaying}"/>
 
                     <!-- Row 1 is a plain gap. Kept as its own row rather than padding the
                          caption so the caption row height stays equal to the overlay's slide
@@ -157,7 +173,7 @@
                          button sits directly on the card and there is nothing left to mismatch. -->
                     <Border Grid.Row="2" Name="playOverlay">
                       <Button Classes="cardPlay" Tag="{Binding}" Click="CardPlay_Click"
-                              IsEnabled="{Binding $parent[UserControl].((vm:InstancesViewModel)DataContext).CanQuickPlay}"
+                              IsEnabled="{Binding !IsPlaying}"
                               HorizontalAlignment="Stretch" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="7" HorizontalAlignment="Center">
                           <Path Data="M 0,0 L 9,5.5 L 0,11 Z" Fill="{DynamicResource OnAccent}"
@@ -212,20 +228,45 @@
              underneath and could not be pressed. The extra 12 keeps them from touching. -->
         <Border Classes="card" VerticalAlignment="Bottom" Margin="0,0,56,20" Padding="16,12"
                 IsVisible="{Binding IsLaunchingFromLibrary}">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
-            <StackPanel Grid.Column="0" Spacing="7" VerticalAlignment="Center">
+          <StackPanel Spacing="10">
+            <!-- Installing, which is one thing at a time and has a bar of its own. -->
+            <StackPanel Spacing="7" IsVisible="{Binding IsBusy}">
               <TextBlock Text="{Binding Status}" FontSize="13" FontWeight="Medium"/>
-              <ProgressBar Value="{Binding Progress}" Maximum="1" Height="5" CornerRadius="3"
-                           IsVisible="{Binding IsBusy}"/>
+              <ProgressBar Value="{Binding Progress}" Maximum="1" Height="5" CornerRadius="3"/>
             </StackPanel>
-            <!-- The same two the instance page offers while the game is up, in the same
-                 order, so the pair reads the same wherever it is met. -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
-                        VerticalAlignment="Center" IsVisible="{Binding IsRunning}">
-              <Button Classes="ghost" Content="Logs" Command="{Binding ViewLogsCommand}"/>
-              <Button Classes="ghost danger" Content="Kill" Command="{Binding KillCommand}"/>
-            </StackPanel>
-          </Grid>
+
+            <!-- And then one chip per game that is up. A row rather than a single line of text
+                 because Logs and Kill have to belong to a particular one: with three games
+                 running, a Kill button that picks for you is a Kill button nobody dares press. -->
+            <TextBlock Text="{Binding RunningLabel}" Classes="label"
+                       IsVisible="{Binding IsRunning}"/>
+
+            <ItemsControl ItemsSource="{Binding Running}" IsVisible="{Binding IsRunning}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RunningGame">
+                  <Border Classes="runningChip" Margin="0,0,8,0">
+                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                      <Ellipse Classes="playingDot" Fill="{DynamicResource Accent}"/>
+                      <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Medium"
+                                 VerticalAlignment="Center" MaxWidth="180"
+                                 TextTrimming="CharacterEllipsis"/>
+                      <Button Classes="ghost" Content="Logs" Padding="9,4" FontSize="12"
+                              Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).ViewGameLogCommand}"
+                              CommandParameter="{Binding}"/>
+                      <Button Classes="ghost danger" Content="Kill" Padding="9,4" FontSize="12"
+                              Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).KillGameCommand}"
+                              CommandParameter="{Binding}"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
         </Border>
 
         <TextBlock Text="{Binding Error}" Classes="sub" TextWrapping="Wrap" MaxWidth="520"
@@ -338,9 +379,11 @@
           </StackPanel>
 
           <!-- What there is to do while the game is up: end it, or read what it is saying.
-               Under the badge rather than beside it, so Play and these read as one column. -->
+               Under the badge rather than beside it, so Play and these read as one column.
+               Shown for this instance's own game, not for any game: with several up, a page
+               offering to kill something belonging to a different card would be a trap. -->
           <StackPanel Spacing="10" HorizontalAlignment="Center"
-                      Margin="0,14,0,0" IsVisible="{Binding IsRunning}">
+                      Margin="0,14,0,0" IsVisible="{Binding Selected.IsPlaying}">
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
               <Button Classes="ghost danger" Content="Kill instance" Command="{Binding KillCommand}"/>
               <Button Classes="ghost" Content="Logs" Command="{Binding ViewLogsCommand}"/>

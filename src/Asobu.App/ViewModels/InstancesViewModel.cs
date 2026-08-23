@@ -97,6 +97,76 @@ public partial class InstanceGroup(string name, bool canDelete) : ViewModelBase
     [ObservableProperty] public partial bool IsCollapsing { get; set; }
 }
 
+/// <summary>
+/// One game that is up: the process, whose instance it belongs to, and its own output.
+///
+/// Its own output is the part that matters. Several games can be running, and a single shared
+/// buffer would interleave them into something nobody could read, with the log sheet showing
+/// whichever modpack happened to be chattiest.
+/// </summary>
+public sealed partial class RunningGame(Instance instance) : ViewModelBase
+{
+    /// <summary>Kept per game rather than shared, for the same reason as the lines themselves.</summary>
+    private readonly object _gate = new();
+    private readonly Queue<GameLogLine> _lines = new();
+    private GameLogFormatter _format = new();
+
+    /// <summary>
+    /// Set once the game has actually started. The game can print before that returns, which is
+    /// why this object exists a moment earlier than the process it describes.
+    /// </summary>
+    public Process Process { get; private set; } = null!;
+
+    public Instance Instance { get; } = instance;
+    public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
+
+    /// <summary>Somebody ended it on purpose, so the exit code is not news.</summary>
+    public bool Killed { get; set; }
+
+    public string Name => Instance.Name;
+
+    public void Attach(Process started) => Process = started;
+
+    /// <summary>
+    /// Called from whichever thread the process writes on. Nothing is posted to the UI from here:
+    /// a chatty modpack would flood the dispatcher with thousands of tiny messages, so the lines
+    /// are buffered and the screen pulls from them a few times a second instead.
+    /// </summary>
+    public void Append(string line)
+    {
+        lock (_gate)
+        {
+            // One raw line can produce none — an event that has not closed — or a dozen, when a
+            // stack trace arrives all at once.
+            foreach (var formatted in _format.Feed(line))
+            {
+                _lines.Enqueue(formatted);
+                while (_lines.Count > LogLineLimit) _lines.Dequeue();
+            }
+        }
+    }
+
+    public IReadOnlyList<GameLogLine> Lines()
+    {
+        lock (_gate) return [.. _lines];
+    }
+
+    public void Forget()
+    {
+        lock (_gate)
+        {
+            _lines.Clear();
+            _format = new GameLogFormatter();
+        }
+    }
+
+    /// <summary>
+    /// Enough that a stack trace survives, capped so a modpack logging in a loop cannot grow this
+    /// without limit.
+    /// </summary>
+    internal const int LogLineLimit = 2000;
+}
+
 public partial class InstancesViewModel : ViewModelBase
 {
     private const string AllGroupsFilter = "All";
@@ -116,7 +186,12 @@ public partial class InstancesViewModel : ViewModelBase
     private readonly Action<Instance, ModKind> _requestAddMods;
 
     private readonly List<Instance> _all = [];
-    private Process? _process;
+    /// <summary>
+    /// Every game that is up, newest last. More than one on purpose: people play one modpack
+    /// while a second finishes generating a world, and a launcher that refuses is a launcher they
+    /// work around by opening a second copy of it.
+    /// </summary>
+    public ObservableCollection<RunningGame> Running { get; } = [];
 
     public InstancesViewModel(
         AsobuLauncher launcher,
@@ -271,7 +346,8 @@ public partial class InstancesViewModel : ViewModelBase
     [ObservableProperty] public partial string SelectedGroupFilter { get; set; } = AllGroupsFilter;
 
     [ObservableProperty] public partial bool IsBusy { get; set; }
-    [ObservableProperty] public partial bool IsRunning { get; set; }
+    /// <summary>Whether anything at all is up. Per-instance, ask the instance.</summary>
+    public bool IsRunning => Running.Count > 0;
     [ObservableProperty] public partial string Status { get; set; } = "";
     [ObservableProperty] public partial double Progress { get; set; }
     [ObservableProperty] public partial string? Error { get; set; }
@@ -381,10 +457,14 @@ public partial class InstancesViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty] public partial bool IsLibraryVisible { get; set; } = true;
 
-    public bool CanPlay => Selected is not null && !IsBusy && !IsRunning;
+    public bool CanPlay => Selected is { IsPlaying: false } && !IsBusy;
 
     /// <summary>Card play buttons don't depend on selection, only on nothing already running.</summary>
-    public bool CanQuickPlay => !IsBusy && !IsRunning;
+    /// <summary>
+    /// Only whether the launcher is mid-install. Which instance may start is the instance's own
+    /// business, checked when it is asked to.
+    /// </summary>
+    public bool CanQuickPlay => !IsBusy;
 
     /// <summary>Library needs its own progress strip, since launching there shows no page.</summary>
     public bool IsLaunchingFromLibrary => IsBusy || IsRunning;
@@ -393,7 +473,7 @@ public partial class InstancesViewModel : ViewModelBase
     /// was a badge under it saying the same thing in more words; two labels for one fact is one
     /// too many, and the button is where the eye already is.
     /// </summary>
-    public string PlayLabel => IsRunning ? "Playing" : IsBusy ? "Working…" : "Play";
+    public string PlayLabel => Selected is { IsPlaying: true } ? "Playing" : IsBusy ? "Working…" : "Play";
     public string DeleteQuestion => $"Delete {PendingDelete?.Name}?";
     public string AccountLabel => _accounts.Active is { } a ? $"as {a.Username}" : "no account selected";
     public IReadOnlyList<string> IconChoices => Instance.IconChoices;
@@ -656,6 +736,9 @@ public partial class InstancesViewModel : ViewModelBase
 
         LoadInstanceSettings(value);
         OnPropertyChanged(nameof(CanPlay));
+
+        // Both read the selected instance rather than the launcher, so both change with it.
+        OnPropertyChanged(nameof(PlayLabel));
         OnPropertyChanged(nameof(SettingsSummary));
 
         if (value is { } instance) _ = LoadDiskUsageAsync(instance);
@@ -682,13 +765,29 @@ public partial class InstancesViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsLaunchingFromLibrary));
     }
 
-    partial void OnIsRunningChanged(bool value)
+    private void RunningChanged()
     {
+        OnPropertyChanged(nameof(IsRunning));
         OnPropertyChanged(nameof(CanPlay));
         OnPropertyChanged(nameof(PlayLabel));
         OnPropertyChanged(nameof(CanQuickPlay));
         OnPropertyChanged(nameof(IsLaunchingFromLibrary));
+        OnPropertyChanged(nameof(RunningLabel));
     }
+
+    /// <summary>
+    /// "Minecraft is running", or how many, once there is more than one to keep track of.
+    /// </summary>
+    public string RunningLabel => Running.Count switch
+    {
+        0 => "",
+        1 => $"{Running[0].Name} is running",
+        var many => $"{many} instances are running",
+    };
+
+    /// <summary>The game up for this instance, or null.</summary>
+    private RunningGame? GameFor(Instance? instance) =>
+        instance is null ? null : Running.FirstOrDefault(game => game.Instance.Id == instance.Id);
 
     partial void OnPendingDeleteChanged(Instance? value) => OnPropertyChanged(nameof(DeleteQuestion));
 
@@ -2765,9 +2864,10 @@ public partial class InstancesViewModel : ViewModelBase
     /// </summary>
     public async Task<string?> PlayOnServerAsync(Instance instance, string address)
     {
-        if (IsBusy || IsRunning) return "Something is already running. Stop it first.";
+        if (IsBusy) return "The launcher is busy. Try again in a moment.";
 
         Selected = _all.FirstOrDefault(i => i.Id == instance.Id) ?? instance;
+        if (Selected.IsPlaying) return $"{Selected.Name} is already running.";
 
         await LaunchAsync(Selected, address);
 
@@ -2785,7 +2885,10 @@ public partial class InstancesViewModel : ViewModelBase
     private async Task LaunchAsync(Instance? target, string? joinServer = null)
     {
         if (target is not { } instance) return;
-        if (IsBusy || IsRunning) return;
+
+        // One copy of each instance, and as many instances as they like. Two games sharing one
+        // folder would fight over the world files and the lock the game keeps on them.
+        if (IsBusy || instance.IsPlaying) return;
 
         Error = null;
 
@@ -2809,21 +2912,25 @@ public partial class InstancesViewModel : ViewModelBase
                 Progress = p.Fraction;
             });
 
-            var startedAt = DateTimeOffset.UtcNow;
+            // Made before the launch, so the very first line the game prints has somewhere to go.
+            // The process only exists once it has started, which is after that first line can
+            // arrive.
+            var game = new RunningGame(instance);
+            game.Attach(await _launcher.LaunchAsync(instance, session, reporter, game.Append, joinServer));
 
-            // A fresh session starts a fresh log; the previous run's lines are on disk.
-            ClearLog();
-            _logInstance = instance;
+            instance.IsPlaying = true;
+
+            Running.Add(game);
+            RunningChanged();
+
+            // Whatever was just started is what the log sheet shows, until somebody picks another.
+            _logGame = game;
             OnPropertyChanged(nameof(LogTitle));
 
-            var process = await _launcher.LaunchAsync(instance, session, reporter, AppendLog, joinServer);
-
-            _process = process;
-            IsRunning = true;
             Status = "Minecraft is running";
             Progress = 1;
 
-            _ = TrackAsync(process, instance, startedAt);
+            _ = TrackAsync(game);
         }
         catch (Exception ex)
         {
@@ -2843,27 +2950,17 @@ public partial class InstancesViewModel : ViewModelBase
     /// How many lines are kept. Minecraft is chatty — a modded start-up runs to thousands — and
     /// the whole session is on disk regardless, so this only bounds what is held for reading.
     /// </summary>
-    private const int LogLineLimit = 2000;
-
-    private readonly object _logGate = new();
-    private readonly Queue<GameLogLine> _logLines = new();
     private DispatcherTimer? _logTimer;
 
     /// <summary>
-    /// Unpacks the log4j XML the game writes into readable lines. Per session and stateful: one
-    /// event arrives over several callbacks, so it has to remember where it is.
+    /// Whose output the sheet is showing. Not the selected instance: the library's strip can be on
+    /// screen while a different card is clicked, and with several games up the log belongs to the
+    /// one that was asked for rather than to whatever is highlighted.
     /// </summary>
-    private GameLogFormatter _logFormat = new();
-
-    /// <summary>
-    /// Whose output is in the buffer. Not the selected instance: the library's strip can be on
-    /// screen while a different card is clicked, and the log belongs to the game that is running
-    /// rather than to whatever is highlighted.
-    /// </summary>
-    private Instance? _logInstance;
+    private RunningGame? _logGame;
 
     /// <summary>Named on the sheet, so there is no doubt which instance is talking.</summary>
-    public string LogTitle => _logInstance is { } instance ? $"{instance.Name} — game output" : "Game output";
+    public string LogTitle => _logGame is { } game ? $"{game.Name} — game output" : "Game output";
 
     [ObservableProperty] public partial bool IsLogOpen { get; set; }
     [ObservableProperty] public partial bool IsLogClosing { get; set; }
@@ -2875,43 +2972,21 @@ public partial class InstancesViewModel : ViewModelBase
 
     partial void OnLogLinesChanged(IReadOnlyList<GameLogLine> value) => OnPropertyChanged(nameof(HasLog));
 
-    /// <summary>
-    /// Called from whichever thread the process writes on. Nothing is posted to the UI from
-    /// here: a chatty modpack would flood the dispatcher with thousands of tiny messages, so the
-    /// lines are buffered and the screen pulls from them a few times a second instead.
-    /// </summary>
-    private void AppendLog(string line)
+    /// <summary>Opens the log for one particular game, when there is more than one to choose from.</summary>
+    [RelayCommand]
+    private void ViewGameLog(RunningGame? game)
     {
-        lock (_logGate)
-        {
-            // One raw line can produce none — an event that has not closed — or a dozen, when a
-            // stack trace arrives all at once.
-            foreach (var formatted in _logFormat.Feed(line))
-            {
-                _logLines.Enqueue(formatted);
-                while (_logLines.Count > LogLineLimit) _logLines.Dequeue();
-            }
-        }
-    }
-
-    private void ClearLog()
-    {
-        lock (_logGate)
-        {
-            _logLines.Clear();
-            _logFormat = new GameLogFormatter();
-        }
-
-        LogLines = [];
+        if (game is not null) _logGame = game;
+        ViewLiveLog();
     }
 
     [RelayCommand]
     private void ViewLiveLog()
     {
-        // Whichever instance the buffer belongs to, falling back to the one on screen for a
-        // session that ended before the sheet was opened.
-        _logInstance ??= Selected;
-        if (_logInstance is null) return;
+        // Whichever game was asked for, falling back to the one belonging to the instance on
+        // screen, and then to whatever started most recently.
+        _logGame ??= GameFor(Selected) ?? Running.LastOrDefault();
+        if (_logGame is null) return;
 
         OnPropertyChanged(nameof(LogTitle));
         RefreshLogText();
@@ -2942,12 +3017,11 @@ public partial class InstancesViewModel : ViewModelBase
 
     private void RefreshLogText()
     {
-        GameLogLine[] lines;
-        lock (_logGate) lines = [.. _logLines];
+        var lines = _logGame?.Lines() ?? [];
 
         // Only when something was actually added, so a quiet game does not rebuild every run four
         // times a second — and, more to the point, does not keep yanking the view back down.
-        if (lines.Length == LogLines.Count) return;
+        if (lines.Count == LogLines.Count) return;
 
         LogLines = lines;
     }
@@ -2956,39 +3030,41 @@ public partial class InstancesViewModel : ViewModelBase
     [RelayCommand]
     private void OpenLogFile()
     {
-        if ((_logInstance ?? Selected) is not { } instance) return;
+        if ((_logGame?.Instance ?? Selected) is not { } instance) return;
 
         if (_launcher.LatestLogFor(instance) is { Length: > 0 } path) AsobuLauncher.OpenUrl(path);
         else AsobuLauncher.OpenFolder(_launcher.Paths.Logs);
     }
 
     /// <summary>Waits for the game off the UI thread, then records playtime.</summary>
-    private async Task TrackAsync(Process process, Instance instance, DateTimeOffset startedAt)
+    private async Task TrackAsync(RunningGame game)
     {
         try
         {
-            await process.WaitForExitAsync();
+            await game.Process.WaitForExitAsync();
         }
         catch (SystemException)
         {
         }
 
-        var exitCode = process.ExitCode;
-        var played = (long)(DateTimeOffset.UtcNow - startedAt).TotalSeconds;
+        var exitCode = game.Process.ExitCode;
+        var instance = game.Instance;
+        var played = (long)(DateTimeOffset.UtcNow - game.StartedAt).TotalSeconds;
 
         instance.PlaytimeSeconds += played;
         _launcher.Instances.Save(instance);
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            if (ReferenceEquals(_process, process)) _process = null;
+            Running.Remove(game);
+            instance.IsPlaying = false;
+            RunningChanged();
 
             // Whatever it said on the way out, and then nothing more: a finished log does not
             // need pulling from four times a second for as long as the sheet stays open.
             RefreshLogText();
-            _logTimer?.Stop();
+            if (Running.Count == 0) _logTimer?.Stop();
 
-            IsRunning = false;
             Status = "";
 
             OnPropertyChanged(nameof(Selected));
@@ -2996,9 +3072,8 @@ public partial class InstancesViewModel : ViewModelBase
 
             // A non-zero exit after the game was up means a crash, not a normal quit — unless
             // someone ended it themselves, which exits the same way and is not news.
-            var crashed = exitCode != 0 && !_killed;
+            var crashed = exitCode != 0 && !game.Killed;
 
-            _killed = false;
 
             _ = ReviewSessionAsync(instance, exitCode, crashed);
         });
@@ -3934,29 +4009,26 @@ public partial class InstancesViewModel : ViewModelBase
             await UpdateModAsync(row);
     }
 
-    /// <summary>
-    /// True from the moment Kill is pressed until that session is done with. An instance someone
-    /// ended on purpose exits non-zero like any crash, and diagnosing it would answer a question
-    /// nobody asked.
-    /// </summary>
-    private bool _killed;
-
+    /// <summary>Ends one game. Which one is asked for rather than assumed, since several may be up.</summary>
     [RelayCommand]
-    private void Kill()
+    private void KillGame(RunningGame? game)
     {
-        if (_process is not { } process) return;
+        if ((game ?? GameFor(Selected) ?? Running.LastOrDefault()) is not { } ending) return;
 
-        _killed = true;
+        ending.Killed = true;
 
         try
         {
-            process.Kill(entireProcessTree: true);
+            ending.Process.Kill(entireProcessTree: true);
         }
-        catch (InvalidOperationException)
+        catch (Exception e) when (e is InvalidOperationException or SystemException)
         {
-            // Already exited between the button click and here.
+            // Already exited between the button press and here.
         }
     }
+
+    [RelayCommand]
+    private void Kill() => KillGame(null);
 
     [RelayCommand]
     private void OpenFolder()

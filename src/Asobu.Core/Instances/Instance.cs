@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -21,6 +21,29 @@ namespace Asobu.Core.Instances;
 public sealed class Instance : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    private bool _isPlaying;
+
+    /// <summary>
+    /// Whether this instance has a game up right now. Several can at once, so it belongs to the
+    /// instance rather than to the page: a card has to know about itself without asking which
+    /// single game the launcher happens to be tracking.
+    ///
+    /// Never saved. A launcher that was killed mid-session would otherwise come back believing
+    /// it was still playing.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        set
+        {
+            if (_isPlaying == value) return;
+
+            _isPlaying = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPlaying)));
+        }
+    }
 
     /// <summary>
     /// Raises for the property that changed and for anything computed from it — a renamed icon

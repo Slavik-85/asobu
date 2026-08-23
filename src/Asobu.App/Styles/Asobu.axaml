@@ -849,6 +849,53 @@
        that reach-in wasn't reliably landing on the part FluentTheme actually paints for hover —
        the rounded shape came through but the color didn't, which is how a stock light overlay
        showed up instead of our own. A named Border we control ourselves removes the ambiguity. -->
+  <!-- Around a card whose game is up. It breathes rather than blinking: a card that flashes
+       demands attention it does not deserve, while something slowly brightening reads as alive. -->
+  <Style Selector="Border.playingRing">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="BorderThickness" Value="2"/>
+    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="IsHitTestVisible" Value="False"/>
+    <Style.Animations>
+      <Animation Duration="0:0:2.2" IterationCount="INFINITE" PlaybackDirection="Alternate"
+                 Easing="SineEaseInOut">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.3"/></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.95"/></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- The little "playing" tag, and the dot inside it keeping time with the ring. -->
+  <Style Selector="Border.playingPill">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Padding" Value="7,3"/>
+    <Setter Property="IsHitTestVisible" Value="False"/>
+  </Style>
+
+  <Style Selector="Ellipse.playingDot">
+    <Setter Property="Width" Value="6"/>
+    <Setter Property="Height" Value="6"/>
+    <Setter Property="Fill" Value="{DynamicResource OnAccent}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Style.Animations>
+      <Animation Duration="0:0:1.1" IterationCount="INFINITE" PlaybackDirection="Alternate"
+                 Easing="SineEaseInOut">
+        <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.35"/></KeyFrame>
+        <KeyFrame Cue="100%"><Setter Property="Opacity" Value="1"/></KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
+  <!-- One running game in the strip along the bottom. -->
+  <Style Selector="Border.runningChip">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="10,7"/>
+  </Style>
+
   <Style Selector="Button.instanceCard">
     <Setter Property="Margin" Value="0,0,4,14"/>
     <Setter Property="HorizontalContentAlignment" Value="Left"/>
