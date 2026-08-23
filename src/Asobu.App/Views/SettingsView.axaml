@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
@@ -187,6 +187,8 @@
                     Command="{Binding Updates.CheckCommand}"/>
             <Button Grid.Column="1" Classes="primary" Content="Restart now"
                     IsVisible="{Binding Updates.IsReady}"
+                    IsEnabled="{Binding Updates.CanRestart}"
+                    ToolTip.Tip="Close Minecraft first"
                     Command="{Binding Updates.RestartCommand}"/>
           </Grid>
         </StackPanel>

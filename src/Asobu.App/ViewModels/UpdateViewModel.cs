@@ -94,6 +94,27 @@ public partial class UpdateViewModel : ViewModelBase
 
     public bool IsChecking => Stage is UpdateStage.Checking or UpdateStage.Downloading;
     public bool IsReady => Stage == UpdateStage.Ready;
+
+    /// <summary>
+    /// Whether a game is up, asked of whoever knows. Updating replaces the launcher underneath a
+    /// running game and takes it down with the process that started it, so an update mid-session
+    /// is somebody losing whatever they had not saved.
+    /// </summary>
+    public Func<bool>? GamesRunning { get; set; }
+
+    public bool IsBlockedByGame => IsReady && (GamesRunning?.Invoke() ?? false);
+
+    public bool CanRestart => IsReady && !IsBlockedByGame;
+
+    public string RestartLabel => IsBlockedByGame ? "Close Minecraft to update" : "Restart to update";
+
+    /// <summary>Called when a game starts or stops, since neither is something this can see.</summary>
+    public void RefreshCanRestart()
+    {
+        OnPropertyChanged(nameof(IsBlockedByGame));
+        OnPropertyChanged(nameof(CanRestart));
+        OnPropertyChanged(nameof(RestartLabel));
+    }
     public bool IsCurrent => Stage == UpdateStage.Current;
     public bool HasFailed => Stage == UpdateStage.Failed;
 
@@ -120,6 +141,7 @@ public partial class UpdateViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(IsChecking));
         OnPropertyChanged(nameof(IsReady));
+        RefreshCanRestart();
         OnPropertyChanged(nameof(IsCurrent));
         OnPropertyChanged(nameof(HasFailed));
         OnPropertyChanged(nameof(StatusLine));
@@ -224,6 +246,10 @@ public partial class UpdateViewModel : ViewModelBase
     private async Task RestartAsync()
     {
         if (_manager is not { } manager || _pending is null || IsApplying) return;
+
+        // Checked here as well as on the button. The button is the polite half; this is the half
+        // that holds when something else calls the command.
+        if (IsBlockedByGame) return;
 
         IsApplying = true;
         Veil = 1;

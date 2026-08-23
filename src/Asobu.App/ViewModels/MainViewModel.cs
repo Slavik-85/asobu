@@ -85,6 +85,15 @@ public partial class MainViewModel : ViewModelBase
         InstancesPage.Reload();
         CurrentPage = InstancesPage;
 
+        // Updating replaces the launcher underneath whatever it started and takes the game down
+        // with it, so the restart waits for the games to finish. Neither page can see the other,
+        // so this is where they are introduced.
+        Updates.GamesRunning = () => InstancesPage.IsRunning;
+        InstancesPage.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(InstancesViewModel.IsRunning)) Updates.RefreshCanRestart();
+        };
+
         Tour = new TourViewModel(Launcher, GoInstances);
         Tour.PropertyChanged += (_, e) =>
         {

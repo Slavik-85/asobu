@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Asobu.Core.Instances;
 
 namespace Asobu.Core.Launch;
@@ -46,6 +46,11 @@ public sealed class GameLauncher(AsobuPaths paths)
         };
 
         process.Start();
+
+        // Before anything else it might do: from here on the game dies with this launcher, even
+        // when this launcher is not given the chance to close it politely.
+        ProcessLeash.Hold(process);
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

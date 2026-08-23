@@ -34,14 +34,18 @@
              navigation, and absent entirely the rest of the time. -->
         <Button DockPanel.Dock="Bottom" Classes="updateChip" Margin="0,16,0,0"
                 IsVisible="{Binding Updates.IsReady}" Command="{Binding Updates.RestartCommand}"
+                IsEnabled="{Binding Updates.CanRestart}"
                 ToolTip.Tip="Restart Asobu to finish updating">
           <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center">
             <Path Data="M12 4 V12 M12 4 L8.5 7.5 M12 4 L15.5 7.5 M5 13 A7 7 0 1 0 19 13"
                   Stroke="{DynamicResource OnAccent}" StrokeThickness="1.9" StrokeLineCap="Round"
                   StrokeJoin="Round" Width="15" Height="15" Stretch="Uniform"
                   VerticalAlignment="Center"/>
-            <TextBlock Text="Restart to update" FontSize="12.5" FontWeight="Medium"
-                       Foreground="{DynamicResource OnAccent}" VerticalAlignment="Center"/>
+            <!-- The chip says what it is waiting for rather than sitting there greyed and
+                 unexplained, since the thing in the way is a window somewhere behind this one. -->
+            <TextBlock FontSize="12.5" FontWeight="Medium" VerticalAlignment="Center"
+                       Foreground="{DynamicResource OnAccent}"
+                       Text="{Binding Updates.RestartLabel}"/>
           </StackPanel>
         </Button>
 
