@@ -235,13 +235,26 @@
               <ProgressBar Value="{Binding Progress}" Maximum="1" Height="5" CornerRadius="3"/>
             </StackPanel>
 
-            <!-- And then one chip per game that is up. A row rather than a single line of text
-                 because Logs and Kill have to belong to a particular one: with three games
-                 running, a Kill button that picks for you is a Kill button nobody dares press. -->
-            <TextBlock Text="{Binding RunningLabel}" Classes="label"
-                       IsVisible="{Binding IsRunning}"/>
+            <!-- One game: the plain line it always had, with the instance named. There is
+                 nothing to tell apart, so nothing to spend a row of chips on. -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14" IsVisible="{Binding IsOneRunning}">
+              <TextBlock Grid.Column="0" Text="{Binding RunningLabel}" FontSize="13"
+                         FontWeight="Medium" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                          VerticalAlignment="Center">
+                <Button Classes="ghost" Content="Logs" Command="{Binding ViewGameLogCommand}"/>
+                <Button Classes="ghost danger" Content="Kill" Command="{Binding KillGameCommand}"/>
+              </StackPanel>
+            </Grid>
 
-            <ItemsControl ItemsSource="{Binding Running}" IsVisible="{Binding IsRunning}">
+            <!-- Several: one chip each, because Logs and Kill then have to belong to a particular
+                 one. With three games up, a Kill button that picks for you is one nobody dares
+                 press. -->
+            <TextBlock Text="{Binding RunningLabel}" Classes="label"
+                       IsVisible="{Binding AreManyRunning}"/>
+
+            <ItemsControl ItemsSource="{Binding Running}" IsVisible="{Binding AreManyRunning}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                   <WrapPanel Orientation="Horizontal"/>

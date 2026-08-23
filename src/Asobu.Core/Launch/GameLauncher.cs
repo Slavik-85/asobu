@@ -49,7 +49,11 @@ public sealed class GameLauncher(AsobuPaths paths)
 
         // Before anything else it might do: from here on the game dies with this launcher, even
         // when this launcher is not given the chance to close it politely.
-        ProcessLeash.Hold(process);
+        //
+        // Said out loud when it fails. A leash that silently did not take looks exactly like one
+        // that did, right up until somebody kills the launcher and finds the game still playing.
+        if (!ProcessLeash.Hold(process) && OperatingSystem.IsWindows())
+            Capture("[asobu] this game is not tied to the launcher; closing Asobu may leave it running");
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();

@@ -773,6 +773,8 @@ public partial class InstancesViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanQuickPlay));
         OnPropertyChanged(nameof(IsLaunchingFromLibrary));
         OnPropertyChanged(nameof(RunningLabel));
+        OnPropertyChanged(nameof(IsOneRunning));
+        OnPropertyChanged(nameof(AreManyRunning));
     }
 
     /// <summary>
@@ -784,6 +786,14 @@ public partial class InstancesViewModel : ViewModelBase
         1 => $"{Running[0].Name} is running",
         var many => $"{many} instances are running",
     };
+
+    /// <summary>
+    /// One game gets the plain line it always had, named. Only once there are several is there
+    /// anything to tell apart, and only then is a row of chips worth the space.
+    /// </summary>
+    public bool IsOneRunning => Running.Count == 1;
+
+    public bool AreManyRunning => Running.Count > 1;
 
     /// <summary>The game up for this instance, or null.</summary>
     private RunningGame? GameFor(Instance? instance) =>

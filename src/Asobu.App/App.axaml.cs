@@ -45,6 +45,16 @@ public partial class App : Application
             {
                 if (_leaving) return;
 
+                // Already in the tray, and something is still asking it to close. Nobody clicked
+                // anything, because there is nothing on screen to click: this is the system or a
+                // task manager asking, and the honest answer to that is to go.
+                if (!window.IsVisible)
+                {
+                    _leaving = true;
+                    main.Launcher.StopGames(GoodbyeWait);
+                    return;
+                }
+
                 closing.Cancel = true;
                 window.Hide();
 
