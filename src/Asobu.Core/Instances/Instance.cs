@@ -247,16 +247,30 @@ public sealed class Instance : INotifyPropertyChanged
     public long PlaytimeSeconds
     {
         get => _playtimeSeconds;
-        set => Set(ref _playtimeSeconds, value, [nameof(PlaytimeLabel)]);
+        set => Set(ref _playtimeSeconds, value, [nameof(PlaytimeLabel), nameof(PlaytimeSegment)]);
     }
 
+    /// <summary>
+    /// Under a minute is somebody opening an instance and closing it again, which is not playing.
+    /// The threshold lives here so the label and the subtitle cannot disagree about it.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasPlaytime => PlaytimeSeconds >= 60;
+
     // Invariant on purpose: the UI is English, so a locale decimal comma reads as a bug.
-    public string PlaytimeLabel => PlaytimeSeconds switch
-    {
-        < 60 => "never played",
-        < 3600 => $"{PlaytimeSeconds / 60} min played",
-        _ => (PlaytimeSeconds / 3600.0).ToString("0.#", CultureInfo.InvariantCulture) + " h played",
-    };
+    public string PlaytimeLabel => HasPlaytime
+        ? PlaytimeSeconds < 3600
+            ? $"{PlaytimeSeconds / 60} min played"
+            : (PlaytimeSeconds / 3600.0).ToString("0.#", CultureInfo.InvariantCulture) + " h played"
+        : "never played";
+
+    /// <summary>
+    /// The playtime part of the instance page's subtitle, its separator included, and nothing at
+    /// all for an instance nobody has played. A line that announces something has not happened
+    /// spends a third of itself saying nothing.
+    /// </summary>
+    [JsonIgnore]
+    public string PlaytimeSegment => HasPlaytime ? $"  ·  {PlaytimeLabel}" : "";
 
     /// <summary>
     /// The longest an instance's name may be. Any character at all is allowed up to it — emoji,

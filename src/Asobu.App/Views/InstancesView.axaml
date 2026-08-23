@@ -349,7 +349,7 @@
                does. The same wording the rest of the launcher uses, rather than a second format
                to keep in step with the first. -->
           <TextBlock Classes="sub" HorizontalAlignment="Center" Margin="0,4,0,0">
-            <Run Text="{Binding Selected.LoaderLabel, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding Selected.PlaytimeLabel, Mode=OneWay}"/><Run Text="  ·  Minecraft "/><Run Text="{Binding Selected.MinecraftVersion, Mode=OneWay}"/>
+            <Run Text="{Binding Selected.LoaderLabel, Mode=OneWay}"/><Run Text="{Binding Selected.PlaytimeSegment, Mode=OneWay}"/><Run Text="  ·  Minecraft "/><Run Text="{Binding Selected.MinecraftVersion, Mode=OneWay}"/>
           </TextBlock>
 
           <!-- Edit left, settings right, Play exactly where it has always been. -->
