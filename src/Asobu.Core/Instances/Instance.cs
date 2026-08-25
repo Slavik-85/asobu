@@ -77,9 +77,27 @@ public sealed class Instance : INotifyPropertyChanged
 
     public required string MinecraftVersion { get; set; }
 
-    /// <summary>vanilla or fabric today; neoforge, forge and quilt slot in here.</summary>
-    public string Loader { get; set; } = "vanilla";
-    public string? LoaderVersion { get; set; }
+    private string _loader = "vanilla";
+    private string? _loaderVersion;
+
+    /// <summary>
+    /// vanilla or fabric today; neoforge, forge and quilt slot in here.
+    ///
+    /// Announced rather than stored quietly, because three properties are worked out from it and
+    /// every one of them is on screen. Without this a card went on saying Vanilla after its
+    /// instance had been changed to Forge, which reads as the change not having happened.
+    /// </summary>
+    public string Loader
+    {
+        get => _loader;
+        set => Set(ref _loader, value, [nameof(LoaderName), nameof(LoaderLabel), nameof(IsModded)]);
+    }
+
+    public string? LoaderVersion
+    {
+        get => _loaderVersion;
+        set => Set(ref _loaderVersion, value, [nameof(LoaderLabel)]);
+    }
 
     /// <summary>
     /// A Modrinth project id to keep installed, or null. Held as a wish rather than a one-off

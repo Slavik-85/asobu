@@ -3237,8 +3237,19 @@ public partial class InstancesViewModel : ViewModelBase
     /// Fabric does not exist before 1.14 and NeoForge not before 1.20.2, and offering a loader
     /// that cannot be installed is offering a dead end.
     /// </summary>
+    /// <summary>
+    /// Which run of the loader list is the current one. Opening the sheet starts one and does not
+    /// wait for it, so a second open can overtake a first: without this the older run finishes
+    /// last, writes the loader it read minutes ago into the picker, and — because the newer run
+    /// has already lowered the flag that suppresses it — that write is taken for a choice. The
+    /// instance is then changed to whatever it already was on the way in, which is Vanilla for
+    /// anybody who has not changed it before.
+    /// </summary>
+    private int _loaderChoiceRun;
+
     private async Task LoadLoaderChoicesAsync(Instance instance)
     {
+        var run = ++_loaderChoiceRun;
         _loadingLoaderChoices = true;
 
         try
@@ -3254,6 +3265,10 @@ public partial class InstancesViewModel : ViewModelBase
             var neoForge = _launcher.Loaders.GetNeoForgeVersionAsync(version);
 
             await Task.WhenAll(fabric, quilt, forge, neoForge);
+
+            // Overtaken while waiting on the services. Everything below writes to the picker,
+            // and none of it is about the instance now on screen.
+            if (run != _loaderChoiceRun) return;
 
             if (Selected?.Id != instance.Id)
             {
@@ -3281,13 +3296,24 @@ public partial class InstancesViewModel : ViewModelBase
         }
         finally
         {
-            _loadingLoaderChoices = false;
+            // Only the current run may lower it. An overtaken one doing so would leave the flag
+            // down while the run that is still going writes to the picker.
+            if (run == _loaderChoiceRun) _loadingLoaderChoices = false;
         }
     }
 
     partial void OnSelectedLoaderChanged(string? value)
     {
         if (_loadingLoaderChoices) return;
+
+        // Choosing what it already is is not a change, and treating it as one turns a stray
+        // write into an instruction to reapply the loader the instance is already on.
+        if (Selected is { } current && string.Equals(value, current.LoaderName, StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingMoveLoader = null;
+            return;
+        }
+
 
         // Only noted. Everything else in this sheet saves as you change it, but a loader is not
         // a setting — it decides which mods can load — and applying one the instant the list is
