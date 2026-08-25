@@ -454,7 +454,7 @@
                   <!-- Beside the kind rather than above the table, because it narrows what the
                        kind selected: the two questions are asked together and answered together. -->
                   <TextBox Grid.Column="1" Text="{Binding ContentSearch}" Watermark="Search"
-                           Width="190" Margin="10,0" VerticalAlignment="Center"
+                           Width="130" Margin="10,0" VerticalAlignment="Center"
                            IsVisible="{Binding HasContent}"/>
 
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
