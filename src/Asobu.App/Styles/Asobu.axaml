@@ -849,6 +849,27 @@
        that reach-in wasn't reliably landing on the part FluentTheme actually paints for hover —
        the rounded shape came through but the color didn't, which is how a stock light overlay
        showed up instead of our own. A named Border we control ourselves removes the ambiguity. -->
+  <!-- The icon and name cells in the mod table. They open the mod's page, so they have to be
+       buttons, but a button that looked like one would turn a quiet table into a row of controls.
+       So: no chrome until the pointer is over it. -->
+  <Style Selector="Button.modOpen">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="4,2"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+
+  <Style Selector="Button.modOpen:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+  </Style>
+
+  <Style Selector="Button.modOpen:pointerover TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+  </Style>
+
   <!-- Around a card whose game is up. It breathes rather than blinking: a card that flashes
        demands attention it does not deserve, while something slowly brightening reads as alive. -->
   <Style Selector="Border.playingRing">

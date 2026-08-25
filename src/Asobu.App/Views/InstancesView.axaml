@@ -448,6 +448,11 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
 
+                  <!-- Beside the kind rather than above the table, because it narrows what the
+                       kind selected: the two questions are asked together and answered together. -->
+                  <TextBox Text="{Binding ContentSearch}" Watermark="Search" Width="190"
+                           VerticalAlignment="Center" IsVisible="{Binding HasContent}"/>
+
                   <TextBlock Classes="label" Text="{Binding ContentCountLabel}"
                              VerticalAlignment="Center" IsVisible="{Binding !HasNoMods}"/>
                   <TextBlock Classes="label" Text="checking for updates&#x2026;"
@@ -515,6 +520,13 @@
                 </StackPanel>
               </StackPanel>
 
+              <StackPanel Spacing="6" Margin="20,24,20,26" IsVisible="{Binding HasNoContentMatches}">
+                <TextBlock Text="Nothing matches" Classes="h2" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource TextMuted}"/>
+                <TextBlock Classes="sub" TextAlignment="Center"
+                           Text="Nothing in this folder is called that. Try less of the name."/>
+              </StackPanel>
+
               <ItemsControl ItemsSource="{Binding Mods}">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:ModRowViewModel">
@@ -551,20 +563,45 @@
                                      IsVisible="{Binding IsUpdated}"/>
                         </Panel>
                       <Grid ColumnDefinitions="70,1,2*,1,2*,1,*,1,*" Classes="modRow">
-                        <Border Grid.Column="0" Width="34" Height="34" CornerRadius="10"
-                                HorizontalAlignment="Center" Background="{DynamicResource SurfaceAlt}"
-                                ClipToBounds="True">
-                          <Panel>
-                            <TextBlock Text="&#x1F4E6;" FontSize="15" IsVisible="{Binding !HasIcon}"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" Stretch="UniformToFill"/>
-                          </Panel>
-                        </Border>
+                        <!-- The icon and the name both open the mod's page. Two targets rather
+                             than one because people reach for whichever they were already
+                             looking at, and a row where only half of it responds reads as a
+                             misclick rather than a rule. -->
+                        <Button Grid.Column="0" Classes="modOpen" HorizontalAlignment="Center"
+                                ToolTip.Tip="Open this mod's page"
+                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).OpenModPageCommand}"
+                                CommandParameter="{Binding}">
+                          <Border Width="34" Height="34" CornerRadius="10"
+                                  Background="{DynamicResource SurfaceAlt}" ClipToBounds="True">
+                            <Panel>
+                              <TextBlock Text="&#x1F4E6;" FontSize="15" IsVisible="{Binding !HasIcon}"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                              <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" Stretch="UniformToFill"/>
+                            </Panel>
+                          </Border>
+                        </Button>
 
                         <Border Grid.Column="1" Classes="modDivider"/>
-                        <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"
-                                   VerticalAlignment="Center" TextAlignment="Center"
-                                   TextTrimming="CharacterEllipsis" Margin="10,0"/>
+                        <Button Grid.Column="2" Classes="modOpen" Margin="10,0"
+                                HorizontalAlignment="Stretch"
+                                ToolTip.Tip="Open this mod's page"
+                                Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).OpenModPageCommand}"
+                                CommandParameter="{Binding}">
+                          <Panel>
+                            <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="Medium"
+                                       VerticalAlignment="Center" TextAlignment="Center"
+                                       HorizontalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       IsVisible="{Binding !IsFindingPage}"/>
+
+                            <!-- Hashing the jar and asking a shop about it takes a moment, and a
+                                 name that does nothing for a second reads as one that is not a
+                                 link at all. -->
+                            <TextBlock Text="Looking&#x2026;" Classes="label"
+                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                       IsVisible="{Binding IsFindingPage}"/>
+                          </Panel>
+                        </Button>
                         <Border Grid.Column="3" Classes="modDivider"/>
                         <TextBlock Grid.Column="4" Text="{Binding Author}" Classes="label"
                                    VerticalAlignment="Center" TextAlignment="Center"

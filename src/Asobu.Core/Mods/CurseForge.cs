@@ -90,19 +90,57 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
             : [.. response.Data
                 .Where(mod => FitsLoader(mod, query))
                 .OrderByDescending(mod => NameScore(mod.Name, query.Text))
-                .Select(mod => new ModListing(
-                ModProvider.CurseForge,
-                mod.Id.ToString(),
-                mod.Name ?? "",
-                mod.Authors?.FirstOrDefault()?.Name ?? "Unknown",
-                mod.Summary ?? "",
-                mod.Logo?.Url,
-                mod.DownloadCount,
-                mod.Links?.WebsiteUrl ?? "https://www.curseforge.com/minecraft/mc-mods",
-                mod.Screenshots?.FirstOrDefault() is { } shot ? shot.Url ?? shot.ThumbnailUrl : null)
-                {
-                    Kind = mod.ClassId is { } classId ? ModContent.KindForClass(classId) : ModKind.Any,
-                })];
+                .Select(Listing)];
+    }
+
+    /// <summary>
+    /// One project as a listing. Shared with the search rather than written twice, because a page
+    /// opened from an installed jar and the same page opened from a search should not be able to
+    /// disagree about what the mod is called.
+    /// </summary>
+    private static ModListing Listing(Mod mod) =>
+        new(ModProvider.CurseForge,
+            mod.Id.ToString(),
+            mod.Name ?? "",
+            mod.Authors?.FirstOrDefault()?.Name ?? "Unknown",
+            mod.Summary ?? "",
+            mod.Logo?.Url,
+            mod.DownloadCount,
+            mod.Links?.WebsiteUrl ?? "https://www.curseforge.com/minecraft/mc-mods",
+            mod.Screenshots?.FirstOrDefault() is { } shot ? shot.Url ?? shot.ThumbnailUrl : null)
+        {
+            Kind = mod.ClassId is { } classId ? ModContent.KindForClass(classId) : ModKind.Any,
+        };
+
+    /// <summary>
+    /// The listing for one project id, for a mod already on disk rather than one searched for.
+    /// Null when CurseForge has no key here, or does not know the id.
+    /// </summary>
+    public async Task<ModListing?> GetListingAsync(int modId, CancellationToken cancellationToken = default)
+    {
+        if (!IsAvailable) return null;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiRoot}mods");
+            request.Headers.Add("x-api-key", apiKey());
+            request.Content = JsonContent.Create(new { modIds = new[] { modId } });
+
+            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+            var parsed = await JsonSerializer
+                .DeserializeAsync<SearchResponse>(stream, Options, cancellationToken)
+                .ConfigureAwait(false);
+
+            return parsed?.Data?.FirstOrDefault() is { } mod ? Listing(mod) : null;
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     public async Task<ModDetails?> GetDetailsAsync(

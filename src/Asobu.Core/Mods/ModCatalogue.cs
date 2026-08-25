@@ -1,3 +1,5 @@
+﻿using Asobu.Core.Download;
+
 namespace Asobu.Core.Mods;
 
 /// <summary>
@@ -261,6 +263,45 @@ public sealed class ModCatalogue(Modrinth modrinth, CurseForge curseForge)
         provider == ModProvider.CurseForge ? CurseForge : Modrinth;
 
     /// <summary>A hand-picked list, which only Modrinth can answer — the slugs are its own.</summary>
+    /// <summary>
+    /// The catalogue page for a jar already on disk, or null when neither shop recognises it.
+    ///
+    /// Asked by the file's own contents rather than by its name. A name is what somebody typed
+    /// into a search box and two mods can share one; the hash and the fingerprint are what the
+    /// shops themselves index their files under, so the answer is the mod that file came from
+    /// rather than the mod it sounds like.
+    ///
+    /// Modrinth first, because it answers from a plain hash and needs no key.
+    /// </summary>
+    public async Task<CatalogueMod?> FindInstalledAsync(string path, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var sha1 = await Downloader.Sha1Async(path, cancellationToken).ConfigureAwait(false);
+
+            if (await Modrinth.GetProjectIdByHashAsync(sha1, cancellationToken).ConfigureAwait(false) is { Length: > 0 } id)
+            {
+                var listings = await Modrinth.GetProjectsAsync([id], cancellationToken).ConfigureAwait(false);
+                if (listings.FirstOrDefault() is { } found) return new CatalogueMod(found, null);
+            }
+
+            var print = await CurseForgeFingerprint.OfFileAsync(path, cancellationToken).ConfigureAwait(false);
+            if (await CurseForge.GetModIdByFingerprintAsync(print, cancellationToken).ConfigureAwait(false) is not { } modId
+                || !int.TryParse(modId, out var number))
+            {
+                return null;
+            }
+
+            return await CurseForge.GetListingAsync(number, cancellationToken).ConfigureAwait(false) is { } listing
+                ? new CatalogueMod(null, listing)
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<CatalogueMod>> GetProjectsAsync(
         IReadOnlyList<string> slugs, CancellationToken cancellationToken = default) =>
         [.. (await Modrinth.GetProjectsAsync(slugs, cancellationToken).ConfigureAwait(false))

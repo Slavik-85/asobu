@@ -25,7 +25,7 @@ public partial class MainViewModel : ViewModelBase
         CrashReportsPage = new CrashReportsViewModel(Launcher, GoInstances);
         InstancesPage = new InstancesViewModel(
             Launcher, AccountsPage, () => _ = GoNewInstanceAsync(),
-            GoCrashReports, GoAddMods);
+            GoCrashReports, GoAddMods, GoModPage);
         NewInstancePage = new VersionPickerViewModel(Launcher, OnInstanceCreated, GoInstances);
         Updates = new UpdateViewModel();
         SettingsPage = new SettingsViewModel(Launcher, Updates, ReplayIntro, ReplayTour);

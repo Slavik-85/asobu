@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using Asobu.Core;
 using Asobu.Core.Mods;
@@ -70,6 +70,13 @@ public partial class ModRowViewModel : ViewModelBase
 
     /// <summary>Where the jar is, which is how an update is matched back to the row that wants it.</summary>
     public string Path => _entry.Path;
+
+    /// <summary>
+    /// True while its catalogue page is being looked up. The lookup hashes the jar and asks a web
+    /// service, so it is not instant, and a name that does nothing for a second reads as a name
+    /// that is not a link.
+    /// </summary>
+    [ObservableProperty] public partial bool IsFindingPage { get; set; }
     public Bitmap? Icon { get; }
 
     /// <summary>True when the jar has no embedded icon, so the view can show a placeholder tile.</summary>

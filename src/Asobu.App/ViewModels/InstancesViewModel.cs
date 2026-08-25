@@ -198,13 +198,15 @@ public partial class InstancesViewModel : ViewModelBase
         AccountsViewModel accounts,
         Action requestNewInstance,
         Action<Instance> requestCrashReports,
-        Action<Instance, ModKind> requestAddMods)
+        Action<Instance, ModKind> requestAddMods,
+        Action<CatalogueMod> requestModPage)
     {
         _launcher = launcher;
         _accounts = accounts;
         _requestNewInstance = requestNewInstance;
         _requestCrashReports = requestCrashReports;
         _requestAddMods = requestAddMods;
+        _requestModPage = requestModPage;
 
         MaximumMemoryMb = Math.Max(2048, LauncherSettings.SystemMemoryMb());
 
@@ -220,7 +222,53 @@ public partial class InstancesViewModel : ViewModelBase
     /// <summary>The same instances, banded by group — this is what the library actually draws.</summary>
     public ObservableCollection<InstanceGroup> InstanceGroups { get; } = [];
     public ObservableCollection<string> Groups { get; } = [AllGroupsFilter];
+    private readonly Action<CatalogueMod> _requestModPage;
+
+    /// <summary>What the table shows, which is the folder narrowed by whatever is in the search box.</summary>
     public ObservableCollection<ModRowViewModel> Mods { get; } = [];
+
+    /// <summary>
+    /// Everything in the folder, whether it is on screen or not. Kept apart from Mods so typing
+    /// in the box narrows the list without another read of the folder, and clearing it brings
+    /// everything back without one either.
+    /// </summary>
+    private readonly List<ModRowViewModel> _allMods = [];
+
+    [ObservableProperty] public partial string ContentSearch { get; set; } = "";
+
+    partial void OnContentSearchChanged(string value) => ShowMatchingMods();
+
+    public bool IsSearchingContent => ContentSearch.Trim().Length > 0;
+
+    /// <summary>Narrows the table to what matches, by name, author or file name.</summary>
+    private void ShowMatchingMods()
+    {
+        var wanted = ContentSearch.Trim();
+
+        Mods.Clear();
+        foreach (var row in _allMods.Where(row => Matches(row, wanted))) Mods.Add(row);
+
+        OnPropertyChanged(nameof(IsSearchingContent));
+        OnPropertyChanged(nameof(HasNoMods));
+        OnPropertyChanged(nameof(HasContent));
+        OnPropertyChanged(nameof(HasNoContentMatches));
+        OnPropertyChanged(nameof(ContentCountLabel));
+    }
+
+    private static bool Matches(ModRowViewModel row, string wanted) =>
+        wanted.Length == 0
+        || row.Name.Contains(wanted, StringComparison.OrdinalIgnoreCase)
+        || row.Author.Contains(wanted, StringComparison.OrdinalIgnoreCase)
+
+        // The file name too, because somebody looking for a jar they saw in the folder is
+        // searching for what it was called there rather than what its manifest says.
+        || System.IO.Path.GetFileName(row.Path).Contains(wanted, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Anything in the folder at all, whether the search is hiding it or not.</summary>
+    public bool HasContent => !IsLoadingMods && _allMods.Count > 0;
+
+    /// <summary>Searched the folder down to nothing, which is different from having nothing.</summary>
+    public bool HasNoContentMatches => !IsLoadingMods && _allMods.Count > 0 && Mods.Count == 0;
 
     // ---- Which kind of content the card lists. One table serves all five: they differ in the
     // folder they read and in whether a row can be updated or turned off, not in their shape.
@@ -446,7 +494,12 @@ public partial class InstancesViewModel : ViewModelBase
     /// <summary>Scenery behind the hero, picked per instance.</summary>
     [ObservableProperty] public partial Bitmap? Backdrop { get; set; }
 
-    public bool HasNoMods => !IsLoadingMods && Mods.Count == 0;
+    /// <summary>
+    /// The folder itself is empty. Deliberately not "the table is empty": with a search box above
+    /// it, a term matching nothing would otherwise put up the invitation to install a first mod
+    /// over a folder holding forty.
+    /// </summary>
+    public bool HasNoMods => !IsLoadingMods && _allMods.Count == 0;
 
     /// <summary>No instances exist at all — as opposed to none matching the current search.</summary>
     public bool IsEmpty => _all.Count == 0;
@@ -869,13 +922,15 @@ public partial class InstancesViewModel : ViewModelBase
 
             // Emptied here rather than before the scan: the list stays as it was until there is
             // something to replace it with, so a rescan does not blink the table away.
-            Mods.Clear();
+            _allMods.Clear();
             foreach (var (entry, entryKind) in found)
-                Mods.Add(new ModRowViewModel(entry)
+                _allMods.Add(new ModRowViewModel(entry)
                 {
                     CanToggle = entryKind != ModKind.World,
                     Kind = entryKind,
                 });
+
+            ShowMatchingMods();
 
             // After the folder is on screen, not before: hashing every jar and asking two web
             // services about them is not something to keep a list waiting for.
@@ -887,11 +942,50 @@ public partial class InstancesViewModel : ViewModelBase
             {
                 IsLoadingMods = false;
                 OnPropertyChanged(nameof(HasNoMods));
+
+                // Both of these are false while the folder is being read, so both have to be
+                // asked again once it is not.
+                OnPropertyChanged(nameof(HasContent));
+                OnPropertyChanged(nameof(HasNoContentMatches));
                 OnPropertyChanged(nameof(ContentCountLabel));
 
                 // The automatic heap size is read off the mod count, which is only now known.
                 if (Selected?.Id == instance.Id) InheritedMemoryLabel = DescribeInheritedMemory(instance);
             }
+        }
+    }
+
+    /// <summary>
+    /// Opens the catalogue page for a mod that is already installed.
+    ///
+    /// Which mod that is has to be asked rather than known: a jar carries a name and an id of its
+    /// own making, and neither is what the shops file it under. The file's own hash is, so that is
+    /// what is looked up — see ModCatalogue.FindInstalledAsync.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenModPageAsync(ModRowViewModel? row)
+    {
+        if (row is null || row.IsFindingPage) return;
+
+        // A world or a resource pack is not something either shop indexes by file, and asking
+        // would spend a moment to answer no.
+        if (row.Kind == ModKind.World) return;
+
+        row.IsFindingPage = true;
+        Error = null;
+
+        try
+        {
+            if (await _launcher.Mods.FindInstalledAsync(row.Path) is { } mod) _requestModPage(mod);
+            else Error = $"Couldn't find a page for {row.Name}. It may not be from Modrinth or CurseForge.";
+        }
+        catch (Exception e)
+        {
+            Error = e.Message;
+        }
+        finally
+        {
+            row.IsFindingPage = false;
         }
     }
 
@@ -2258,6 +2352,7 @@ public partial class InstancesViewModel : ViewModelBase
                 else if (File.Exists(row.Path)) File.Delete(row.Path);
             });
 
+            _allMods.Remove(row);
             Mods.Remove(row);
             OnPropertyChanged(nameof(HasNoMods));
             OnPropertyChanged(nameof(ContentCountLabel));
