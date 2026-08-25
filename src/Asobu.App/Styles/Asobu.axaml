@@ -677,22 +677,38 @@
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
-  <Style Selector="Button.addressPill /template/ ContentPresenter">
-    <Setter Property="Background" Value="Transparent"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="Transitions">
-      <Transitions>
-        <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
-        <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
-      </Transitions>
+  <!-- Its own template rather than restyling the stock presenter.
+       FluentTheme paints the button's own pointerover brush, and on every other button here that
+       goes unnoticed because they rest on a fill close to it. This one rests on nothing, so the
+       theme's light grey arrived over a transparent pill and read as the button being held down.
+       Painting our own Border leaves the theme with nothing to say. -->
+  <Style Selector="Button.addressPill">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="shell"
+                Background="Transparent"
+                BorderBrush="{DynamicResource Border}"
+                BorderThickness="1"
+                CornerRadius="{TemplateBinding CornerRadius}"
+                Padding="{TemplateBinding Padding}">
+          <Border.Transitions>
+            <Transitions>
+              <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+              <BrushTransition Property="BorderBrush" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+            </Transitions>
+          </Border.Transitions>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </Border>
+      </ControlTemplate>
     </Setter>
   </Style>
-  <Style Selector="Button.addressPill:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.addressPill:pointerover /template/ Border#shell">
     <Setter Property="Background" Value="{DynamicResource Hover}"/>
     <Setter Property="BorderBrush" Value="{DynamicResource InputBorder}"/>
   </Style>
-  <Style Selector="Button.addressPill:pressed /template/ ContentPresenter">
+  <Style Selector="Button.addressPill:pressed /template/ Border#shell">
     <Setter Property="Background" Value="{DynamicResource Pressed}"/>
   </Style>
   <Style Selector="Button.addressPill:pointerover TextBlock">
