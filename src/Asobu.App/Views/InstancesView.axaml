@@ -434,11 +434,14 @@
                    table it sat in dead space at the bottom of a list nobody scrolls back up.
                    Add mods is here for the same reason: it is what this card is for. -->
               <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="18,14,18,4">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10"
-                            VerticalAlignment="Center">
+                <!-- A grid rather than a stack: the search box has to give way when the window
+                     narrows, and in a stack it kept its width and pushed the count under the
+                     buttons instead. Only the last column is flexible, so the kind and the count
+                     always get the room they need and the box takes what is left. -->
+                <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center">
                   <!-- What the table is showing. The count follows it rather than leading, since
                        the kind is the thing being chosen and the number only describes it. -->
-                  <ComboBox Classes="field" ItemsSource="{Binding ContentKinds}"
+                  <ComboBox Grid.Column="0" Classes="field" ItemsSource="{Binding ContentKinds}"
                             SelectedItem="{Binding ContentKind}" MinWidth="150"
                             VerticalAlignment="Center">
                     <ComboBox.ItemTemplate>
@@ -448,16 +451,22 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
 
-                  <!-- Beside the kind rather than above the table, because it narrows what the
-                       kind selected: the two questions are asked together and answered together. -->
-                  <TextBox Text="{Binding ContentSearch}" Watermark="Search" Width="190"
-                           VerticalAlignment="Center" IsVisible="{Binding HasContent}"/>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                              Margin="10,0" VerticalAlignment="Center">
+                    <TextBlock Classes="label" Text="{Binding ContentCountLabel}"
+                               VerticalAlignment="Center" IsVisible="{Binding !HasNoMods}"/>
+                    <TextBlock Classes="label" Text="checking for updates&#x2026;"
+                               VerticalAlignment="Center" IsVisible="{Binding IsCheckingUpdates}"/>
+                  </StackPanel>
 
-                  <TextBlock Classes="label" Text="{Binding ContentCountLabel}"
-                             VerticalAlignment="Center" IsVisible="{Binding !HasNoMods}"/>
-                  <TextBlock Classes="label" Text="checking for updates&#x2026;"
-                             VerticalAlignment="Center" IsVisible="{Binding IsCheckingUpdates}"/>
-                </StackPanel>
+                  <!-- Beside the kind rather than above the table, because it narrows what the
+                       kind selected: the two questions are asked together and answered together.
+                       Capped so it does not stretch across an empty half of a wide window. -->
+                  <TextBox Grid.Column="2" Text="{Binding ContentSearch}" Watermark="Search"
+                           MinWidth="120" MaxWidth="240" HorizontalAlignment="Left"
+                           Margin="0,0,12,0" VerticalAlignment="Center"
+                           IsVisible="{Binding HasContent}"/>
+                </Grid>
 
                 <Button Grid.Column="1" Classes="ghost" Content="Update all" Margin="0,0,8,0"
                         IsVisible="{Binding HasUpdates}" Command="{Binding UpdateAllModsCommand}"/>
