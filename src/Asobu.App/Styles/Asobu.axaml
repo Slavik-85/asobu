@@ -677,16 +677,19 @@
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
-  <!-- Its own template rather than restyling the stock presenter.
-       FluentTheme paints the button's own pointerover brush, and on every other button here that
-       goes unnoticed because they rest on a fill close to it. This one rests on nothing, so the
-       theme's light grey arrived over a transparent pill and read as the button being held down.
-       Painting our own Border leaves the theme with nothing to say. -->
+  <!-- Its own template rather than restyling the stock presenter, so FluentTheme has no say in
+       what this is painted.
+
+       It rests on Surface, the colour of the card behind it, rather than on Transparent. That
+       looks the same and matters a great deal: Transparent in Avalonia is #00FFFFFF, transparent
+       *white*, so fading from it to the dark hover colour walks the brush through half-opaque
+       white. Over a dark card that midpoint is a pale grey, and a fade that passes through it
+       reads as the button flashing when the pointer arrives. -->
   <Style Selector="Button.addressPill">
     <Setter Property="Template">
       <ControlTemplate>
         <Border Name="shell"
-                Background="Transparent"
+                Background="{DynamicResource Surface}"
                 BorderBrush="{DynamicResource Border}"
                 BorderThickness="1"
                 CornerRadius="{TemplateBinding CornerRadius}"
@@ -880,6 +883,15 @@
 
   <Style Selector="Button.modOpen:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+
+    <!-- No fade on the fill. Every button here gets one by default, and fading up from
+         Transparent means fading up from transparent *white*, which over a dark row shows as a
+         pale flash on the way. A cell this small has nothing to gain from the fade anyway. -->
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+      </Transitions>
+    </Setter>
   </Style>
 
   <Style Selector="Button.modOpen:pointerover TextBlock">
