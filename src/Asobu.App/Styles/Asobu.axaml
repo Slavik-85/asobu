@@ -871,27 +871,39 @@
   <!-- The icon and name cells in the mod table. They open the mod's page, so they have to be
        buttons, but a button that looked like one would turn a quiet table into a row of controls.
        So: no chrome until the pointer is over it. -->
+  <!-- Its own template, the same reason as the address pill: styling the stock presenter leaves
+       FluentTheme painting its own pointerover brush over ours, which on a dark row is a pale
+       grey that looks nothing like the rest of this.
+
+       It rests on HoverFade, which is the hover colour at zero alpha rather than Transparent.
+       Transparent is #00FFFFFF, transparent *white*, so fading from it walks the brush through
+       half-opaque white on the way. The rows themselves already rest this way for the same
+       reason. -->
   <Style Selector="Button.modOpen">
-    <Setter Property="Background" Value="Transparent"/>
-    <Setter Property="BorderThickness" Value="0"/>
-    <Setter Property="Padding" Value="4,2"/>
-    <Setter Property="CornerRadius" Value="10"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="HorizontalContentAlignment" Value="Center"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="shell" Background="{DynamicResource HoverFade}" CornerRadius="10"
+                Padding="4,2">
+          <Border.Transitions>
+            <Transitions>
+              <BrushTransition Property="Background" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+            </Transitions>
+          </Border.Transitions>
+          <ContentPresenter Content="{TemplateBinding Content}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </Border>
+      </ControlTemplate>
+    </Setter>
   </Style>
 
-  <Style Selector="Button.modOpen:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
-
-    <!-- No fade on the fill. Every button here gets one by default, and fading up from
-         Transparent means fading up from transparent *white*, which over a dark row shows as a
-         pale flash on the way. A cell this small has nothing to gain from the fade anyway. -->
-    <Setter Property="Transitions">
-      <Transitions>
-        <BrushTransition Property="Foreground" Duration="0:0:0.16" Easing="CubicEaseOut"/>
-      </Transitions>
-    </Setter>
+  <!-- Lighter than the row's own hover, so a cell that can be clicked still reads as one while
+       the row around it is already lit. -->
+  <Style Selector="Button.modOpen:pointerover /template/ Border#shell">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
   </Style>
 
   <Style Selector="Button.modOpen:pointerover TextBlock">
