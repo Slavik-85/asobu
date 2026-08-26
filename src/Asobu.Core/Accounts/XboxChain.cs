@@ -1,6 +1,8 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+
+using System.Text.RegularExpressions;
 
 namespace Asobu.Core.Accounts;
 
@@ -11,7 +13,7 @@ public sealed class MicrosoftAuthException(string message) : Exception(message);
 /// because everything after the first hop is identical no matter how the Microsoft token was
 /// obtained — only the shape of the ticket differs.
 /// </summary>
-public sealed class XboxChain(HttpClient http)
+public sealed partial class XboxChain(HttpClient http)
 {
     private const string XboxAuthUrl = "https://user.auth.xboxlive.com/user/authenticate";
     private const string DeviceAuthUrl = "https://device.auth.xboxlive.com/device/authenticate";
@@ -172,18 +174,120 @@ public sealed class XboxChain(HttpClient http)
 
         if (!response.IsSuccessStatusCode)
         {
-            // Xbox answers failures with a bare status and sometimes an XErr in the body. Naming
-            // the hop and carrying the detail through beats a raw .NET status-code message, which
-            // says nothing about which of four requests actually broke.
             var detail = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            throw new MicrosoftAuthException(
-                $"{stage} failed ({(int)response.StatusCode})."
-                + (detail is { Length: > 0 and < 300 } ? " " + detail.Trim() : ""));
+
+            throw new MicrosoftAuthException(Explain(stage, response, detail));
         }
 
         return await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false)
             ?? throw new MicrosoftAuthException($"{stage} returned an empty response.");
     }
+
+    /// <summary>
+    /// Turns a refusal into something the person reading it can act on.
+    ///
+    /// SISU answers a refusal with an empty body and puts its reason in an X-Err header — checked
+    /// against the live endpoint, where a bad user token gives 401, no content at all, and
+    /// X-Err: 4294967295. Reading only the body, as this used to, therefore produced a bare
+    /// "failed (403)" carrying none of the one thing Xbox actually said.
+    /// </summary>
+    internal static string Explain(string stage, HttpResponseMessage response, string body)
+    {
+        var code = (int)response.StatusCode;
+
+        if (XErr(response, body) is { Length: > 0 } xerr)
+        {
+            if (KnownXErrors.TryGetValue(xerr, out var meaning)) return meaning;
+
+            return $"{stage} failed ({code}, Xbox code {xerr}).";
+        }
+
+        // A signed request whose clock is wrong is refused without any explanation at all, and a
+        // laptop that has been asleep is exactly where that happens. Xbox's own Date header says
+        // what it thinks the time is, so the two can be compared rather than guessed at.
+        if (response.Headers.Date is { } theirs)
+        {
+            var drift = (DateTimeOffset.UtcNow - theirs).Duration();
+            if (drift > TimeSpan.FromMinutes(5))
+                return $"{stage} failed ({code}). This computer's clock is "
+                     + $"{(int)drift.TotalMinutes} minutes off, and Xbox refuses sign-ins signed at "
+                     + "the wrong time. Put the clock right and try again.";
+        }
+
+        // Nothing in the headers, nothing in the body. Xbox sits behind a bot filter that answers
+        // this way when it turns a request away before Xbox ever sees it, which is a property of
+        // the network rather than of the account — and worth saying, because the alternative is
+        // somebody hunting for a fault in a Microsoft account that is perfectly fine.
+        if (code == 403 && body.Length == 0)
+            return $"{stage} failed (403) without saying why. Xbox turns requests away like this "
+                 + "when it does not like where they came from: if you are on a VPN or a work "
+                 + "network, try again without it.";
+
+        return $"{stage} failed ({code})."
+             + (body is { Length: > 0 and < 300 } ? " " + body.Trim() : "");
+    }
+
+    /// <summary>
+    /// The XErr, from wherever this particular refusal put it: SISU sends an X-Err header and an
+    /// empty body, XSTS sends a JSON body and no header, and some hops answer with a
+    /// WWW-Authenticate challenge instead. All three, because which one arrives is not knowable
+    /// from here.
+    /// </summary>
+    private static string? XErr(HttpResponseMessage response, string body)
+    {
+        if (response.Headers.TryGetValues("X-Err", out var direct)
+            && direct.FirstOrDefault() is { Length: > 0 } header)
+        {
+            return header.Trim();
+        }
+
+        foreach (var challenge in response.Headers.WwwAuthenticate)
+        {
+            var found = XErrPattern().Match(challenge.Parameter ?? "");
+            if (found.Success) return found.Groups[1].Value;
+        }
+
+        var inBody = XErrPattern().Match(body);
+        return inBody.Success ? inBody.Groups[1].Value : null;
+    }
+
+    // XErr=2148916238 in a WWW-Authenticate challenge, "XErr":2148916238 in
+    // an XSTS body. Same number, two spellings, and only one of them has an equals sign.
+    [GeneratedRegex(@"""?XErr""?\s*[:=]\s*""?(\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex XErrPattern();
+
+    /// <summary>
+    /// What Xbox's own codes mean, written as the thing to do about them. Every one of these is a
+    /// state of the person's Microsoft account rather than anything wrong with the launcher, and
+    /// saying so saves them looking for a fault here.
+    /// </summary>
+    private static readonly Dictionary<string, string> KnownXErrors = new()
+    {
+        // Xbox's own "no comment". It means the token was refused, not that anything is wrong with
+        // the account, and the cure is a fresh sign-in rather than anything on Microsoft's site.
+        ["4294967295"] =
+            "Xbox Live refused the sign-in. Sign out of this account in Asobu and add it again.",
+
+        ["2148916227"] =
+            "This Microsoft account has been banned from Xbox Live, so Minecraft cannot sign it in.",
+        ["2148916233"] =
+            "This Microsoft account has no Xbox profile yet. Sign in once at minecraft.net or "
+            + "xbox.com to create one, then try again here.",
+        // Turns up on a machine that has not signed in to Xbox before, because the acceptance is
+        // per-account but the prompt only ever appears on Microsoft's own pages.
+        ["2148916234"] =
+            "This account has not accepted the Xbox Terms of Service. Sign in once at xbox.com, "
+            + "accept them there, then try again here.",
+        ["2148916235"] =
+            "Xbox Live is not available in this account's country, so Minecraft cannot sign it in.",
+        ["2148916236"] =
+            "This account needs adult verification before it can sign in.",
+        ["2148916237"] =
+            "This account needs adult verification before it can sign in.",
+        ["2148916238"] =
+            "This is a child account. An adult has to add it to a Microsoft family before it can "
+            + "sign in to Minecraft.",
+    };
 
     /// <summary>
     /// Trades the XSTS token for a Minecraft session. Mojang only answers here for client ids they
@@ -210,31 +314,24 @@ public sealed class XboxChain(HttpClient http)
             ?? throw new MicrosoftAuthException("Minecraft returned an empty login response.");
     }
 
+    /// <summary>
+    /// XSTS puts its XErr in the response body rather than a header, but the codes are the same
+    /// ones SISU uses, so this goes through the shared reader rather than keeping a second copy of
+    /// the table that would drift out of step with the first.
+    /// </summary>
     private async Task<XboxResponse> PostXstsAsync(string xboxToken, CancellationToken cancellationToken)
     {
-        using var response = await http.PostAsJsonAsync(XstsAuthUrl, new
+        using var request = new HttpRequestMessage(HttpMethod.Post, XstsAuthUrl)
         {
-            Properties = new { SandboxId = "RETAIL", UserTokens = new[] { xboxToken } },
-            RelyingParty = "rp://api.minecraftservices.com/",
-            TokenType = "JWT",
-        }, cancellationToken).ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            var failure = await response.Content.ReadFromJsonAsync<XstsError>(cancellationToken).ConfigureAwait(false);
-            throw new MicrosoftAuthException(failure?.XErr switch
+            Content = JsonContent.Create(new
             {
-                2148916233 => "This Microsoft account has no Xbox profile. Create one at xbox.com, then try again.",
-                2148916235 => "Xbox Live is not available in this account's country.",
-                2148916236 or 2148916237 => "This account needs adult verification before it can use Xbox Live.",
-                2148916238 => "This is a child account. Add it to a Microsoft family group first.",
-                _ => "Xbox Live rejected the sign-in.",
-            });
-        }
+                Properties = new { SandboxId = "RETAIL", UserTokens = new[] { xboxToken } },
+                RelyingParty = "rp://api.minecraftservices.com/",
+                TokenType = "JWT",
+            }),
+        };
 
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<XboxResponse>(cancellationToken).ConfigureAwait(false)
-            ?? throw new MicrosoftAuthException("Xbox Live returned an empty response.");
+        return await SendXboxAsync<XboxResponse>(request, "Xbox Live", cancellationToken).ConfigureAwait(false);
     }
 
     private sealed class SisuResponse
@@ -257,11 +354,6 @@ public sealed class XboxChain(HttpClient http)
     {
         [JsonPropertyName("uhs")] public string? UserHash { get; init; }
         [JsonPropertyName("xid")] public string? Xuid { get; init; }
-    }
-
-    private sealed class XstsError
-    {
-        [JsonPropertyName("XErr")] public long XErr { get; init; }
     }
 
     private sealed class MinecraftLoginResponse
