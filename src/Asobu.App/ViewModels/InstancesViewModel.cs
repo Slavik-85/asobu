@@ -1040,6 +1040,13 @@ public partial class InstancesViewModel : ViewModelBase
         IsFlowImportLeaving = false;
         IsFlowWorkingVisible = false;
         IsFlowWorkingLeaving = false;
+
+        // The blocked pane too. Left out, it stayed up from the last import and every later
+        // card opened underneath it.
+        IsFlowBlockedVisible = false;
+        IsFlowBlockedLeaving = false;
+        BlockedDownloads.Clear();
+
         IsImportDone = false;
         ImportError = null;
         ImportCode = "";

@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -620,7 +620,7 @@ public sealed partial class InstanceImporter(
             stillMissing.Add(name);
 
             // Only worth offering when there is a page to send them to and somewhere to put it.
-            if (project?.Slug is not { Length: > 0 } slug) continue;
+            if (project?.Slug is not { Length: > 0 }) continue;
             if (Destination(gameDir, projects, file.ModId, file.FileName) is not { } destination) continue;
 
             _blocked.Add(new BlockedDownload(
@@ -628,7 +628,7 @@ public sealed partial class InstanceImporter(
                 file.FileName,
                 file.Size,
                 file.Sha1,
-                $"https://www.curseforge.com/minecraft/{SectionForClass(project.ClassId)}/{slug}/download/{file.FileId}",
+                CursePageUrl(project, file.ModId, file.FileId),
                 destination));
         }
 
@@ -798,6 +798,11 @@ public sealed partial class InstanceImporter(
             var tasks = new List<DownloadTask>();
             var unresolved = 0;
 
+            // Held back rather than turned into links inside the loop: naming the page needs the
+            // project's slug, and asking for all of them at once is one request instead of one
+            // per mod.
+            var blocked = new List<(CurseForge.PackFile Found, long Size, string? Sha1, string Destination)>();
+
             foreach (var file in wanted)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -830,17 +835,35 @@ public sealed partial class InstanceImporter(
                     // The author allows downloads only from their own page. Handled the way
                     // every other import handles it: the person is asked, and the launcher
                     // watches for the file rather than reaching around the refusal.
-                    _blocked.Add(new BlockedDownload(
-                        Path.GetFileNameWithoutExtension(file.Path),
-                        Path.GetFileName(file.Path),
-                        file.Size,
-                        file.Sha1,
-                        $"https://www.curseforge.com/minecraft/mc-mods/{fromCurseForge.ModId}/files/{fromCurseForge.FileId}",
-                        destination));
+                    blocked.Add((fromCurseForge, file.Size, file.Sha1, destination));
                     continue;
                 }
 
                 unresolved++;
+            }
+
+            if (blocked.Count > 0)
+            {
+                var behind = await curseForge
+                    .GetProjectsByIdAsync([.. blocked.Select(b => b.Found.ModId).Distinct()], cancellationToken)
+                    .ConfigureAwait(false);
+
+                foreach (var (found, size, sha1, destination) in blocked)
+                {
+                    var project = behind.GetValueOrDefault(found.ModId);
+
+                    _blocked.Add(new BlockedDownload(
+                        project?.Name is { Length: > 0 } named ? named : found.FileName,
+
+                        // CurseForge's name for the file, not the manifest's. They are usually
+                        // the same and occasionally are not, and this is the one the browser
+                        // will save it under.
+                        found.FileName,
+                        size,
+                        sha1,
+                        CursePageUrl(project, found.ModId, found.FileId),
+                        destination));
+                }
             }
 
             if (unresolved > 0)
@@ -1300,6 +1323,18 @@ public sealed partial class InstanceImporter(
     }
 
     /// <summary>The part of a CurseForge address naming what kind of project it is.</summary>
+    /// <summary>
+    /// The author's own page for one file.
+    ///
+    /// It has to be named by slug: checked against the live site, a numeric project id in that
+    /// position answers 404, which is what Asobu was handing people. Without a slug the best
+    /// available is /projects/{id}, which redirects to the mod but not to the file.
+    /// </summary>
+    private static string CursePageUrl(CurseForge.CurseProject? project, int modId, int fileId) =>
+        project?.Slug is { Length: > 0 } slug
+            ? $"https://www.curseforge.com/minecraft/{SectionForClass(project.ClassId)}/{slug}/download/{fileId}"
+            : $"https://www.curseforge.com/projects/{modId}";
+
     private static string SectionForClass(int classId) => classId switch
     {
         12 => "texture-packs",

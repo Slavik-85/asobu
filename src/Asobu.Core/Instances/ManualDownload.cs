@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 
 namespace Asobu.Core.Instances;
 
@@ -98,9 +98,47 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
                 var path = Path.Combine(folder, candidate);
                 if (File.Exists(path)) return path;
             }
+
+            if (FindByContent(item, folder) is { } renamed) return renamed;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The file under a name nobody predicted: saved by hand, renamed, or served under a name the
+    /// pack's manifest never used. The exact size is known, so it is used to pick out the few
+    /// files worth hashing rather than hashing the folder.
+    /// </summary>
+    private static string? FindByContent(BlockedDownload item, string folder)
+    {
+        if (item.Size <= 0 || item.Sha1 is not { Length: > 0 } expected) return null;
+
+        var extension = Path.GetExtension(item.FileName);
+
+        try
+        {
+            return Directory
+                .EnumerateFiles(folder, extension.Length > 0 ? "*" + extension : "*")
+                .FirstOrDefault(path => IsSize(path, item.Size) && Matches(path, expected));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Half-written, or not ours to read. The next poll asks again.
+            return null;
+        }
+    }
+
+    private static bool IsSize(string path, long size)
+    {
+        try
+        {
+            return new FileInfo(path).Length == size;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
