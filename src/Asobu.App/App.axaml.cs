@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Asobu.App.ViewModels;
 using Asobu.App.Views;
 
@@ -70,6 +71,10 @@ public partial class App : Application
             // here to prevent.
             desktop.ShutdownRequested += (_, _) => main.Launcher.StopGames(GoodbyeWait);
             desktop.Exit += (_, _) => main.Launcher.StopGames(GoodbyeWait);
+
+            // Someone starting Asobu again while it is in the tray means "show me Asobu",
+            // which is the same request the tray's own Open makes.
+            SingleInstance.Listen(() => Dispatcher.UIThread.Post(() => Reopen(window)));
 
             BuildTray(desktop, window);
         }

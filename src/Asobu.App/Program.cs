@@ -18,6 +18,15 @@ sealed class Program
         // it would run two copies at once. Harmless and does nothing in an ordinary launch.
         VelopackApp.Build().Run();
 
+        // Asobu sits in the tray with no window, so launching it again looks to the person like
+        // launching it for the first time. Hand the request to the copy already running rather
+        // than starting a second one to fight it over the same instances and accounts.
+        if (Array.IndexOf(args, "--new-instance") < 0 && !SingleInstance.Claim())
+        {
+            SingleInstance.AskToShow();
+            return;
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
