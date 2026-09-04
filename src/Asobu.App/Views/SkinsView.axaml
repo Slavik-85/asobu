@@ -78,8 +78,12 @@
             </StackPanel>
           </StackPanel>
 
-          <TextBlock Grid.Row="3" Classes="label" Margin="0,10,0,0" TextWrapping="Wrap"
-                     TextAlignment="Center" Text="{Binding WearNote}"/>
+          <StackPanel Grid.Row="3" Spacing="4" Margin="0,10,0,0">
+            <TextBlock Classes="label" TextWrapping="Wrap" TextAlignment="Center"
+                       Text="{Binding WearNote}"/>
+            <TextBlock Classes="label" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{DynamicResource TextMuted}" Text="{Binding LocalNote}"/>
+          </StackPanel>
         </Grid>
       </Border>
 

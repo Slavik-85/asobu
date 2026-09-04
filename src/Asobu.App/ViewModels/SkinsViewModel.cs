@@ -512,13 +512,21 @@ public partial class SkinsViewModel : ViewModelBase
     public string WearNote => _accounts.Active switch
     {
         null => "Sign in to an account to wear a skin.",
-        { Kind: AccountKind.Microsoft } account => $"Wearing puts it on {account.Username}'s Microsoft account.",
+        { Kind: AccountKind.Microsoft } account =>
+            $"Puts it on {account.Username}'s Microsoft account, and into your instances as a "
+            + "fallback for when the game can't reach it.",
 
         // Offline accounts get it locally instead: the game has no skin to fetch for them, so
         // the one it falls back to is replaced in every instance.
         _ => "Offline accounts get it locally — Asobu puts it in your instances as a resource "
              + "pack, so you see it yourself. Other players won't.",
     };
+
+    /// <summary>What the local half of wearing actually does, said where it can be read beforehand.</summary>
+    public string LocalNote =>
+        "The local copy is an ordinary resource pack named asobu-skin. It only shows where the "
+        + "game would otherwise draw the default player, so anyone else whose skin fails to load "
+        + "appears wearing it too. Turn it off in the game's resource pack list to stop that.";
 
     /// <summary>Puts what the figure is wearing onto the signed-in account.</summary>
     [RelayCommand]
@@ -537,10 +545,19 @@ public partial class SkinsViewModel : ViewModelBase
 
         IsBusy = true;
 
-        // Nobody at Mojang to ask, so the skin goes where the game will actually look for it.
+        // Locally either way, and first.
+        //
+        // For an offline account it is the only thing that can work. For a Microsoft one it is
+        // the safety net: the game only draws the skin Mojang serves if it manages to resolve the
+        // profile, and there are several ways for that to fail that have nothing to do with the
+        // skin being right — a server that hands out unsigned profiles, a mod in the middle, no
+        // connection at the moment it asked. When it fails the game falls back to the default
+        // player, and this makes the default player you.
+        var locally = WearLocally(png);
+
         if (account.Kind != AccountKind.Microsoft)
         {
-            WearLocally(png);
+            Status = locally;
             IsBusy = false;
             return;
         }
@@ -553,7 +570,7 @@ public partial class SkinsViewModel : ViewModelBase
             // Asked back rather than assumed. Mojang took the upload, but "it took it" and "it is
             // wearing it" are different claims, and the second is the one worth making — so the
             // profile is read again and the answer compared with what was sent.
-            Status = $"{account.Username} is wearing it now. The game shows it next time it loads your skin.";
+            Status = $"{account.Username} is wearing it now. {locally}";
 
             await Task.Delay(TimeSpan.FromSeconds(2));
 
@@ -562,8 +579,8 @@ public partial class SkinsViewModel : ViewModelBase
                 var live = await _service.DownloadAsync(worn.Url);
 
                 Status = live.AsSpan().SequenceEqual(png)
-                    ? $"{account.Username} is wearing it — Mojang confirms it. The game shows it next time it loads your skin."
-                    : $"Mojang took the skin but is still serving the old one. It usually catches up within a minute.";
+                    ? $"{account.Username} is wearing it — Mojang confirms it. {locally}"
+                    : $"Mojang took the skin but is still serving the old one; it usually catches up within a minute. {locally}";
             }
         }
         catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
@@ -583,15 +600,11 @@ public partial class SkinsViewModel : ViewModelBase
     /// world — and because being asked which instance you would like to look like yourself in is
     /// a strange question.
     /// </summary>
-    private void WearLocally(byte[] png)
+    private string? WearLocally(byte[] png)
     {
         var instances = _launcher.Instances.LoadAll();
 
-        if (instances.Count == 0)
-        {
-            Error = "There are no instances to put it in yet. Make one first.";
-            return;
-        }
+        if (instances.Count == 0) return null;
 
         var done = 0;
         string? failed = null;
@@ -613,12 +626,13 @@ public partial class SkinsViewModel : ViewModelBase
             }
         }
 
-        Status = done == 0
-            ? null
-            : $"Wearing it in {done} instance{(done == 1 ? "" : "s")}. It shows next time each one starts. "
-              + "Only you see it — other players still see the default.";
+        if (done == 0)
+        {
+            Error = failed;
+            return null;
+        }
 
-        Error = failed;
+        return $"Wearing it in {done} instance{(done == 1 ? "" : "s")} — it shows next time each one starts.";
     }
 
     // ---- Browse ----

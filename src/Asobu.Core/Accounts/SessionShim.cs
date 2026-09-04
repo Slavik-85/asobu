@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -71,6 +71,9 @@ public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = n
     /// </summary>
     public bool JoinsWithoutMojang { get; set; }
 
+    /// <summary>What Mojang said about each vouched uuid, so it is asked once rather than per join.</summary>
+    private readonly Dictionary<string, string?> _profiles = [];
+
     /// <summary>Let this name in for as long as their invite stands.</summary>
     public void Vouch(string username, string uuid)
     {
@@ -85,6 +88,7 @@ public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = n
     public void StopVouchingForEveryone()
     {
         lock (_vouched) _vouched.Clear();
+        lock (_profiles) _profiles.Clear();
     }
 
     /// <summary>
@@ -178,7 +182,18 @@ public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = n
                 var name = System.Web.HttpUtility.ParseQueryString(context.Request.Url?.Query ?? "")["username"];
                 if (name is { Length: > 0 } && Vouching(name) is { } uuid)
                 {
-                    await WriteJsonAsync(context, Profile(name, uuid)).ConfigureAwait(false);
+                    // Their real profile if Mojang has one, so a vouched player keeps their skin.
+                    // Answering with a bare id and name says "this is who they are" and nothing
+                    // else, and a profile with no textures is how everybody ends up as Steve.
+                    //
+                    // Only worth asking for an id that could belong to an account. A guest whose
+                    // id we worked out from their name ourselves is one Mojang has never heard
+                    // of, and asking about them is a request that can only come back empty.
+                    var real = uuid == OfflineUuid(name)
+                        ? null
+                        : await RealProfileAsync(uuid, cancellationToken).ConfigureAwait(false);
+
+                    await WriteJsonAsync(context, real ?? Profile(name, uuid)).ConfigureAwait(false);
                     return;
                 }
             }
@@ -198,6 +213,49 @@ public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = n
                 // The caller hung up while we were deciding. Nothing left to answer.
             }
         }
+    }
+
+    /// <summary>
+    /// What Mojang says about a uuid, signature and all, or null for one it has never heard of.
+    ///
+    /// Kept once fetched. A server asks about a player every time they join, and the answer only
+    /// changes when they change their skin — which is not often enough to ask Mojang about on
+    /// every doorstep.
+    /// </summary>
+    private async Task<string?> RealProfileAsync(string uuid, CancellationToken cancellationToken)
+    {
+        lock (_profiles)
+            if (_profiles.TryGetValue(uuid, out var remembered))
+                return remembered;
+
+        string? profile = null;
+
+        try
+        {
+            var url = $"{_upstreams.Session}/session/minecraft/profile/{uuid}?unsigned=false";
+            using var answer = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+
+            if (answer.IsSuccessStatusCode)
+            {
+                var body = await answer.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+                // An offline uuid gets an empty body rather than a refusal, and a profile with no
+                // properties is no better than the one we would have written ourselves.
+                if (body.Contains("\"properties\"", StringComparison.Ordinal)
+                    && body.Contains("\"textures\"", StringComparison.Ordinal))
+                {
+                    profile = body;
+                }
+            }
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
+        {
+            // Offline, or Mojang having a moment. The plain profile still lets them in.
+        }
+
+        lock (_profiles) _profiles[uuid] = profile;
+
+        return profile;
     }
 
     private string? Vouching(string username)
