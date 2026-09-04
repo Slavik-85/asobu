@@ -100,6 +100,8 @@
                   Command="{Binding GoBrowseCommand}" Content="Browse"/>
           <Button x:Name="NavServers" Classes="nav" Classes.active="{Binding IsServers}"
                   Command="{Binding GoServersCommand}" Content="Servers"/>
+          <Button x:Name="NavSkins" Classes="nav" Classes.active="{Binding IsSkins}"
+                  Command="{Binding GoSkinsCommand}" Content="Skins"/>
         </StackPanel>
 
       </DockPanel>

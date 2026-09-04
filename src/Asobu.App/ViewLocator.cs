@@ -23,6 +23,7 @@ public class ViewLocator : IDataTemplate
     {
         InstancesViewModel => new InstancesView(),
         ServersViewModel => new ServersView(),
+        SkinsViewModel => new SkinsView(),
         ExploreViewModel => new ExploreView(),
         BrowseViewModel => new BrowseView(),
         ModPageViewModel => new ModPageView(),

@@ -1,0 +1,298 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Asobu.App.ViewModels"
+             x:DataType="vm:SkinsViewModel"
+             x:Class="Asobu.App.Views.SkinsView">
+
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
+    <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}"/>
+    <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}"/>
+  </UserControl.KeyBindings>
+
+  <Grid RowDefinitions="Auto,Auto,*" Margin="26,22,26,22">
+
+    <!-- Three doors onto the same figure: the ones you kept, everybody else's, and a blank sheet. -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,16">
+      <Button Classes="tab" Classes.on="{Binding IsMine}" Command="{Binding GoMineCommand}" Content="My Skins"/>
+      <Button Classes="tab" Classes.on="{Binding IsBrowse}" Command="{Binding GoBrowseCommand}" Content="Browse Skins"/>
+      <Button Classes="tab" Classes.on="{Binding IsDraw}" Command="{Binding GoDrawCommand}" Content="Draw Skin"/>
+    </StackPanel>
+
+    <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,12">
+      <TextBlock Classes="sub" Foreground="{DynamicResource LogError}" TextWrapping="Wrap"
+                 Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+      <TextBlock Classes="sub" Foreground="{DynamicResource Mint}" TextWrapping="Wrap"
+                 Text="{Binding Status}" IsVisible="{Binding Status, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+    </StackPanel>
+
+    <Grid Grid.Row="2" ColumnDefinitions="300,*">
+
+      <!-- The figure -->
+      <Border Grid.Column="0" Classes="card" Margin="0,0,18,0" Padding="18">
+        <Grid RowDefinitions="*,Auto,Auto,Auto">
+
+          <!-- Drag it to turn it. The whole point of drawing the model rather than the sheet is
+               being able to look at the back of it. -->
+          <Border Grid.Row="0" x:Name="Stage" Background="{DynamicResource SurfaceAlt}"
+                  CornerRadius="14" ClipToBounds="True" Cursor="SizeWestEast">
+            <Panel>
+              <TextBlock Classes="sub" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         TextAlignment="Center" TextWrapping="Wrap" Margin="20"
+                         Text="Pick a skin, look one up, or draw one and it will stand here."
+                         IsVisible="{Binding Figure, Converter={x:Static ObjectConverters.IsNull}}"/>
+
+              <Image Source="{Binding Figure}" Stretch="Uniform" Margin="10"
+                     RenderOptions.BitmapInterpolationMode="None"/>
+            </Panel>
+          </Border>
+
+          <StackPanel Grid.Row="1" Spacing="6" Margin="0,12,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+              <CheckBox Content="Outer layer" IsChecked="{Binding ShowOuterLayer}"/>
+              <Button Classes="quiet" Command="{Binding FaceForwardCommand}" Content="Face me"/>
+            </StackPanel>
+
+            <!-- Only while drawing: hiding an arm is a way of reaching what is behind it, which
+                 is not something anybody wants while simply looking. -->
+            <WrapPanel HorizontalAlignment="Center" IsVisible="{Binding IsDraw}">
+              <CheckBox Margin="0,0,10,0" Content="Head" IsChecked="{Binding ShowHead}"/>
+              <CheckBox Margin="0,0,10,0" Content="Body" IsChecked="{Binding ShowBody}"/>
+              <CheckBox Margin="0,0,10,0" Content="Arms" IsChecked="{Binding ShowArms}"/>
+              <CheckBox Content="Legs" IsChecked="{Binding ShowLegs}"/>
+            </WrapPanel>
+
+            <TextBlock Classes="label" TextAlignment="Center" TextWrapping="Wrap"
+                       IsVisible="{Binding IsDraw}"
+                       Text="Drag with the right button to turn it. Left button draws."/>
+          </StackPanel>
+
+          <StackPanel Grid.Row="2" Spacing="8" Margin="0,14,0,0">
+            <Button Classes="primary" HorizontalAlignment="Stretch" Command="{Binding WearCommand}"
+                    IsEnabled="{Binding !IsBusy}" Content="Wear this skin"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+              <Button Classes="ghost" IsVisible="{Binding !IsMine}"
+                      Command="{Binding KeepShownCommand}" Content="Save to My Skins"/>
+              <Button Classes="ghost" Command="{Binding EditShownCommand}" Content="Edit"/>
+            </StackPanel>
+          </StackPanel>
+
+          <TextBlock Grid.Row="3" Classes="label" Margin="0,10,0,0" TextWrapping="Wrap"
+                     TextAlignment="Center"
+                     Text="Wearing applies to the signed-in Microsoft account."/>
+        </Grid>
+      </Border>
+
+      <!-- Whichever tab -->
+      <Border Grid.Column="1" Classes="card" Padding="18">
+        <Panel>
+
+          <!-- My Skins -->
+          <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsMine}">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,14">
+              <Button x:Name="UploadButton" Classes="primary" Content="Upload skin"/>
+              <Button Classes="ghost" Command="{Binding ToggleModelCommand}"
+                      IsEnabled="{Binding Selected, Converter={x:Static ObjectConverters.IsNotNull}}"
+                      Content="Switch arms"/>
+              <Button x:Name="ExportButton" Classes="ghost" Content="Save as PNG"/>
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding HasNoSkins}">
+              <TextBlock Text="No skins yet" Classes="h2" HorizontalAlignment="Center"
+                         Foreground="{DynamicResource TextMuted}"/>
+              <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
+                         Text="Upload a 64×64 PNG, look someone up under Browse, or draw one."/>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1" VerticalAlignment="Top" IsVisible="{Binding !HasNoSkins}">
+              <ItemsControl ItemsSource="{Binding Mine}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SkinCard">
+                    <Button Classes="skinCard" Classes.on="{Binding IsSelected}"
+                            Command="{Binding $parent[ItemsControl].((vm:SkinsViewModel)DataContext).SelectCommand}"
+                            CommandParameter="{Binding}">
+                      <!-- The card knows how to remove itself, because a menu in a popup cannot
+                           see up into the page to ask anything else to. -->
+                      <Button.ContextMenu>
+                        <ContextMenu>
+                          <MenuItem Header="Delete" Command="{Binding RemoveCommand}"/>
+                        </ContextMenu>
+                      </Button.ContextMenu>
+
+                      <Grid RowDefinitions="*,Auto,Auto" Width="100" Height="172">
+                        <Border Grid.Row="0" Background="{DynamicResource SurfaceAlt}" CornerRadius="10"
+                                ClipToBounds="True">
+                          <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="4"
+                                 RenderOptions.BitmapInterpolationMode="None"/>
+                        </Border>
+
+                        <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="12" Margin="2,6,2,0"
+                                   TextTrimming="CharacterEllipsis" TextAlignment="Center"/>
+                        <TextBlock Grid.Row="2" Text="{Binding ModelLabel}" Classes="label"
+                                   TextAlignment="Center" Margin="0,2,0,0"/>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+
+          <!-- Browse -->
+          <Grid RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsBrowse}">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+              <TextBox Text="{Binding SearchText}" Watermark="A player's name" Width="260"
+                       VerticalAlignment="Center">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}"/>
+                </TextBox.KeyBindings>
+              </TextBox>
+              <Button Classes="primary" Command="{Binding SearchCommand}" Content="Look up"
+                      IsEnabled="{Binding !IsSearching}"/>
+            </StackPanel>
+
+            <TextBlock Grid.Row="1" Classes="sub" Margin="0,10,0,0" TextWrapping="Wrap"
+                       Text="Skins come straight from Mojang, so anyone who plays Minecraft can be looked up by name."/>
+
+            <TextBlock Grid.Row="2" Classes="sub" Margin="0,12,0,0" Foreground="{DynamicResource TextMuted}"
+                       Text="{Binding SearchNote}"
+                       IsVisible="{Binding SearchNote, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+            <Grid Grid.Row="3" RowDefinitions="Auto,*" Margin="0,16,0,0">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,10">
+                <TextBlock Classes="label" VerticalAlignment="Center" Text="Recently looked up"
+                           IsVisible="{Binding Recent.Count}"/>
+
+                <ItemsControl ItemsSource="{Binding Recent}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Classes="quiet" Margin="0,0,6,0"
+                              Command="{Binding $parent[ItemsControl].((vm:SkinsViewModel)DataContext).ShowRecentCommand}"
+                              CommandParameter="{Binding}"
+                              Content="{Binding Username}"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+
+              <TextBlock Grid.Row="1" Classes="sub" VerticalAlignment="Center" HorizontalAlignment="Center"
+                         Text="Fetching skins…" IsVisible="{Binding IsLoadingGallery}"/>
+
+              <ScrollViewer Grid.Row="1" x:Name="GalleryScroll" IsVisible="{Binding HasGallery}">
+                <ItemsControl ItemsSource="{Binding Gallery}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GalleryCard">
+                      <Button Classes="skinCard"
+                              Command="{Binding $parent[ItemsControl].((vm:SkinsViewModel)DataContext).ShowGalleryCommand}"
+                              CommandParameter="{Binding}">
+                        <Grid RowDefinitions="*,Auto" Width="104" Height="172">
+                          <Border Grid.Row="0" Background="{DynamicResource SurfaceAlt}" CornerRadius="10"
+                                  ClipToBounds="True">
+                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="5"
+                                   RenderOptions.BitmapInterpolationMode="None"/>
+                          </Border>
+
+                          <TextBlock Grid.Row="1" Text="{Binding Label}" Classes="label"
+                                     TextAlignment="Center" Margin="0,6,0,0"
+                                     TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </Grid>
+
+          <!-- Draw -->
+          <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsDraw}">
+            <!-- Wraps, because at a narrow window a row of nine buttons runs off the edge and
+                 takes Save with it. -->
+            <WrapPanel Grid.Row="0" Margin="0,0,0,10">
+              <Button Margin="0,0,6,6" Classes="tool" Classes.on="{Binding IsPencil}" Command="{Binding PickPencilCommand}" Content="Pencil"/>
+              <Button Margin="0,0,6,6" Classes="tool" Classes.on="{Binding IsEraser}" Command="{Binding PickEraserCommand}" Content="Eraser"/>
+              <Button Margin="0,0,6,6" Classes="tool" Classes.on="{Binding IsFill}" Command="{Binding PickFillCommand}" Content="Fill"/>
+              <Button Margin="0,0,6,6" Classes="tool" Classes.on="{Binding IsPicker}" Command="{Binding PickPickerCommand}" Content="Pick"/>
+
+              <Border Width="1" Background="{DynamicResource Border}" Margin="6,4,12,4"/>
+
+              <Button Margin="0,0,6,6" Classes="tool" Classes.on="{Binding DrawingBody}"
+                      Command="{Binding DrawBodyLayerCommand}" Content="Body"/>
+              <Button Margin="0,0,6,6" Classes="tool" Classes.on="{Binding DrawingOuter}"
+                      Command="{Binding DrawOuterLayerCommand}" Content="Outer layer"/>
+
+              <Border Width="1" Background="{DynamicResource Border}" Margin="6,4,12,4"/>
+
+              <Button Margin="0,0,6,6" Classes="quiet" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" Content="Undo"/>
+              <Button Margin="0,0,6,6" Classes="quiet" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" Content="Redo"/>
+              <Button Margin="0,0,6,6" Classes="quiet" x:Name="ImportDrawButton" Content="Import"/>
+              <Button Margin="0,0,6,6" Classes="quiet" Command="{Binding NewDrawingCommand}" Content="Start over"/>
+              <Button Margin="0,0,6,6" Classes="primary" Command="{Binding SaveDrawingCommand}" Content="Save"/>
+            </WrapPanel>
+
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+
+              <!-- The sheet itself. Nearest-neighbour throughout: this is 64 pixels shown at
+                   several hundred, and every one of them has to stay a square. -->
+              <Border Grid.Column="0" Background="{DynamicResource SurfaceAlt}" CornerRadius="12"
+                      Padding="14" ClipToBounds="True">
+                <Border Background="{DynamicResource Bg}" CornerRadius="6"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Image x:Name="Canvas" Source="{Binding Sheet}" Stretch="Uniform"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         RenderOptions.BitmapInterpolationMode="None" Cursor="Cross"/>
+                </Border>
+              </Border>
+
+              <StackPanel Grid.Column="1" Width="150" Spacing="10" Margin="16,0,0,0">
+                <TextBlock Classes="label" Text="Colour"/>
+
+                <Border Height="46" CornerRadius="10" BorderThickness="1"
+                        BorderBrush="{DynamicResource Border}"
+                        Background="{Binding ColourSwatch}"/>
+
+                <TextBox Text="{Binding ColourHex}" Watermark="#RRGGBB"
+                         HorizontalContentAlignment="Center" FontSize="12.5"/>
+
+                <ItemsControl ItemsSource="{Binding Swatches}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Button Classes="swatch" Background="{Binding}"
+                              Command="{Binding $parent[ItemsControl].((vm:SkinsViewModel)DataContext).UseSwatchCommand}"
+                              CommandParameter="{Binding}"/>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Grid>
+          </Grid>
+        </Panel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

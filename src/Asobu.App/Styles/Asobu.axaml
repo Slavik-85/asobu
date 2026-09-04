@@ -910,6 +910,62 @@
     <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
   </Style>
 
+  <!-- A skin in the library. A card rather than a tile: it is a picture with a name under it,
+       and the picture is the whole reason anybody is looking. -->
+  <Style Selector="Button.skinCard">
+    <Setter Property="Background" Value="{DynamicResource Surface}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="Padding" Value="8"/>
+    <Setter Property="Margin" Value="0,0,10,10"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="VerticalAlignment" Value="Top"/>
+  </Style>
+
+  <Style Selector="Button.skinCard:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <Style Selector="Button.skinCard.on">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
+  <Style Selector="Button.skinCard.on /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}"/>
+  </Style>
+
+  <!-- One of the drawing tools. Only one is ever on, so being on has to read at a glance. -->
+  <Style Selector="Button.tool">
+    <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
+    <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Padding" Value="12,7"/>
+    <Setter Property="FontSize" Value="12.5"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+
+  <Style Selector="Button.tool:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Hover}"/>
+  </Style>
+
+  <Style Selector="Button.tool.on /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Accent}"/>
+    <Setter Property="TextBlock.Foreground" Value="{DynamicResource OnAccent}"/>
+  </Style>
+
+  <!-- A colour in the palette: the colour itself, and nothing else. -->
+  <Style Selector="Button.swatch">
+    <Setter Property="Width" Value="21"/>
+    <Setter Property="Height" Value="21"/>
+    <Setter Property="Margin" Value="0,0,4,4"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="5"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+  </Style>
+
   <!-- Around a card whose game is up. It breathes rather than blinking: a card that flashes
        demands attention it does not deserve, while something slowly brightening reads as alive. -->
   <Style Selector="Border.playingRing">
