@@ -193,6 +193,22 @@ public partial class ExploreViewModel(
     /// page uses.
     /// </summary>
     [ObservableProperty] public partial string? GameVersion { get; set; }
+
+    /// <summary>The entry at the top of the version list. Not a version, so it never reaches a query.</summary>
+    public const string AnyVersion = "All versions";
+
+    /// <summary>
+    /// What the version box shows.
+    ///
+    /// Kept apart from GameVersion so the "all versions" entry never leaks into a search as if it
+    /// were a version number: picking it leaves GameVersion null, which every query here already
+    /// reads as "any". They follow each other, so setting either one still moves the box.
+    /// </summary>
+    [ObservableProperty] public partial string? VersionChoice { get; set; }
+
+    partial void OnVersionChoiceChanged(string? value) =>
+        GameVersion = value == AnyVersion ? null : value;
+
     [ObservableProperty] public partial string SearchText { get; set; } = "";
     [ObservableProperty] public partial bool IsSearching { get; set; }
 
@@ -301,11 +317,15 @@ public partial class ExploreViewModel(
                 versions.Insert(0, instance.MinecraftVersion);
 
         GameVersions.Clear();
+
+        // At the top, where someone who does not want to filter by version finds it first.
+        GameVersions.Add(AnyVersion);
         foreach (var version in versions) GameVersions.Add(version);
 
         // Whatever the first instance runs, since that is the one most likely to be modded
-        // next — and the newest release for someone who has no instances yet.
-        GameVersion ??= instances.FirstOrDefault()?.MinecraftVersion ?? GameVersions.FirstOrDefault();
+        // next — and the newest release for someone who has no instances yet. Never the entry
+        // above it: opening on "all versions" would bury the answer people came for.
+        VersionChoice ??= instances.FirstOrDefault()?.MinecraftVersion ?? versions.FirstOrDefault();
     }
 
     // ---- The banner ----
@@ -579,6 +599,9 @@ public partial class ExploreViewModel(
 
     partial void OnGameVersionChanged(string? value)
     {
+        // Set from elsewhere — opening Browse on an instance, say — and the box has to follow.
+        if (value is { Length: > 0 } && VersionChoice != value) VersionChoice = value;
+
         OnPropertyChanged(nameof(TargetLabel));
         RestartHero();
         _ = SearchAsync();

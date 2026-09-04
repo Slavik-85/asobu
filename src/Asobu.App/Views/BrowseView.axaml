@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ctrl="using:Asobu.App.Controls"
              xmlns:vm="using:Asobu.App.ViewModels"
@@ -75,7 +75,7 @@
                     IsVisible="{Binding !IsInstanceScoped}">
           <TextBlock Text="Version" Classes="label" VerticalAlignment="Center"/>
           <ComboBox Classes="field" ItemsSource="{Binding GameVersions}"
-                    SelectedItem="{Binding GameVersion}" MinWidth="120" MaxDropDownHeight="320"/>
+                    SelectedItem="{Binding VersionChoice}" MinWidth="120" MaxDropDownHeight="320"/>
         </StackPanel>
       </Grid>
 

@@ -189,6 +189,21 @@ public partial class BrowseViewModel(
     /// <summary>Which Minecraft version the results are for.</summary>
     [ObservableProperty] public partial string? GameVersion { get; set; }
 
+    /// <summary>The entry at the top of the version list. Not a version, so it never reaches a query.</summary>
+    public const string AnyVersion = "All versions";
+
+    /// <summary>
+    /// What the version box shows.
+    ///
+    /// Kept apart from GameVersion so the "all versions" entry never leaks into a search as if it
+    /// were a version number: picking it leaves GameVersion null, which every query here already
+    /// reads as "any". They follow each other, so setting either one still moves the box.
+    /// </summary>
+    [ObservableProperty] public partial string? VersionChoice { get; set; }
+
+    partial void OnVersionChoiceChanged(string? value) =>
+        GameVersion = value == AnyVersion ? null : value;
+
     [ObservableProperty] public partial KindOption? Kind { get; set; }
     [ObservableProperty] public partial SortOption? Sort { get; set; }
     [ObservableProperty] public partial string SearchText { get; set; } = "";
@@ -225,7 +240,9 @@ public partial class BrowseViewModel(
 
     public string TargetLabel => GameVersion is { Length: > 0 } version
         ? $"Showing what works on Minecraft {version}"
-        : "Pick a Minecraft version";
+        : VersionChoice == AnyVersion
+            ? "Showing what works on every version"
+            : "Pick a Minecraft version";
 
     /// <summary>Named after where it goes, which is the instance this was opened from.</summary>
     public string BackLabel => Target is { } instance ? instance.Name : "Back";
@@ -284,14 +301,22 @@ public partial class BrowseViewModel(
                 versions.Insert(0, instance.MinecraftVersion);
 
         GameVersions.Clear();
+
+        // At the top, where someone who does not want to filter by version finds it first.
+        GameVersions.Add(AnyVersion);
         foreach (var version in versions) GameVersions.Add(version);
 
         // Whatever the first instance runs, since that is the one most likely to be modded next.
-        GameVersion ??= _instances.FirstOrDefault()?.MinecraftVersion ?? GameVersions.FirstOrDefault();
+        // Never the entry above it: opening on "all versions" would bury the answer people came
+        // for under everything that has ever been published.
+        VersionChoice ??= _instances.FirstOrDefault()?.MinecraftVersion ?? versions.FirstOrDefault();
     }
 
     partial void OnGameVersionChanged(string? value)
     {
+        // Set from elsewhere — opening Browse on an instance, say — and the box has to follow.
+        if (value is { Length: > 0 } && VersionChoice != value) VersionChoice = value;
+
         OnPropertyChanged(nameof(TargetLabel));
 
         // The version is part of every query, so a different one is a different search.
