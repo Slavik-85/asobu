@@ -416,6 +416,36 @@ public static partial class CrashAnalyzer
     /// Causes that have nothing to do with any particular mod. Each one has a signature specific
     /// enough that a false positive is unlikely, which is why they get to answer first.
     /// </summary>
+    /// <summary>Where the heap stood when the report was written.</summary>
+    private sealed record HeapUse(long UsedMib, long MaxMib)
+    {
+        /// <summary>
+        /// Within a tenth of the ceiling. Not a definition of running out — a healthy game sits
+        /// well under this, and one that is over it was going to run out shortly whatever else
+        /// happened to kill it first.
+        /// </summary>
+        public bool IsAtCeiling => MaxMib > 0 && UsedMib >= MaxMib * 0.9;
+    }
+
+    /// <summary>
+    /// Reads the report's own memory line: free, then allocated, then the ceiling. What was in
+    /// use is the allocated figure less the free one — the middle number on its own is only what
+    /// the JVM had claimed from the system, which is not the same thing.
+    /// </summary>
+    private static HeapUse? HeapAtCrash(string report)
+    {
+        if (HeapPattern().Match(report) is not { Success: true } match) return null;
+
+        if (!long.TryParse(match.Groups["free"].Value, out var free)
+            || !long.TryParse(match.Groups["total"].Value, out var total)
+            || !long.TryParse(match.Groups["max"].Value, out var max))
+        {
+            return null;
+        }
+
+        return new HeapUse(Math.Max(0, total - free), max);
+    }
+
     private static CrashAnalysis? Environmental(string report)
     {
         // Checked before everything else. The stack trace is Fabric's, so a reader — and the mod
@@ -432,10 +462,26 @@ public static partial class CrashAnalyzer
                 "Updating Asobu and launching again is the whole fix; nothing in the instance needs changing.", []);
         }
 
+        var memory = HeapAtCrash(report);
+
         if (OutOfMemoryPattern().IsMatch(report))
             return new CrashAnalysis(CrashCause.OutOfMemory, "Ran out of memory",
-                "The game asked for more memory than it was allowed. Raise this instance's memory in its settings, " +
-                "or turn the automatic limit back on and let Asobu size it from the pack.", []);
+                "The game asked for more memory than it was allowed"
+                + (memory is { } said ? $" — it was using {said.UsedMib} MB of the {said.MaxMib} MB it is given" : "")
+                + ". Raise this instance's memory in its settings, "
+                + "or turn the automatic limit back on and let Asobu size it from the pack.", []);
+
+        // A heap pressed right up against its ceiling, with nothing in the log saying so. The JVM
+        // does not always get to write an OutOfMemoryError: it can spend its last minutes in the
+        // collector and be killed, or die somewhere unrelated that had the bad luck to need a few
+        // bytes. The report writes down where the heap stood, so it is worth reading rather than
+        // waiting for a message that may never come.
+        if (memory is { IsAtCeiling: true } tight)
+            return new CrashAnalysis(CrashCause.OutOfMemory, "Out of memory",
+                $"The game was using {tight.UsedMib} MB of the {tight.MaxMib} MB it is allowed when it died, which "
+                + "is as much as it can have. Nothing in the log says so outright, so this is read from the memory "
+                + "line in the report. Raise this instance's memory in its settings, or turn the automatic limit "
+                + "back on and let Asobu size it from the pack.", []);
 
         if (GraphicsPattern().IsMatch(report))
             return new CrashAnalysis(CrashCause.Graphics, "Graphics driver fault",
@@ -497,6 +543,28 @@ public static partial class CrashAnalyzer
         "config", "platform", "injection", "compat", "gui", "screen", "render", "renderer",
     };
 
+    /// <summary>
+    /// The jar a Forge stack frame says it came from, with the URL escaping undone — Essential
+    /// arrives as "Essential%20(forge_1.19.2).jar" and is on disk with its space.
+    /// </summary>
+    private static string? StampedJar(string line) =>
+        FrameJarPattern().Match(line) is { Success: true } match
+            ? match.Groups["jar"].Value.Replace("%20", " ")
+            : null;
+
+    /// <summary>
+    /// Just the "Suspected Mods" block, so the pattern that reads it cannot wander into the mod
+    /// list at the bottom of the report, where every installed mod is written the same way.
+    /// </summary>
+    private static string SuspectedBlock(string report)
+    {
+        var start = report.IndexOf("Suspected Mods", StringComparison.OrdinalIgnoreCase);
+        if (start < 0) return "";
+
+        var end = report.IndexOf("Stacktrace:", start, StringComparison.OrdinalIgnoreCase);
+        return end < 0 ? report[start..] : report[start..end];
+    }
+
     /// <summary>The whole line a match landed on, so its surroundings can be judged.</summary>
     private static string LineAround(string report, int index)
     {
@@ -510,6 +578,10 @@ public static partial class CrashAnalyzer
     private static List<CrashSuspect> FindSuspects(string report, IReadOnlyList<ModEntry> installedMods)
     {
         var scores = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        // The jars as they are on disk. What Forge stamps on a frame is the file name itself, so
+        // it is matched whole rather than put through the name guessing the rest of this uses.
+        var byFile = new HashSet<string>(installedMods.Select(mod => mod.FileName), StringComparer.OrdinalIgnoreCase);
         var directlyNamed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var evidence = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var tokens = BuildTokens(installedMods);
@@ -531,6 +603,16 @@ public static partial class CrashAnalyzer
             if (Resolve(named, tokens) is { } file) Accuse(file, DirectAccusationScore, match.Value);
         }
 
+        // Forge's own verdict, which it works out from the trace that killed the game and lists
+        // one per line. Reading only the first meant the second was thrown away, and the entries
+        // are not ranked by us at all — whichever of them also owns the most frames comes top,
+        // which is the same thing Forge means by putting it first.
+        foreach (Match match in SuspectedModPattern().Matches(SuspectedBlock(report)))
+        {
+            if (Resolve(match.Groups["id"].Value, tokens) is { } file)
+                Accuse(file, DirectAccusationScore, match.Value.Trim());
+        }
+
         // 2. A mixin config file is named after its own mod by convention: sodium.mixins.json.
         //
         // Circumstantial, not an accusation, and it took a real crash to see why. A log mentions
@@ -542,13 +624,21 @@ public static partial class CrashAnalyzer
         //
         // So: worth something, worth less than a stack frame in the trace that killed the game,
         // and never enough on its own to claim the loader named anybody.
+        // Once each, and never from a stack frame. Forge stamps the whole list of loaded mixin
+        // configs onto the end of every single frame it prints, so counting those counted nothing
+        // about the crash and everything about how long the trace was: in a real report that put
+        // ImmediatelyFast top with 340 points, from seventeen mentions on frames belonging to
+        // other people's classes, while the mod Forge itself named sat below the cut.
+        var mixinCredited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (Match match in MixinConfigPattern().Matches(report))
         {
             var line = LineAround(report, match.Index);
-            if (HarmlessPattern().IsMatch(line)) continue;
+            if (HarmlessPattern().IsMatch(line) || StackFramePattern().IsMatch(line)) continue;
 
             var named = match.Groups["id"].Value;
-            if (Resolve(named, tokens) is { } file) Accuse(file, MixinConfigScore, line);
+            if (Resolve(named, tokens) is { } file && mixinCredited.Add(file))
+                Accuse(file, MixinConfigScore, line);
         }
 
         // 3. Stack frames. The first trace in a report is the one that killed the game; frames
@@ -568,12 +658,34 @@ public static partial class CrashAnalyzer
             }
 
             inTrace = true;
+            var weight = firstTraceDone ? LaterStackFrameScore : FirstStackFrameScore;
+
+            // Forge writes the jar each frame came out of on the end of the frame itself, and
+            // sometimes the mod id in front of the class. That is the loader stating the
+            // attribution rather than us inferring it, so it is used first and it is exact.
+            //
+            // It has to be. A package name is not a mod name: WebDisplays ships as
+            // net.montoyo.wd, so a crash whose every frame was its own matched nothing at all
+            // by name and the mod that stopped the game was never even listed.
+            if (StampedJar(line) is { } stamped && byFile.Contains(stamped))
+            {
+                Accuse(stamped, weight, line);
+                continue;
+            }
+
+            if (TransformerPattern().Match(line) is { Success: true } transformer
+                && Resolve(transformer.Groups["id"].Value, tokens) is { } fromId)
+            {
+                Accuse(fromId, weight, line);
+                continue;
+            }
+
             var qualified = frame.Groups["at"].Value;
 
             foreach (var (token, file) in tokens)
             {
                 if (!qualified.Contains(token, StringComparison.OrdinalIgnoreCase)) continue;
-                Accuse(file, firstTraceDone ? LaterStackFrameScore : FirstStackFrameScore, line);
+                Accuse(file, weight, line);
             }
         }
 
@@ -722,6 +834,11 @@ public static partial class CrashAnalyzer
         RegexOptions.IgnoreCase)]
     private static partial Regex OutOfMemoryPattern();
 
+    /// <summary>"Memory: 361640112 bytes (344 MiB) / 1962934272 bytes (1872 MiB) up to 4294967296 bytes (4096 MiB)".</summary>
+    [GeneratedRegex(@"Memory:\s*\d+ bytes \((?<free>\d+) MiB\) / \d+ bytes \((?<total>\d+) MiB\)"
+        + @" up to \d+ bytes \((?<max>\d+) MiB\)", RegexOptions.IgnoreCase)]
+    private static partial Regex HeapPattern();
+
     /// <summary>
     /// Fabric's own words when it finds one library twice:
     ///
@@ -832,6 +949,18 @@ public static partial class CrashAnalyzer
 
     [GeneratedRegex(@"^\s+at (?<at>[\w$.]+)", RegexOptions.Multiline)]
     private static partial Regex StackFramePattern();
+
+    /// <summary>Forge's "~[thejar-1.2.3.jar%23265!/:1.2.3]" on the end of a stack frame.</summary>
+    [GeneratedRegex(@"~\[(?<jar>[^\]%]+(?:%20[^\]%]+)*\.jar)", RegexOptions.IgnoreCase)]
+    private static partial Regex FrameJarPattern();
+
+    /// <summary>And "TRANSFORMER/geckolib3@3.1.40/" in front of one.</summary>
+    [GeneratedRegex(@"TRANSFORMER/(?<id>[\w.-]+)@", RegexOptions.IgnoreCase)]
+    private static partial Regex TransformerPattern();
+
+    /// <summary>One line of Forge's Suspected Mods block: "WebDisplays (webdisplays), Version: 1.3.3".</summary>
+    [GeneratedRegex(@"^\s+.+? \((?<id>[\w.-]+)\), Version:", RegexOptions.Multiline)]
+    private static partial Regex SuspectedModPattern();
 
     /// <summary>Everything from the first version-looking segment to the end of the name.</summary>
     [GeneratedRegex(@"[-_+](?:v?\d.*|mc\d.*|fabric|forge|neoforge|quilt)$", RegexOptions.IgnoreCase)]
