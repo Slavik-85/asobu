@@ -493,6 +493,33 @@ public partial class SkinsViewModel : ViewModelBase
         if (ReferenceEquals(Selected, card)) Selected = Mine.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Whether wearing a skin is possible at all right now.
+    ///
+    /// Asked before the button is pressed rather than after. An offline account has no Mojang
+    /// profile to change, and finding that out by clicking a button that looked available is a
+    /// worse way to learn it than the button simply not being available.
+    /// </summary>
+    /// <summary>
+    /// Wearing works either way now — through Mojang for an account it knows, and through the
+    /// instances themselves for one it does not.
+    /// </summary>
+    public bool CanWear => !IsBusy && _accounts.Active is not null;
+
+    /// <summary>An upload in flight is also a reason the button cannot be pressed again.</summary>
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanWear));
+
+    public string WearNote => _accounts.Active switch
+    {
+        null => "Sign in to an account to wear a skin.",
+        { Kind: AccountKind.Microsoft } account => $"Wearing puts it on {account.Username}'s Microsoft account.",
+
+        // Offline accounts get it locally instead: the game has no skin to fetch for them, so
+        // the one it falls back to is replaced in every instance.
+        _ => "Offline accounts get it locally — Asobu puts it in your instances as a resource "
+             + "pack, so you see it yourself. Other players won't.",
+    };
+
     /// <summary>Puts what the figure is wearing onto the signed-in account.</summary>
     [RelayCommand]
     private async Task WearAsync()
@@ -508,20 +535,36 @@ public partial class SkinsViewModel : ViewModelBase
             return;
         }
 
+        IsBusy = true;
+
+        // Nobody at Mojang to ask, so the skin goes where the game will actually look for it.
         if (account.Kind != AccountKind.Microsoft)
         {
-            Error = "Offline accounts have no Mojang profile, so their skin can't be changed.";
+            WearLocally(png);
+            IsBusy = false;
             return;
         }
-
-        IsBusy = true;
 
         try
         {
             var session = await _launcher.ResolveSessionAsync(account);
             await _service.ApplyAsync(session, png, ShownModel);
 
+            // Asked back rather than assumed. Mojang took the upload, but "it took it" and "it is
+            // wearing it" are different claims, and the second is the one worth making — so the
+            // profile is read again and the answer compared with what was sent.
             Status = $"{account.Username} is wearing it now. The game shows it next time it loads your skin.";
+
+            await Task.Delay(TimeSpan.FromSeconds(2));
+
+            if (await _service.OfUuidAsync(account.Uuid, account.Username) is { } worn)
+            {
+                var live = await _service.DownloadAsync(worn.Url);
+
+                Status = live.AsSpan().SequenceEqual(png)
+                    ? $"{account.Username} is wearing it — Mojang confirms it. The game shows it next time it loads your skin."
+                    : $"Mojang took the skin but is still serving the old one. It usually catches up within a minute.";
+            }
         }
         catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
         {
@@ -531,6 +574,51 @@ public partial class SkinsViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Wears a skin without Mojang, by putting it in the instances as the default player.
+    ///
+    /// Every instance rather than one, because the skin belongs to the person rather than to a
+    /// world — and because being asked which instance you would like to look like yourself in is
+    /// a strange question.
+    /// </summary>
+    private void WearLocally(byte[] png)
+    {
+        var instances = _launcher.Instances.LoadAll();
+
+        if (instances.Count == 0)
+        {
+            Error = "There are no instances to put it in yet. Make one first.";
+            return;
+        }
+
+        var done = 0;
+        string? failed = null;
+
+        foreach (var instance in instances)
+        {
+            try
+            {
+                var gameDir = _launcher.Paths.InstanceGameDir(instance.Folder);
+
+                SkinPack.Write(gameDir, png, instance.MinecraftVersion);
+                SkinPack.Enable(gameDir);
+
+                done++;
+            }
+            catch (Exception e) when (e is IOException or SkinException or UnauthorizedAccessException)
+            {
+                failed ??= e.Message;
+            }
+        }
+
+        Status = done == 0
+            ? null
+            : $"Wearing it in {done} instance{(done == 1 ? "" : "s")}. It shows next time each one starts. "
+              + "Only you see it — other players still see the default.";
+
+        Error = failed;
     }
 
     // ---- Browse ----
@@ -1324,5 +1412,11 @@ public partial class SkinsViewModel : ViewModelBase
         }
     }
 
-    public void OnAccountChanged() => _ = ShowCurrentSkinAsync();
+    public void OnAccountChanged()
+    {
+        OnPropertyChanged(nameof(CanWear));
+        OnPropertyChanged(nameof(WearNote));
+
+        _ = ShowCurrentSkinAsync();
+    }
 }
