@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using Asobu.Core.Launch;
 using Asobu.Core.Mods;
 
 namespace Asobu.Core.Diagnostics;
@@ -34,6 +35,13 @@ public enum CrashCause
     /// got to write one — so the exit code is the whole of the evidence.
     /// </summary>
     NativeFault,
+
+    /// <summary>
+    /// The JVM died of a fatal error rather than of an exception: an access violation, a signal,
+    /// one of its own assertions. Unlike a kill from outside there is evidence — the runtime
+    /// prints a block saying what was executing, and saves an hs_err file with the rest.
+    /// </summary>
+    JvmFatal,
     Java,
     CorruptFiles,
     /// <summary>The game shut down normally. Not every log in the list is a crash.</summary>
@@ -69,6 +77,22 @@ public sealed record CrashAnalysis(
 {
     public bool HasSuspects => Suspects.Count > 0;
     public bool HasVerdict => Cause != CrashCause.Unknown || Suspects.Count > 0;
+
+    /// <summary>
+    /// The error file this crash named, when it named one.
+    ///
+    /// A launch log carries only the summary Java prints on its way out; everything else it knew
+    /// went into the file that summary points at. Carried here so a caller can go and read it —
+    /// which for one kind of crash is the difference between explaining it and fixing it.
+    /// </summary>
+    public string? ErrorFile { get; init; }
+
+    /// <summary>
+    /// The method Java was compiling when it died, when what was read was the error file itself.
+    /// In Java's own "package.Class::method" form, which is also the form the flag that excludes
+    /// it takes — see <see cref="CompilerExclusion"/>.
+    /// </summary>
+    public string? CompilingMethod { get; init; }
 
     public static readonly CrashAnalysis None =
         new(CrashCause.Unknown, "Nothing obvious", "Asobu couldn't pin this one down. The full text is below.", []);
@@ -129,6 +153,14 @@ public static partial class CrashAnalyzer
             CrashCause.Clean,
             "No crash in this log",
             "The game ran to the end of this log without dying. Any errors in it were handled.", []);
+
+        // Before every check that reads the log's ordinary errors. A fatal JVM error stops the
+        // process mid-instruction, and the handled exceptions above it belong to a session that
+        // was running fine minutes earlier — a mod's failed connection, a mixin's startup warning.
+        // The block the runtime prints on its way out is the only part of the log written by the
+        // crash, so it answers first or a mod gets blamed for being the noisiest thing in a file
+        // it had nothing to do with.
+        if (JvmFatal(report, installedMods) is { } fatal) return fatal;
 
         if (Environmental(report) is { } environmental) return environmental;
 
@@ -216,6 +248,249 @@ public static partial class CrashAnalyzer
             $"It {fault}, which ends the game outright — no crash report is written, which is why "
             + "there isn't one. Almost always a graphics driver. Updating yours is the first thing to try.",
             []);
+    }
+
+    // ---- The JVM's own fatal error ----
+
+    /// <summary>
+    /// What the runtime wrote on its way out.
+    /// </summary>
+    /// <param name="Signal">How it died: an access violation, a signal, one of its own assertions.</param>
+    /// <param name="Kind">V for the JVM's own code, C for a native library, J or j for Java's.</param>
+    /// <param name="Frame">The frame it died in, kept whole because it is the evidence for all of this.</param>
+    /// <param name="Library">The binary that frame is in, when the frame names one.</param>
+    /// <param name="InCompiler">
+    /// The thread that died was a JIT compiler thread. Known rather than guessed: the runtime
+    /// writes compiler replay data only when the crashing thread was compiling, so the presence
+    /// of that line is a statement about which thread died.
+    /// </param>
+    /// <param name="ErrorFile">The hs_err file saved beside the game, which holds everything this block leaves out.</param>
+    /// <param name="Java">The runtime's own version, worth quoting when the runtime is the accused.</param>
+    private sealed record FatalError(
+        string Signal,
+        char Kind,
+        string Frame,
+        string? Library,
+        bool InCompiler,
+        string? ErrorFile,
+        string? Java)
+    {
+        /// <summary>What the signal means, said the way somebody would say it out loud.</summary>
+        public string InPlainWords => Signal switch
+        {
+            "EXCEPTION_ACCESS_VIOLATION" or "SIGSEGV" or "SIGBUS" => "read memory that wasn't its own",
+            "EXCEPTION_STACK_OVERFLOW" or "SIGSTKFLT" => "ran out of stack",
+            "EXCEPTION_ILLEGAL_INSTRUCTION" or "SIGILL" => "ran an instruction this processor doesn't have",
+            "EXCEPTION_INT_DIVIDE_BY_ZERO" or "SIGFPE" => "divided by zero",
+            "Internal Error" => "failed one of its own internal checks",
+            _ => "hit a fault it could not recover from",
+        };
+
+        /// <summary>The hs_err file's own name, which is the part somebody has to go and find.</summary>
+        public string? ErrorFileName =>
+            ErrorFile is { Length: > 0 } file ? Path.GetFileName(file.Trim()) : null;
+
+        /// <summary>
+        /// Where the rest of it is. Said once, at the end of whatever verdict is reached — the
+        /// printed block is a summary, and the file it names has the thread that died, every
+        /// library that was loaded, and the state of the machine.
+        /// </summary>
+        public string Detail => ErrorFileName is { } name
+            ? $" Java saved the full detail as {name} beside the instance's game files."
+            : "";
+    }
+
+    /// <summary>
+    /// Reads the fatal block, or null when the log has none.
+    ///
+    /// Every field is optional on purpose. The block is written by a runtime that has already
+    /// lost its footing, and a truncated one still says more than the rest of the log does.
+    /// </summary>
+    private static FatalError? ReadFatalError(string report)
+    {
+        if (!FatalBannerPattern().IsMatch(report)) return null;
+
+        var frame = FatalFramePattern().Match(report);
+        var body = frame.Success ? frame.Groups["frame"].Value.Trim() : "";
+
+        return new FatalError(
+            FatalSignalPattern().Match(report) is { Success: true } signal ? signal.Groups["signal"].Value : "",
+            frame.Success ? frame.Groups["kind"].Value[0] : '?',
+            body,
+            FrameLibraryPattern().Match(body) is { Success: true } library ? library.Groups["lib"].Value : null,
+            // Either account of the same fact. The log gets the replay line and the file gets the
+            // compile task, and each is written only for a thread that was compiling — so a
+            // verdict does not depend on which of the two somebody happens to be looking at.
+            CompilerReplayPattern().IsMatch(report) || CompileTaskPattern().IsMatch(report),
+            ErrorFilePattern().Match(report) is { Success: true } file ? file.Groups["path"].Value : null,
+            JreBuildPattern().Match(report) is { Success: true } jre ? jre.Groups["version"].Value : null);
+    }
+
+    /// <summary>
+    /// The verdict for a runtime that died of a fatal error.
+    ///
+    /// The frame decides it, because the frame is the one thing in the log that was executing
+    /// when the process stopped. A driver's own file means the driver; the embedded browser some
+    /// mods carry means that mod; jvm.dll means Java itself and no mod at all — which is worth
+    /// saying outright, since the answer otherwise offered is a list of mods to turn off one at a
+    /// time, and none of them would ever fix it.
+    /// </summary>
+    private static CrashAnalysis? JvmFatal(string report, IReadOnlyList<ModEntry> installedMods)
+    {
+        // Its own case, and first, because it is written instead of the usual block rather than
+        // alongside it: no signal, no frame, nothing was executing. Java asked the machine for
+        // memory and the machine said no.
+        if (NativeMemoryPattern().Match(report) is { Success: true } starved)
+            return new CrashAnalysis(CrashCause.OutOfMemory, "The computer ran out of memory",
+                "Java asked Windows for memory and was refused, which stops it outright. This is the machine's "
+                + "memory rather than the game's own limit, so giving the instance more would bring it on sooner "
+                + "rather than later — lower it instead, and close whatever else is running. "
+                + "32-bit Java does this at around 1.5 GB however much the machine has, so it is worth checking "
+                + "the instance is on a 64-bit runtime."
+                + (starved.Groups["what"].Success ? $" Java's own words: {starved.Groups["what"].Value.Trim()}" : ""),
+                []);
+
+        if (ReadFatalError(report) is not { } fatal) return null;
+
+        var library = fatal.Library;
+
+        // The driver's own file. As direct as this gets: the game handed it work and it fell over
+        // holding it, which is neither the game's doing nor any mod's.
+        if (library is not null && GraphicsLibraryPattern().IsMatch(library))
+            return new CrashAnalysis(CrashCause.Graphics,
+                GraphicsDevice(report) is { } card ? $"{card.Name}'s driver crashed" : "The graphics driver crashed",
+                $"The game {fatal.InPlainWords} inside {library}, which belongs to the graphics driver rather than "
+                + "to the game or to any mod. Update it from the manufacturer's own site rather than Windows "
+                + "Update, which is often years behind. Turning off shaders and any performance mods is worth "
+                + "trying meanwhile." + fatal.Detail, []);
+
+        // A whole copy of Chromium, running inside the game's process. When it falls over it takes
+        // the game with it, and no setting in the game changes that.
+        if (library is not null && EmbeddedBrowserPattern().IsMatch(library))
+        {
+            if (OwnerOfLibrary(["mcef", "webdisplays", "cefbrowser", "jcef"], installedMods) is { } mod)
+                return new CrashAnalysis(CrashCause.Mod, $"{mod.Name}'s embedded browser crashed the game",
+                    $"The game {fatal.InPlainWords} inside {library} — the copy of Chromium {mod.Name} runs inside "
+                    + "the game to draw web pages on screens. A browser that crashes takes the game down with it, "
+                    + $"so there is nothing in the game's settings to change: turning {mod.Name} off is the fix."
+                    + fatal.Detail,
+                    [new CrashSuspect(mod.Name, mod.FileName, DirectAccusationScore, true, [fatal.Frame])]);
+
+            return new CrashAnalysis(CrashCause.JvmFatal, "An embedded browser crashed the game",
+                $"The game {fatal.InPlainWords} inside {library}, which is a copy of Chromium running inside the "
+                + "game — MCEF and the mods built on it, such as WebDisplays, are what put it there. Turning those "
+                + "off is the fix; nothing in the game's own settings touches it." + fatal.Detail, []);
+        }
+
+        if (library is not null && JvmLibraryPattern().IsMatch(library))
+        {
+            // The compiler, not the game. Java compiles the code it is running as it runs it, on
+            // its own threads, and this crash was on one of those — so nothing a mod did was
+            // executing at the time and turning mods off is a week spent proving that.
+            if (fatal.InCompiler)
+                return WithFix(fatal, report, new CrashAnalysis(CrashCause.JvmFatal, "Java itself crashed while compiling code",
+                    "Java compiles the game as it runs, on threads of its own, and this crash was on one of those. "
+                    + "Nothing the game or a mod was doing was executing at the time, so turning mods off will not "
+                    + "change it and there is nothing in the instance to fix. The runtime is the thing to change, "
+                    + "and Asobu's Automatic setting installs the exact Java the game asks for"
+                    + (fatal.Java is { } version ? $" — {version} here" : "")
+                    + ", so changing it means pointing this instance at another install of the same Java version in "
+                    + "its settings. Worth doing only if it happens again: a compiler fault that repeats in the "
+                    + "same place is a bug in that build of Java, and one that lands somewhere different every "
+                    + "time is usually the machine's memory failing."
+                    + fatal.Detail, []));
+
+            return new CrashAnalysis(CrashCause.JvmFatal, "Java itself crashed",
+                $"The crash was inside {library} — Java's own engine, rather than the game or any mod running on "
+                + "it. If this instance has been pointed at a Java of your own, put it back on Automatic and Asobu "
+                + "will install the one the game asks for; if it is already on Automatic, another install of that "
+                + "same version is the thing to try"
+                + (fatal.Java is { } built ? $" — it crashed on {built}." : ".")
+                + fatal.Detail, []);
+        }
+
+        // A Java frame: compiled or interpreted, but somebody's actual code. The class names in it
+        // say whose, and a frame that was executing at the instant the process died is a long way
+        // better evidence than a mod merely turning up in the log.
+        if (fatal.Kind is 'J' or 'j'
+            && OwnerOf(fatal.Frame, BuildTokens(installedMods)) is { } file
+            && installedMods.FirstOrDefault(m => m.FileName.Equals(file, StringComparison.OrdinalIgnoreCase)) is { } named)
+        {
+            return new CrashAnalysis(CrashCause.Mod, $"{named.Name} was running when Java died",
+                $"Java {fatal.InPlainWords} while running {named.Name}'s code, which ends the game outright rather "
+                + "than raising an error it could report. Turn it off and launch again." + fatal.Detail,
+                [new CrashSuspect(named.Name, named.FileName, DirectAccusationScore, true, [fatal.Frame])]);
+        }
+
+        // Nothing recognisable in the frame, and the log says the heap ran out. A process that
+        // spent its last minutes short of memory and then died somewhere unremarkable is more
+        // usefully answered as the memory problem it was — so the ordinary checks get it back.
+        // Only from here: a frame that named a driver, a browser or a mod named it whatever else
+        // the log says, and handing those to the memory check would be losing real evidence.
+        if (OutOfMemoryPattern().IsMatch(report)) return null;
+
+        return new CrashAnalysis(CrashCause.JvmFatal, "Java stopped the game",
+            $"Java {fatal.InPlainWords} and ended the game where it stood. That is why there is no crash report to "
+            + "read: a fault this low stops the runtime before it can write one."
+            + (library is { Length: > 0 } unknown ? $" It was inside {unknown} at the time." : "")
+            + fatal.Detail, []);
+    }
+
+    /// <summary>
+    /// Hangs the two things a caller can act on off a verdict: the file to go and read, and — if
+    /// what was read was that file already — the method to keep Java's hands off.
+    /// </summary>
+    private static CrashAnalysis WithFix(FatalError fatal, string report, CrashAnalysis analysis) =>
+        analysis with
+        {
+            ErrorFile = fatal.ErrorFile?.Trim(),
+            CompilingMethod = CompilingMethodIn(report),
+        };
+
+    /// <summary>
+    /// The method Java was compiling when it died, from the error file's own account of it:
+    ///
+    ///     Current CompileTask:
+    ///     C2:  67525 12345       4       net.minecraft.client.Minecraft::runTick (1234 bytes)
+    ///
+    /// Only ever in the file. The summary printed to the log says a compiler thread died and
+    /// where the fault was, but not what it was working on, so this returns nothing for a launch
+    /// log and the file has to be read for it.
+    ///
+    /// Returned exactly as Java prints it, which is not a coincidence worth undoing: the dotted
+    /// class and the two colons are the one spelling the flag that excludes it will accept.
+    /// </summary>
+    public static string? CompilingMethodIn(string errorFile)
+    {
+        if (CompileTaskPattern().Match(errorFile) is not { Success: true } task) return null;
+
+        var method = task.Groups["method"].Value;
+
+        return CompilerExclusion.IsMethodName(method) ? method : null;
+    }
+
+    /// <summary>
+    /// Which installed mod owns a native library, by the ids that ship it.
+    ///
+    /// Native file names carry nothing to match a jar against — libcef.dll is libcef.dll whoever
+    /// bundled it — so the mapping is stated here and the mod is looked up by the ids that are
+    /// known to carry it.
+    /// </summary>
+    private static ModEntry? OwnerOfLibrary(string[] ids, IReadOnlyList<ModEntry> installedMods)
+    {
+        if (installedMods.Count == 0) return null;
+
+        var tokens = BuildTokens(installedMods);
+
+        foreach (var id in ids)
+        {
+            if (Resolve(id, tokens) is not { } file) continue;
+
+            if (installedMods.FirstOrDefault(m => m.FileName.Equals(file, StringComparison.OrdinalIgnoreCase)) is { } mod)
+                return mod;
+        }
+
+        return null;
     }
 
     /// <summary>The adapter the game reported at startup, which is in every log whether it crashed or not.</summary>
@@ -807,6 +1082,7 @@ public static partial class CrashAnalyzer
 
     [GeneratedRegex(@"---- Minecraft Crash Report ----|Exception in thread ""main""|" +
         @"A fatal error has been detected by the Java Runtime Environment|" +
+        @"There is insufficient memory for the Java Runtime Environment to continue|" +
         @"net\.fabricmc\.loader\.impl\.FormattedException|org\.quiltmc\.loader\.impl\.FormattedException|" +
         @"Failed to start Minecraft|" +
         @"The game crashed whilst|Minecraft has crashed",
@@ -870,6 +1146,103 @@ public static partial class CrashAnalyzer
         @"java\.lang\.(?:NoSuchMethodError|NoSuchFieldError|NoClassDefFoundError|AbstractMethodError|"
         + @"IncompatibleClassChangeError|ClassNotFoundException)[^\n]*")]
     private static partial Regex LinkagePattern();
+
+    /// <summary>The line the runtime opens its fatal block with, on every platform.</summary>
+    [GeneratedRegex(@"A fatal error has been detected by the Java Runtime Environment", RegexOptions.IgnoreCase)]
+    private static partial Regex FatalBannerPattern();
+
+    /// <summary>
+    /// How it died: "#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ffa67f622b3".
+    ///
+    /// Windows names an exception, Unix a signal, and a runtime that caught itself out writes
+    /// "Internal Error" with the file and line of its own assertion.
+    /// </summary>
+    [GeneratedRegex(@"^#\s+(?<signal>EXCEPTION_[A-Z_]+|SIG[A-Z]+|Internal Error)\b",
+        RegexOptions.Multiline)]
+    private static partial Regex FatalSignalPattern();
+
+    /// <summary>
+    /// The frame it died in, which is on the line after the label:
+    ///
+    ///     # Problematic frame:
+    ///     # V  [jvm.dll+0x2222b3]
+    ///
+    /// The letter is the kind of code — V for the runtime's own, C for a native library, J for
+    /// compiled Java and j for interpreted — and it decides how the rest is read.
+    /// </summary>
+    [GeneratedRegex(@"# Problematic frame:\s*\r?\n#\s+(?<kind>[VCJj])\s+(?<frame>[^\r\n]+)")]
+    private static partial Regex FatalFramePattern();
+
+    /// <summary>The binary in a frame: the name up to the offset in "[nvoglv64.dll+0x1044c1e]".</summary>
+    [GeneratedRegex(@"^\[(?<lib>[^+\]\s]+)")]
+    private static partial Regex FrameLibraryPattern();
+
+    /// <summary>
+    /// Compiler replay data, which the runtime writes only when the thread that died was a JIT
+    /// compiler thread. Its presence names the thread; nothing else in the printed block does.
+    /// </summary>
+    [GeneratedRegex(@"Compiler replay data is saved as", RegexOptions.IgnoreCase)]
+    private static partial Regex CompilerReplayPattern();
+
+    /// <summary>
+    /// The compile that was in progress, which the error file records under its own heading:
+    ///
+    ///     Current CompileTask:
+    ///     C2:  67525 12345       4       net.minecraft.client.Minecraft::runTick (1234 bytes)
+    ///
+    /// Written only for a thread that was compiling, which makes it the file's answer to the
+    /// question the log answers with the replay line. The angle brackets are for constructors,
+    /// which are compiled like anything else and named "&lt;init&gt;".
+    /// </summary>
+    [GeneratedRegex(@"Current CompileTask:\s*\r?\n[^\r\n]*?\s(?<method>[\w$]+(?:\.[\w$]+)*::(?:[\w$]+|<init>|<clinit>))")]
+    private static partial Regex CompileTaskPattern();
+
+    /// <summary>The hs_err file, whose path is on the line after the sentence announcing it.</summary>
+    [GeneratedRegex(@"An error report file with more information is saved as:\s*\r?\n#\s*(?<path>[^\r\n]+)",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex ErrorFilePattern();
+
+    /// <summary>"# JRE version: OpenJDK Runtime Environment Microsoft-11369865 (17.0.15+6) (build ...)".</summary>
+    [GeneratedRegex(@"# JRE version:[^\r\n]*?\((?<version>\d[\w.+-]*)\)")]
+    private static partial Regex JreBuildPattern();
+
+    /// <summary>
+    /// The runtime failing to get memory from the machine, which it reports instead of the usual
+    /// fatal block rather than alongside it — there is no signal and no frame, because nothing
+    /// crashed. The line under it says what the allocation was for.
+    /// </summary>
+    [GeneratedRegex(@"There is insufficient memory for the Java Runtime Environment to continue\."
+        + @"(?:\s*\r?\n#\s*(?<what>Native memory[^\r\n]+))?", RegexOptions.IgnoreCase)]
+    private static partial Regex NativeMemoryPattern();
+
+    /// <summary>
+    /// Graphics drivers by their own file names, in two halves.
+    ///
+    /// The first are a vendor's own and carry a bitness or a driver generation in the middle of
+    /// them — nvoglv64, ig9icd64 — so they are matched as prefixes and nothing else on a machine
+    /// is spelled remotely like them.
+    ///
+    /// The second are ordinary words, and those need a boundary after them or they swallow
+    /// libraries that merely start the same way. Without one, "libGL" matches libglib, which is
+    /// GLib: a general-purpose library with no connection to a graphics card at all, bundled by
+    /// half the native code in existence — and a crash inside it would have been answered with
+    /// "update your graphics driver". The lookahead is what a word boundary cannot be here,
+    /// since a file name runs straight on into its version and its extension.
+    /// </summary>
+    [GeneratedRegex(@"^(?:nvoglv|nvwgf2um|nvd3dum|nvcuda|nvapi|nvumdshim|nvldumd|libnvidia|atio6axx|atioglxx|"
+        + @"aticfx|amdvlk|amdxc|amdihk|ig\d*icd|igd\d*iumd|igdumd|igxel|igvk|radeonsi|iris_dri|i965_dri|"
+        + @"swrast"
+        + @"|(?:opengl32|vulkan|nvidia|libGL|libGLX|libGLdispatch|libGLESv2|libEGL)(?=[\d._+-]|$))",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex GraphicsLibraryPattern();
+
+    /// <summary>Chromium, as MCEF and the mods built on it embed it.</summary>
+    [GeneratedRegex(@"^(libcef|chrome_elf|cef|jcef)", RegexOptions.IgnoreCase)]
+    private static partial Regex EmbeddedBrowserPattern();
+
+    /// <summary>Java's own engine, under either of the names it goes by.</summary>
+    [GeneratedRegex(@"^(jvm\.dll|libjvm)", RegexOptions.IgnoreCase)]
+    private static partial Regex JvmLibraryPattern();
 
     [GeneratedRegex(@"Pixel format not accelerated|Couldn't set pixel format|Failed to create window|GLFW error|" +
         @"EXCEPTION_ACCESS_VIOLATION[\s\S]{0,400}?(nvoglv|atio6axx|amdvlk|ig\d*icd|opengl32|vulkan)|" +

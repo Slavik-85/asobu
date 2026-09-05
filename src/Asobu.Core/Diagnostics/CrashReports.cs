@@ -12,7 +12,9 @@ public sealed record CrashReportEntry(string Path, string Name, DateTimeOffset M
 /// <summary>
 /// Surfaces what went wrong with a launch. Minecraft only writes a crash-reports/*.txt on some
 /// failure modes (a Mixin or native crash often doesn't), so Asobu's own captured stdout/stderr
-/// per launch is listed alongside it — that one always exists.
+/// per launch is listed alongside it — that one always exists. So does anything the Java runtime
+/// left behind when it died below the game entirely, which is the one case where no crash report
+/// is written at all.
 /// </summary>
 public static class CrashReports
 {
@@ -22,10 +24,21 @@ public static class CrashReports
     {
         var entries = new List<CrashReportEntry>();
 
-        var crashDir = Path.Combine(paths.InstanceGameDir(instance.Folder), "crash-reports");
+        var gameDir = paths.InstanceGameDir(instance.Folder);
+
+        var crashDir = Path.Combine(gameDir, "crash-reports");
         if (Directory.Exists(crashDir))
             foreach (var file in Directory.EnumerateFiles(crashDir, "*.txt"))
                 entries.Add(new CrashReportEntry(file, Path.GetFileName(file), File.GetLastWriteTimeUtc(file), "Crash report"));
+
+        // Java's own fatal-error files, which it writes into the game's folder rather than into
+        // crash-reports — by the time one exists the game is no longer running to write anything.
+        // Worth listing beside the rest precisely because there is no crash report when this
+        // happens: the runtime died below the level the game could report from, and this file is
+        // the only account of it there will ever be.
+        if (Directory.Exists(gameDir))
+            foreach (var file in Directory.EnumerateFiles(gameDir, "hs_err_pid*.log"))
+                entries.Add(new CrashReportEntry(file, Path.GetFileName(file), File.GetLastWriteTimeUtc(file), "Java error"));
 
         if (Directory.Exists(paths.Logs))
             foreach (var file in Directory.EnumerateFiles(paths.Logs, $"{instance.Id}-*.log"))
@@ -44,6 +57,21 @@ public static class CrashReports
             return await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
 
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+        // A Java error file is read from the front instead. Everything that says what happened —
+        // the signal, the frame it died in, the thread that died — is on its first page, and the
+        // pages after it are the process's whole memory map. Tailing one of those shows the map
+        // and hides the crash.
+        if (Path.GetFileName(path).StartsWith("hs_err_pid", StringComparison.OrdinalIgnoreCase))
+        {
+            using var opening = new StreamReader(stream);
+            var buffer = new char[TailBytes];
+            var read = await opening.ReadBlockAsync(buffer, cancellationToken).ConfigureAwait(false);
+
+            return $"(showing the first {TailBytes / 1000} KB of a larger file)" + "\n\n"
+                   + new string(buffer, 0, read);
+        }
+
         stream.Seek(-TailBytes, SeekOrigin.End);
         using var reader = new StreamReader(stream);
         var tail = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);

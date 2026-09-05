@@ -2047,6 +2047,9 @@ public partial class InstancesViewModel : ViewModelBase
             OverridesJvmArguments = instance?.ExtraJvmArguments is not null;
             InstanceJvmArguments = instance?.ExtraJvmArguments ?? global.ExtraJvmArguments ?? "";
 
+            OnPropertyChanged(nameof(HasSkippedCompiles));
+            OnPropertyChanged(nameof(SkippedCompilesLabel));
+
             IsNewGroupOpen = false;
             RefreshAssignableGroups();
             SelectedGroup = instance?.Group is { Length: > 0 } group ? group : UngroupedFilter;
@@ -2061,6 +2064,37 @@ public partial class InstancesViewModel : ViewModelBase
         {
             _loadingInstanceSettings = false;
         }
+    }
+
+    /// <summary>
+    /// Whether Java is being kept off anything in this instance, which is only true after a
+    /// compiler crash has been answered — so the row it shows is absent from every instance that
+    /// has never had one.
+    /// </summary>
+    public bool HasSkippedCompiles => Selected?.SkipCompiling.Count > 0;
+
+    public string SkippedCompilesLabel => Selected?.SkipCompiling switch
+    {
+        null or { Count: 0 } => "",
+        { Count: 1 } one => $"Not compiling {CompilerExclusion.Short(one[0])}, after a crash there.",
+        { Count: var many } => $"Not compiling {many} methods, after crashes in them.",
+    };
+
+    /// <summary>
+    /// Puts them all back. One button rather than one per method: this exists so that a fix
+    /// applied on a guess can be undone, and somebody undoing it wants the instance as it was
+    /// rather than a list to work through.
+    /// </summary>
+    [RelayCommand]
+    private void ClearSkippedCompiles()
+    {
+        if (Selected is not { } instance || instance.SkipCompiling.Count == 0) return;
+
+        instance.SkipCompiling.Clear();
+        _launcher.Instances.Save(instance);
+
+        OnPropertyChanged(nameof(HasSkippedCompiles));
+        OnPropertyChanged(nameof(SkippedCompilesLabel));
     }
 
     partial void OnOverridesMemoryChanged(bool value) => SaveInstanceSettings();
@@ -3625,6 +3659,12 @@ public partial class InstancesViewModel : ViewModelBase
 
         /// <summary>A mod built for another version of the game. Get the build made for this one.</summary>
         WrongBuild,
+
+        /// <summary>
+        /// Java's own compiler crashed on one method. Nothing in the instance caused it and no
+        /// mod can be turned off to stop it — but Java will leave that method alone if asked.
+        /// </summary>
+        Compiler,
     }
 
     /// <summary>
@@ -3663,6 +3703,17 @@ public partial class InstancesViewModel : ViewModelBase
                 Suspect = suspect,
             };
 
+        /// <summary>
+        /// The one crash on this screen that is nobody's mod. The method is shown without its
+        /// package, which is where all the length is and none of the meaning.
+        /// </summary>
+        public static ProblemRow ForCompiler(string method) =>
+            new(ProblemKind.Compiler, "Java crashed compiling the game",
+                $"It died on {CompilerExclusion.Short(method)}. Asobu can tell Java to leave that one alone.")
+            {
+                SkipCompiling = method,
+            };
+
         public static ProblemRow ForMemory(int fromMb, int toMb) =>
             new(ProblemKind.Memory, "Minecraft ran out of memory",
                 $"Running on {Gigabytes(fromMb)}. Asobu can give it {Gigabytes(toMb)}.")
@@ -3681,6 +3732,7 @@ public partial class InstancesViewModel : ViewModelBase
         public MissingDependency? Missing { get; private init; }
         public CrashSuspect? Suspect { get; private init; }
         public int? RaiseMemoryToMb { get; private init; }
+        public string? SkipCompiling { get; private init; }
 
         /// <summary>
         /// Every name this row's mod goes by, for keeping two findings about one mod off the
@@ -3703,6 +3755,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Missing => "Get it",
             ProblemKind.BadMod => "Turn off",
             ProblemKind.WrongBuild => "Fix it",
+            ProblemKind.Compiler => "Skip it",
             _ => "Give it more",
         };
 
@@ -3712,6 +3765,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Missing => "Fetching…",
             ProblemKind.BadMod => "Turning off…",
             ProblemKind.WrongBuild => "Looking…",
+            ProblemKind.Compiler => "Saving…",
             _ => "Saving…",
         };
 
@@ -3721,6 +3775,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Missing => "Added",
             ProblemKind.BadMod => "Off",
             ProblemKind.WrongBuild => "Sorted",
+            ProblemKind.Compiler => "Skipped",
             _ => "Raised",
         };
 
@@ -3750,6 +3805,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.Missing => "A mod is missing something it needs",
             ProblemKind.BadMod => "One mod looks like the cause",
             ProblemKind.WrongBuild => "One mod was built for another version",
+            ProblemKind.Compiler => "Java crashed compiling the game",
             _ => "That session ran out of memory",
         }
         : $"{Problems.Count} things went wrong in that session";
@@ -3791,6 +3847,29 @@ public partial class InstancesViewModel : ViewModelBase
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 return rows;
+            }
+
+            // Java's compiler crashed. The log says so; only the file it names says which
+            // method, and the method is the whole of the fix — so it is worth the second read,
+            // and without it there is nothing to offer but sympathy.
+            if (analysis is { Cause: CrashCause.JvmFatal, ErrorFile: { Length: > 0 } errorFile })
+            {
+                try
+                {
+                    // Read from the front and capped, which is what that reader does for these:
+                    // an error file opens with the crash and closes with a map of the process's
+                    // memory that can run to megabytes.
+                    if (File.Exists(errorFile)
+                        && CrashAnalyzer.CompilingMethodIn(await CrashReports.ReadAsync(errorFile).ConfigureAwait(false)) is { } victim
+                        && !instance.SkipCompiling.Contains(victim, StringComparer.Ordinal))
+                    {
+                        rows.Add(ProblemRow.ForCompiler(victim));
+                    }
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // Java's file, not ours. Nothing else on this screen depends on it.
+                }
             }
 
             // A mod built for another version of the game. Named outright by the loader, and the
@@ -3956,6 +4035,23 @@ public partial class InstancesViewModel : ViewModelBase
                 return (true, count > 1
                     ? $"{count} builds tried, none run on {instance.MinecraftVersion}. Turned off."
                     : $"No build runs on {instance.MinecraftVersion}. Turned off.");
+            }
+
+            case ProblemKind.Compiler:
+            {
+                var method = row.SkipCompiling!;
+
+                if (instance.SkipCompiling.Contains(method, StringComparer.Ordinal))
+                    return (true, "Java was already leaving that one alone.");
+
+                instance.SkipCompiling.Add(method);
+                _launcher.Instances.Save(instance);
+
+                // Said in full rather than shortened: this is the only place the whole name is
+                // shown, and it is what somebody would search for to find out what they just
+                // agreed to.
+                return (true, $"Java will run {method} without compiling it. Slightly slower there, "
+                    + "and nowhere else. Undo it under Java in this instance's settings.");
             }
 
             case ProblemKind.Memory:

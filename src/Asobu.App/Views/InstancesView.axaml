@@ -846,6 +846,22 @@
                 </Grid>
               </StackPanel>
 
+              <!-- What Java has been told not to compile here, which is only ever set by
+                   answering a crash and so is only ever on screen after one. -->
+              <StackPanel Spacing="10" IsVisible="{Binding HasSkippedCompiles}">
+                <Border Height="1" Background="{DynamicResource Border}"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="Skipped by Java" Classes="value"/>
+                    <TextBlock Classes="label" TextWrapping="Wrap"
+                               Text="{Binding SkippedCompilesLabel}"/>
+                  </StackPanel>
+                  <Button Grid.Column="1" Classes="ghost" Content="Clear"
+                          VerticalAlignment="Center"
+                          Command="{Binding ClearSkippedCompilesCommand}"/>
+                </Grid>
+              </StackPanel>
+
               <Border Height="1" Background="{DynamicResource Border}"/>
 
               <!-- JVM arguments -->

@@ -260,6 +260,16 @@ public sealed class Instance : INotifyPropertyChanged
     /// </summary>
     public List<string> CrashedBuilds { get; set; } = [];
 
+    /// <summary>
+    /// Methods Java is not to compile here, in the "package.Class::method" form its own flag
+    /// takes — see <see cref="Launch.CompilerExclusion"/>.
+    ///
+    /// Written when Java's compiler has crashed on one of them, which is a crash no mod caused
+    /// and none can fix. On the instance rather than on the launcher because the crash was: a
+    /// different Minecraft, with different mods, runs different code through that compiler.
+    /// </summary>
+    public List<string> SkipCompiling { get; set; } = [];
+
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastPlayed { get; set; }
     public long PlaytimeSeconds
@@ -553,6 +563,9 @@ public sealed class InstanceStore(AsobuPaths paths)
             MaxMemoryMb = source.MaxMemoryMb,
             JavaSelection = source.JavaSelection,
             ExtraJvmArguments = source.ExtraJvmArguments,
+
+            // The copy runs the same code on the same Java, so it would crash the same way.
+            SkipCompiling = [.. source.SkipCompiling],
         };
 
         clone.Folder = UniqueFolderFor(clone.Name);

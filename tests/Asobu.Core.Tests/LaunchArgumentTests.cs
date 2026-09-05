@@ -26,7 +26,7 @@ public class LaunchArgumentTests : IDisposable
         "asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,lowcodelanguage,mclanguage,forge-," +
         "${version_name}.jar";
 
-    private LaunchPlan Build(string id, string? clientJarVersionId)
+    private LaunchPlan Build(string id, string? clientJarVersionId, Action<Instance>? adjust = null)
     {
         var paths = new AsobuPaths(_root);
         var version = new VersionJson
@@ -43,6 +43,7 @@ public class LaunchArgumentTests : IDisposable
 
         var instance = new Instance { Id = "x", Name = "Test", MinecraftVersion = "1.19.2" };
         instance.Folder = "test";
+        adjust?.Invoke(instance);
 
         using var http = new HttpClient();
         var builder = new LaunchBuilder(paths, new MinecraftInstaller(http, paths, new MojangMeta(http)));
@@ -66,6 +67,44 @@ public class LaunchArgumentTests : IDisposable
 
         Assert.Contains("1.19.2.jar", ignore);
         Assert.DoesNotContain("1.19.2-forge-43.5.0.jar", ignore);
+    }
+
+    /// <summary>
+    /// A method Java crashed compiling, which it is now told to leave alone.
+    ///
+    /// The spelling is the whole of it and is not the one anybody would guess. Checked against
+    /// the runtime itself rather than from the documentation: java 17.0.15 accepts
+    /// "package.Class::method" and refuses both "package/Class::method" ("Method pattern uses
+    /// '/' together with '::'") and "package.Class.method" ("multiple '.' in pattern"), and it
+    /// refuses them by printing a parse error and carrying on — so a wrong one is not an error
+    /// anybody sees, it is a fix that silently does nothing.
+    /// </summary>
+    [Fact]
+    public void A_method_java_crashed_compiling_is_excluded_in_the_spelling_java_accepts()
+    {
+        var plan = Build("1.19.2", clientJarVersionId: null,
+            instance => instance.SkipCompiling.Add("net.minecraft.client.Minecraft::runTick"));
+
+        Assert.Contains("-XX:CompileCommand=exclude,net.minecraft.client.Minecraft::runTick", plan.Arguments);
+    }
+
+    /// <summary>
+    /// Nothing writes one of these by hand, but the instance file is a text file and people edit
+    /// them. A pattern the JVM cannot parse is worse than none: it complains once at startup and
+    /// then runs exactly as it did before, which looks from the outside like the fix not working.
+    /// </summary>
+    [Fact]
+    public void A_method_name_java_would_refuse_is_never_put_on_the_command_line()
+    {
+        var plan = Build("1.19.2", clientJarVersionId: null, instance =>
+        {
+            instance.SkipCompiling.Add("net/minecraft/client/Minecraft::runTick");
+            instance.SkipCompiling.Add("net.minecraft.client.Minecraft.runTick");
+            instance.SkipCompiling.Add("-XX:+UnlockDiagnosticVMOptions");
+        });
+
+        Assert.DoesNotContain(plan.Arguments, a => a.StartsWith("-XX:CompileCommand", StringComparison.Ordinal));
+        Assert.DoesNotContain("-XX:+UnlockDiagnosticVMOptions", plan.Arguments);
     }
 
     /// <summary>

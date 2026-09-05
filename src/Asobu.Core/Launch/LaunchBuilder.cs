@@ -116,6 +116,12 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
             arguments.Add(classpath);
         }
 
+        // Methods Java has already crashed compiling in this instance. Before the extra
+        // arguments, so that anything somebody has typed there is the last word.
+        foreach (var method in instance.SkipCompiling)
+            if (CompilerExclusion.IsMethodName(method))
+                arguments.Add(CompilerExclusion.Argument(method));
+
         if (settings.ExtraJvmArguments is { Length: > 0 } extra)
             arguments.AddRange(Tokenize(extra));
 
