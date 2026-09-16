@@ -3221,7 +3221,7 @@ public partial class InstancesViewModel : ViewModelBase
             var crashed = exitCode != 0 && !game.Killed;
 
 
-            _ = ReviewSessionAsync(instance, exitCode, crashed);
+            _ = ReviewSessionAsync(instance, exitCode, crashed, game.Killed);
         });
     }
 
@@ -3232,11 +3232,11 @@ public partial class InstancesViewModel : ViewModelBase
     /// the instance for its metadata, and the verdict on screen and the rows in the sheet want
     /// the same answer — reading it twice would double the most expensive thing either does.
     /// </summary>
-    private async Task ReviewSessionAsync(Instance instance, int exitCode, bool crashed)
+    private async Task ReviewSessionAsync(Instance instance, int exitCode, bool crashed, bool stopped)
     {
         var analysis = crashed ? await ExplainCrashAsync(instance, exitCode) : null;
 
-        await CheckForProblemsAsync(instance, analysis);
+        await CheckForProblemsAsync(instance, analysis, crashed, stopped);
     }
 
     /// <summary>
@@ -3672,6 +3672,16 @@ public partial class InstancesViewModel : ViewModelBase
         /// one of the two had been offered for both.
         /// </summary>
         LessMemory,
+
+        /// <summary>
+        /// Nothing in the log named a mod, so offer to find it by halving instead. Its own kind
+        /// because the button starts something that runs across several launches rather than
+        /// doing something now.
+        /// </summary>
+        FindTheMod,
+
+        /// <summary>A hunt already under way, reporting where it has got to.</summary>
+        Hunting,
     }
 
     /// <summary>
@@ -3720,6 +3730,19 @@ public partial class InstancesViewModel : ViewModelBase
             {
                 SkipCompiling = method,
             };
+
+        /// <summary>
+        /// The offer, made when reading the log has not named anything worth turning off.
+        /// </summary>
+        public static ProblemRow ForFindTheMod(int mods) =>
+            new(ProblemKind.FindTheMod, "Nothing in the log names a mod",
+                $"Asobu can find it by halving instead — about {Launches(mods)} launches for {mods} mods.");
+
+        /// <summary>Where the hunt has got to, and what pressing Play next will tell it.</summary>
+        public static ProblemRow ForHunt(string headline, string detail) =>
+            new(ProblemKind.Hunting, headline, detail);
+
+        private static int Launches(int mods) => mods <= 1 ? 1 : (int)Math.Ceiling(Math.Log2(mods)) + 1;
 
         public static ProblemRow ForMemory(int fromMb, int toMb) =>
             new(ProblemKind.Memory, "Minecraft ran out of memory",
@@ -3776,6 +3799,8 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.WrongBuild => "Fix it",
             ProblemKind.Compiler => "Skip it",
             ProblemKind.LessMemory => "Give it less",
+            ProblemKind.FindTheMod => "Find it",
+            ProblemKind.Hunting => "Stop",
             _ => "Give it more",
         };
 
@@ -3786,6 +3811,8 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.BadMod => "Turning off…",
             ProblemKind.WrongBuild => "Looking…",
             ProblemKind.Compiler => "Saving…",
+            ProblemKind.FindTheMod => "Setting up…",
+            ProblemKind.Hunting => "Putting them back…",
             _ => "Saving…",
         };
 
@@ -3797,6 +3824,8 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.WrongBuild => "Sorted",
             ProblemKind.Compiler => "Skipped",
             ProblemKind.LessMemory => "Lowered",
+            ProblemKind.FindTheMod => "Started",
+            ProblemKind.Hunting => "Put back",
             _ => "Raised",
         };
 
@@ -3828,6 +3857,8 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.WrongBuild => "One mod was built for another version",
             ProblemKind.Compiler => "Java crashed compiling the game",
             ProblemKind.LessMemory => "That instance is too big for this computer",
+            ProblemKind.FindTheMod => "Nothing in the log names a mod",
+            ProblemKind.Hunting => "Finding the mod",
             _ => "That session ran out of memory",
         }
         : $"{Problems.Count} things went wrong in that session";
@@ -3848,8 +3879,20 @@ public partial class InstancesViewModel : ViewModelBase
     /// Asked after the game closes rather than acted on quietly: changing someone's mods without
     /// saying so is not on, and mid-session is the worst possible moment for it.
     /// </summary>
-    private async Task CheckForProblemsAsync(Instance instance, CrashAnalysis? analysis)
+    private async Task CheckForProblemsAsync(Instance instance, CrashAnalysis? analysis, bool crashed, bool stopped)
     {
+        // A hunt in progress answers for the whole sheet. It is a conversation carried across
+        // launches — this one just answered a question — and advice about mods that are switched
+        // off as part of it would be advice about the experiment rather than the problem.
+        //
+        // Ahead of the log check too: a launch during a hunt is often a clean one, which writes
+        // nothing worth reading and would otherwise return here without the hunt ever moving.
+        if (instance.Bisect is not null)
+        {
+            await StepHuntAsync(instance, crashed, stopped);
+            return;
+        }
+
         if (_launcher.LatestLogFor(instance) is not { Length: > 0 } path) return;
 
         // One read of the log, off the UI thread. Each finder used to open the file for itself,
@@ -3959,7 +4002,107 @@ public partial class InstancesViewModel : ViewModelBase
             Problems.Add(row);
         }
 
+        // Nothing above found anything to act on, and the session did crash. Halving is what is
+        // left: it needs no crash report and no idea what went wrong, only the willingness to
+        // launch a few times.
+        // Asked once, and off the dispatcher: counting means opening every jar in the folder,
+        // which on a big pack is seconds of a frozen window.
+        if (Problems.Count == 0 && crashed
+            && await Task.Run(() => CountEnabledMods(instance)) is > 1 and var enabled)
+        {
+            Problems.Add(ProblemRow.ForFindTheMod(enabled));
+        }
+
         if (Problems.Count == 0) return;
+
+        _problemsInstance = instance;
+        OnPropertyChanged(nameof(ProblemsQuestion));
+
+        IsProblemsPromptClosing = false;
+        IsProblemsPromptOpen = true;
+    }
+
+    /// <summary>How many mods are switched on, which is how many the hunt would have to halve.</summary>
+    private int CountEnabledMods(Instance instance) =>
+        ModScanner.Scan(ModScanner.ModsDirectory(_launcher.Paths, instance.Folder)).Count(mod => mod.Enabled);
+
+    /// <summary>
+    /// Takes the hunt one launch further: works out what the outcome means, switches the mods
+    /// folder to whatever goes next, and says on screen where it has got to.
+    ///
+    /// The state is saved before the folder is touched, so an Asobu that dies between the two
+    /// comes back knowing what to put back rather than leaving somebody with half a modpack.
+    /// </summary>
+    private async Task StepHuntAsync(Instance instance, bool crashed, bool stopped)
+    {
+        if (instance.Bisect is not { } hunt) return;
+
+        var directory = ModScanner.ModsDirectory(_launcher.Paths, instance.Folder);
+
+        // A game somebody closed from Asobu exits like a crash and means nothing either way.
+        // Counting it would discard the half the culprit is in and send the rest of the hunt
+        // converging on somebody innocent, with the earlier crashes making it read as proven.
+        if (stopped)
+        {
+            Show(instance, ProblemRow.ForHunt(
+                $"{hunt.Suspects.Count} mods left",
+                "That one was stopped rather than finished, so it did not count. "
+                + "Press Play and let it run, or stop the hunt to put every mod back."));
+
+            return;
+        }
+
+        var (verdict, next) = ModBisect.Next(hunt, crashed);
+
+        var change = await Task.Run(() => ModBisect.Apply(next, ModScanner.Scan(directory)));
+
+        // Only dropped once the folder actually matches what the hunt decided. Clearing it first
+        // and then failing to rename would leave somebody with half a modpack switched off and
+        // nothing left that knows which half — which is the one outcome this must never have.
+        instance.Bisect = verdict == BisectVerdict.Narrowing || !change.Complete ? next : null;
+        _launcher.Instances.Save(instance);
+
+        if (!change.Complete)
+        {
+            Show(instance, ProblemRow.ForHunt(
+                "Some mods would not move",
+                $"{string.Join(", ", change.Refused.Take(3))}"
+                + (change.Refused.Count > 3 ? $" and {change.Refused.Count - 3} more" : "")
+                + " could not be switched over — something else has them open. Close anything looking "
+                + "at that folder and press Play again, or stop the hunt to put everything back."));
+
+            return;
+        }
+
+        var row = verdict switch
+        {
+            BisectVerdict.Found when ModBisect.Culprit(next) is { } culprit => ProblemRow.ForHunt(
+                $"It is {culprit}",
+                next.Reproduced
+                    ? $"Found in {next.Launches} launches. It is switched off and everything else is back on."
+                    : $"Narrowed down in {next.Launches} launches, but the crash never came back while hunting — "
+                      + "so this is the likeliest one rather than a proven one. It is switched off; "
+                      + "if the crash returns, it was never this."),
+
+            BisectVerdict.NotAMod => ProblemRow.ForHunt(
+                "No mod is doing this",
+                "It crashed with every mod switched off, so the cause is outside the instance — the "
+                + "graphics driver, Java, or the machine. Your mods are back on."),
+
+            _ => ProblemRow.ForHunt(
+                $"{next.Suspects.Count} mods left",
+                $"{next.Off.Count} switched off for the next launch. About {next.Remaining} more to go — "
+                + "press Play again."),
+        };
+
+        Show(instance, row);
+    }
+
+    /// <summary>Puts one row on screen as the whole of the sheet.</summary>
+    private void Show(Instance instance, ProblemRow row)
+    {
+        Problems.Clear();
+        Problems.Add(row);
 
         _problemsInstance = instance;
         OnPropertyChanged(nameof(ProblemsQuestion));
@@ -4091,6 +4234,59 @@ public partial class InstancesViewModel : ViewModelBase
                 // agreed to.
                 return (true, $"Java will run {method} without compiling it. Slightly slower there, "
                     + "and nowhere else. Undo it under Java in this instance's settings.");
+            }
+
+            case ProblemKind.FindTheMod:
+            {
+                var directory = ModScanner.ModsDirectory(_launcher.Paths, instance.Folder);
+                var mods = await Task.Run(() => ModScanner.Scan(directory));
+
+                var hunt = ModBisect.Begin(mods.Where(mod => mod.Enabled).Select(mod => mod.FileName));
+
+                if (hunt.Suspects.Count < 2) return (false, "There are not enough mods switched on to halve.");
+
+                // Written down before a single jar is renamed, so there is always a record of what
+                // to put back.
+                instance.Bisect = hunt;
+                _launcher.Instances.Save(instance);
+
+                var change = await Task.Run(() => ModBisect.Apply(hunt, mods));
+
+                if (!change.Complete)
+                {
+                    return (true, $"{change.Changed} switched off, but {change.Refused.Count} would not move — "
+                        + "something else has them open. Stop the hunt to put everything back, or close "
+                        + "whatever is holding them and start again.");
+                }
+
+                return (true, $"All {hunt.Suspects.Count} switched off. Press Play — if it still crashes, "
+                    + "no mod is doing it and Asobu will say so.");
+            }
+
+            case ProblemKind.Hunting:
+            {
+                // Stopping. Whatever the hunt had switched off goes back on.
+                if (instance.Bisect is { } hunt)
+                {
+                    var directory = ModScanner.ModsDirectory(_launcher.Paths, instance.Folder);
+
+                    var put = await Task.Run(() => ModBisect.Restore(hunt, ModScanner.Scan(directory)));
+
+                    // The record only goes once every jar is actually back. Anything that would
+                    // not move keeps the hunt on file so this can be pressed again.
+                    if (!put.Complete)
+                    {
+                        return (false, $"{put.Refused.Count} would not move back — something else has them "
+                            + "open. Close it and press Stop again.");
+                    }
+
+                    instance.Bisect = null;
+                    _launcher.Instances.Save(instance);
+
+                    return (true, "Stopped. Every mod is back on.");
+                }
+
+                return (true, "Nothing left to put back.");
             }
 
             case ProblemKind.Memory:

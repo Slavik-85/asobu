@@ -278,7 +278,7 @@ public sealed partial class InstanceImporter(
                 ? $"No published builds came back for {pack.Title}."
                 : $"{pack.Title} can only be downloaded from its own page. Download it there, then import the file.");
 
-        return await ImportPackVersionAsync(newest, name, progress, cancellationToken).ConfigureAwait(false);
+        return await ImportPackVersionAsync(newest, name, progress, cancellationToken, pack).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -286,9 +286,16 @@ public sealed partial class InstanceImporter(
     /// means. Both providers hand over a pack file here — a .mrpack or a CurseForge pack zip —
     /// so this comes down to fetching it and going in the front door.
     /// </summary>
+    /// <param name="pack">
+    /// The catalogue entry this build came from, where the caller has it. Only used to dress the
+    /// instance: the pack's own logo becomes its tile and the picture off its page becomes its
+    /// banner, so a pack that was installed looks like itself in the library instead of like
+    /// every other instance.
+    /// </param>
     public async Task<ImportOutcome> ImportPackVersionAsync(
         ModVersion version, string? name = null,
-        IProgress<InstallProgress>? progress = null, CancellationToken cancellationToken = default)
+        IProgress<InstallProgress>? progress = null, CancellationToken cancellationToken = default,
+        CatalogueMod? pack = null)
     {
         if (version.Url is not { Length: > 0 } url)
             return ImportOutcome.Failed(
@@ -306,7 +313,102 @@ public sealed partial class InstanceImporter(
 
             var outcome = await ImportFileAsync(path, progress, cancellationToken).ConfigureAwait(false);
 
-            return outcome.Succeeded ? Rename(outcome, name) : outcome;
+            if (!outcome.Succeeded) return outcome;
+
+            outcome = Rename(outcome, name);
+
+            if (pack is not null && outcome.Instance is { } installed)
+                await DressAsync(installed, pack, progress, cancellationToken).ConfigureAwait(false);
+
+            return outcome;
+        }
+        finally
+        {
+            TryDelete(path);
+        }
+    }
+
+    /// <summary>
+    /// Gives a freshly installed pack its own face: the logo from its listing as the instance's
+    /// tile, and the picture off its page as the banner on its instance page.
+    ///
+    /// Only what the pack actually published. A logo is square and a banner is wide, so a pack
+    /// with no gallery picture keeps the ordinary banner rather than having its 64-pixel logo
+    /// stretched across the top of the page — which is worse than the plain one it replaced.
+    ///
+    /// Nothing here can fail the install. The pack is on disk and playable by this point, and an
+    /// instance that looks ordinary is not a reason to throw away a working install — so every
+    /// picture is attempted on its own and a failure is simply a picture that did not arrive.
+    /// </summary>
+    private async Task DressAsync(
+        Instance instance, CatalogueMod pack,
+        IProgress<InstallProgress>? progress, CancellationToken cancellationToken)
+    {
+        progress?.Report(new InstallProgress($"Fetching {pack.Title}'s artwork", 1));
+
+        await WearAsync(instance, pack.IconUrl, instances.SetCustomIcon, cancellationToken).ConfigureAwait(false);
+        await WearAsync(instance, await BannerUrlAsync(pack, cancellationToken).ConfigureAwait(false),
+            instances.SetCustomBanner, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The best picture the pack has to be a banner, at the size it was published rather than
+    /// the size a search result needed.
+    ///
+    /// What comes back on a search is a thumbnail — Modrinth's is 350 pixels wide — which is
+    /// plenty beside a title in a list and visibly soft stretched across the top of a page. The
+    /// pack's own page carries the full-size ones, so it is asked, and what the search already
+    /// had is kept as the answer if that fails or if the pack has no gallery at all.
+    /// </summary>
+    private async Task<string?> BannerUrlAsync(CatalogueMod pack, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (await catalogue.GetDetailsAsync(pack, cancellationToken).ConfigureAwait(false)
+                is { Gallery.Count: > 0 } details)
+            {
+                // Ordered with the author's featured picture first, so the first is the one they
+                // chose to lead with.
+                return details.Gallery[0].Url;
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // The page would not load. The thumbnail below is still a picture of the pack.
+        }
+
+        return pack.GalleryUrl;
+    }
+
+    /// <summary>
+    /// Fetches one picture and hands it to whichever slot wanted it, through a temporary file —
+    /// the store copies artwork in from a path, and copying it in is the point: the instance then
+    /// carries its own pictures, so exporting it takes them along and the pack's page going away
+    /// cannot blank it later.
+    /// </summary>
+    private async Task WearAsync(
+        Instance instance, string? url, Action<Instance, string> wear, CancellationToken cancellationToken)
+    {
+        if (url is not { Length: > 0 }) return;
+
+        var extension = Path.GetExtension(new Uri(url, UriKind.RelativeOrAbsolute).IsAbsoluteUri
+            ? new Uri(url).AbsolutePath
+            : url);
+
+        if (extension.Length is 0 or > 8) extension = ".png";
+
+        var path = TempPath("art-" + Guid.NewGuid().ToString("n")[..8] + extension);
+
+        try
+        {
+            await _downloader.RunAsync([new DownloadTask(url, path)], cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (File.Exists(path)) wear(instance, path);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // A picture. Not worth a word on screen, let alone a failed install.
         }
         finally
         {
@@ -1055,8 +1157,33 @@ public sealed partial class InstanceImporter(
 
         try
         {
+            // "minecraft" is how an instance folder sits on disk; "overrides" is how it
+            // travels, because that is the name every other launcher knows it by.
             var game = Path.Combine(path, "minecraft");
+            if (!Directory.Exists(game)) game = Path.Combine(path, "overrides");
+
             if (Directory.Exists(game)) CopyContents(game, paths.InstanceGameDir(instance.Folder), _ => false);
+
+            // The icon and banner sit beside instance.json rather than inside the game folder.
+            foreach (var art in Directory.EnumerateFiles(path))
+            {
+                var name = Path.GetFileName(art);
+
+                if (name.StartsWith("icon.", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("banner.", StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(art, Path.Combine(paths.InstanceDir(instance.Folder), name), overwrite: true);
+                }
+            }
+
+            // Carried across by hand: Create() makes a plain instance, and these are the things a
+            // manifest has no room for.
+            instance.Icon = source.Icon;
+            instance.Banner = source.Banner;
+            instance.MinMemoryMb = source.MinMemoryMb;
+            instance.MaxMemoryMb = source.MaxMemoryMb;
+            instance.JavaSelection = source.JavaSelection;
+            instance.ExtraJvmArguments = source.ExtraJvmArguments;
 
             instances.Save(instance);
             return new ImportOutcome(instance, null, []);

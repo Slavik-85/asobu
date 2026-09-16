@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Asobu.Core.Accounts;
 using Asobu.Core.Instances;
@@ -26,6 +26,23 @@ public sealed class LauncherSettings
 
     public int MinMemoryMb { get; set; } = 1024;
     public int MaxMemoryMb { get; set; } = 4096;
+
+    /// <summary>
+    /// Whether friends without a Microsoft account may be let into worlds hosted here.
+    ///
+    /// On, because it is the thing offline guests need and turning it off quietly would take a
+    /// feature away. What it costs is worth knowing: making it work means pointing the game's
+    /// four Mojang addresses at a stand-in of Asobu's own for the whole session, so that the
+    /// stand-in is there to vouch for a guest if one is invited later. Those addresses can only
+    /// be set as the game starts, and nobody knows at that moment whether anyone will be invited
+    /// — so on a session where nobody is, every sign-in, every skin and every join still travels
+    /// through it for nothing.
+    ///
+    /// It forwards what it does not answer, and joining a server works through it. But it is one
+    /// more thing between the game and Mojang that no other launcher has, so anybody chasing a
+    /// connection problem should be able to take it out of the picture and see.
+    /// </summary>
+    public bool LetOfflineFriendsJoin { get; set; } = true;
 
     public GpuPreference Gpu { get; set; } = GpuPreference.HighPerformance;
 
@@ -113,6 +130,10 @@ public sealed class LauncherSettings
             ExtraJvmArguments = instance.ExtraJvmArguments ?? ExtraJvmArguments,
             MicrosoftClientId = MicrosoftClientId,
             ActiveAccountUuid = ActiveAccountUuid,
+
+            // Carried, because this is the object a launch reads it from. Leaving it out would
+            // give every launch the default and make the switch on the settings page do nothing.
+            LetOfflineFriendsJoin = LetOfflineFriendsJoin,
         };
     }
 

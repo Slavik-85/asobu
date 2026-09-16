@@ -73,6 +73,8 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] public partial int MinMemoryMb { get; set; }
     [ObservableProperty] public partial int MaxMemoryMb { get; set; }
     [ObservableProperty] public partial GpuOption? Gpu { get; set; }
+
+    [ObservableProperty] public partial bool LetOfflineFriendsJoin { get; set; } = true;
     [ObservableProperty] public partial JavaOption? Java { get; set; }
     [ObservableProperty] public partial string ExtraJvmArguments { get; set; } = "";
     [ObservableProperty] public partial SignInOption? SignIn { get; set; }
@@ -138,6 +140,7 @@ public partial class SettingsViewModel : ViewModelBase
         MicrosoftClientId = settings.MicrosoftClientId ?? "";
         CurseForgeApiKey = settings.CurseForgeApiKey ?? "";
         Gpu = GpuOptions.FirstOrDefault(o => o.Value == settings.Gpu) ?? GpuOptions[0];
+        LetOfflineFriendsJoin = settings.LetOfflineFriendsJoin;
         SignIn = SignInOptions.FirstOrDefault(o => o.Value == settings.MicrosoftSignIn) ?? SignInOptions[0];
 
         RefreshJavaOptions();
@@ -185,6 +188,7 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnGpuChanged(GpuOption? value) => Save();
     partial void OnJavaChanged(JavaOption? value) => Save();
     partial void OnExtraJvmArgumentsChanged(string value) => Save();
+    partial void OnLetOfflineFriendsJoinChanged(bool value) => Save();
     partial void OnMicrosoftClientIdChanged(string value) => Save();
     partial void OnCurseForgeApiKeyChanged(string value) => Save();
 
@@ -197,6 +201,7 @@ public partial class SettingsViewModel : ViewModelBase
         settings.MinMemoryMb = MinMemoryMb;
         settings.MaxMemoryMb = MaxMemoryMb;
         settings.Gpu = Gpu?.Value ?? GpuPreference.HighPerformance;
+        settings.LetOfflineFriendsJoin = LetOfflineFriendsJoin;
         settings.JavaSelection = Java?.Value ?? "auto";
         settings.ExtraJvmArguments = string.IsNullOrWhiteSpace(ExtraJvmArguments) ? null : ExtraJvmArguments.Trim();
         settings.MicrosoftSignIn = SignIn?.Value ?? AuthMethod.DeviceCode;

@@ -106,6 +106,28 @@
         </StackPanel>
       </Border>
 
+      <!-- Letting friends in, and what it costs.
+
+           On is what Asobu has always done. The switch exists because making it work means every
+           launch talks to Mojang through a stand-in of Asobu's own, which no other launcher does
+           - so when something about connecting is not working, this is the first thing to take
+           out of the picture. -->
+      <Border Classes="card" Padding="24">
+        <StackPanel Spacing="12">
+          <TextBlock Text="Friends" Classes="h2"/>
+
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="0" Spacing="2">
+              <TextBlock Text="Let friends without a Microsoft account join" Classes="value"/>
+              <TextBlock Classes="label" TextWrapping="Wrap"
+                         Text="Asobu vouches for invited guests, which means the game reaches Mojang through Asobu for the whole session. Turn it off to talk to Mojang directly - worth trying if joining servers or voice chat is unreliable. Guests can no longer be invited while it is off."/>
+            </StackPanel>
+            <ToggleSwitch Grid.Column="1" IsChecked="{Binding LetOfflineFriendsJoin}"
+                          OnContent="" OffContent="" VerticalAlignment="Center"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+
       <!-- Files -->
       <Border Classes="card" Padding="24">
         <StackPanel Spacing="12">

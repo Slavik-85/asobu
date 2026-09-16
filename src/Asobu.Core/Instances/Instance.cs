@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.IO.Compression;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -283,6 +284,15 @@ public sealed class Instance : INotifyPropertyChanged
     /// loader's build, so anything that changes any of those makes it stop matching and the long
     /// way round runs again. Nothing has to remember to clear it.
     /// </summary>
+    /// <summary>
+    /// A hunt for the mod that is crashing this instance, if one is under way.
+    ///
+    /// On the instance because it spans launches: each one answers a question and the next is
+    /// chosen from the answer. Saved before the mods folder is touched, so an Asobu closed in the
+    /// middle of one comes back knowing what was switched off and what to put back.
+    /// </summary>
+    public Mods.BisectState? Bisect { get; set; }
+
     public string? InstalledVersionId { get; set; }
 
     public string? InstalledFrom { get; set; }
@@ -654,13 +664,129 @@ public sealed class InstanceStore(AsobuPaths paths)
         }
     }
 
-    /// <summary>Zips the instance folder (instance.json plus the whole minecraft/ tree) as-is.</summary>
+    /// <summary>
+    /// Writes the instance out as a modpack zip that other launchers will take.
+    ///
+    /// It used to be the instance folder zipped as it sat — instance.json beside a minecraft/
+    /// tree — which is a shape only Asobu has ever heard of. Everything else refused it, so an
+    /// exported instance could be given to nobody.
+    ///
+    /// This is CurseForge's layout instead, which is the one every launcher reads: a
+    /// manifest.json saying which Minecraft and which loader, and an overrides/ folder holding
+    /// the files. Prism, MultiMC, ATLauncher, the CurseForge app and Modrinth's all import it.
+    ///
+    /// The mods travel as actual jars in overrides/ rather than as a list of CurseForge ids.
+    /// Asobu does not record which catalogue file each jar came from, so a list could not be
+    /// written honestly — and a pack that carries its own mods is the better thing to hand
+    /// somebody anyway: it does not go stale when a build is delisted, and it works for the mods
+    /// that came from Modrinth or from a file on disk, which have no CurseForge id at all.
+    ///
+    /// Asobu's own instance.json rides along at the root, where other launchers ignore it and
+    /// Asobu reads it to bring across the things a manifest has no room for — the icon, the
+    /// banner, the memory, the java. An import that finds it uses it; one that does not still
+    /// gets a working pack.
+    /// </summary>
     public void Export(Instance instance, string destinationZipPath)
     {
-        var sourceDir = paths.InstanceDir(instance.Folder);
+        var source = paths.InstanceDir(instance.Folder);
+        var game = paths.InstanceGameDir(instance.Folder);
+
         if (File.Exists(destinationZipPath)) File.Delete(destinationZipPath);
-        System.IO.Compression.ZipFile.CreateFromDirectory(sourceDir, destinationZipPath);
+
+        using var stream = File.Create(destinationZipPath);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+
+        var manifest = System.Text.Encoding.UTF8.GetBytes(PackManifest(instance));
+
+        using (var entry = zip.CreateEntry("manifest.json").Open()) entry.Write(manifest);
+
+        // instance.json and the artwork beside it. Everything else at this level is Asobu's
+        // bookkeeping and means nothing anywhere else.
+        foreach (var file in Directory.EnumerateFiles(source))
+        {
+            var name = Path.GetFileName(file);
+
+            if (name is "instance.json" || name.StartsWith("icon.", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("banner.", StringComparison.OrdinalIgnoreCase))
+            {
+                zip.CreateEntryFromFile(file, name);
+            }
+        }
+
+        if (!Directory.Exists(game)) return;
+
+        foreach (var file in Directory.EnumerateFiles(game, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(game, file).Replace('\\', '/');
+
+            if (IsLitter(relative)) continue;
+
+            try
+            {
+                zip.CreateEntryFromFile(file, "overrides/" + relative);
+            }
+            catch (IOException)
+            {
+                // Open in something else. One file missing from an export is better than no
+                // export, and the game writes to several of these while it runs.
+            }
+        }
     }
+
+    /// <summary>
+    /// What nobody wants a copy of: this machine's logs, the reports from its crashes, and the
+    /// caches the loaders rebuild on their own. Left out so a pack meant for somebody else is the
+    /// pack rather than a record of how it has been going here.
+    /// </summary>
+    private static bool IsLitter(string relativePath)
+    {
+        var path = relativePath.Replace('\\', '/');
+
+        return path.StartsWith("logs/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("crash-reports/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(".fabric/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(".mixin.out/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("hs_err_pid", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("replay_pid", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".log.gz", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("usercache.json", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("usernamecache.json", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The CurseForge manifest for this instance.
+    ///
+    /// "files" is deliberately empty: every mod is in overrides/ as a jar, so there is nothing
+    /// for an importing launcher to go and fetch and nothing that can have gone away since.
+    ///
+    /// The loader id is the shape both CurseForge and this launcher's own reader expect —
+    /// "forge-47.4.10", "fabric-0.16.9", "neoforge-21.1.72" — and a vanilla instance simply has
+    /// no loader named at all.
+    /// </summary>
+    private static string PackManifest(Instance instance)
+    {
+        var loaders = instance.IsModded && instance.LoaderVersion is { Length: > 0 } built
+            ? $$"""[{ "id": "{{instance.Loader.ToLowerInvariant()}}-{{built}}", "primary": true }]"""
+            : "[]";
+
+        return $$"""
+        {
+          "minecraft": {
+            "version": {{Quote(instance.MinecraftVersion)}},
+            "modLoaders": {{loaders}}
+          },
+          "manifestType": "minecraftModpack",
+          "manifestVersion": 1,
+          "name": {{Quote(instance.Name)}},
+          "version": "1.0.0",
+          "author": "",
+          "files": [],
+          "overrides": "overrides"
+        }
+        """;
+    }
+
+    private static string Quote(string value) => JsonSerializer.Serialize(value, Options);
 
     /// <summary>
     /// Reads back an Export()'d zip under a brand-new id, so importing the same pack twice

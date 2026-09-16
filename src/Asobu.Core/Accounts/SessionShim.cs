@@ -216,6 +216,48 @@ public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = n
     }
 
     /// <summary>
+    /// Sends it on, and tries once more if it never arrived.
+    ///
+    /// Without this a single dropped connection on the way to Mojang becomes a 502 from here, and
+    /// the game treats that as Mojang's answer: a join refused, a session not started. Asking
+    /// directly, as every other launcher does, would simply have retried at a lower level — so
+    /// the retry is what keeps this stand-in from being worse than not being here.
+    ///
+    /// Only when nothing came back. A reply that is an error is Mojang's reply and is passed on
+    /// as it is; only a request that never arrived at all is sent again.
+    ///
+    /// Which is not quite the same as never sending one twice: a timeout and a connection dropped
+    /// while the reply was being read both look like this from here, and Mojang may already have
+    /// acted. It is safe because of what these requests are — joining a server and asking who
+    /// somebody is are both answers to the same question twice, not two separate acts.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException
+                                  && !cancellationToken.IsCancellationRequested)
+        {
+            // A used request cannot be sent twice, so the second attempt is a copy of the first.
+            using var again = new HttpRequestMessage(request.Method, request.RequestUri);
+
+            if (request.Content is { } body)
+                again.Content = new ByteArrayContent(await body.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false));
+
+            foreach (var header in request.Headers)
+                again.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+            if (request.Content?.Headers.ContentType is { } type)
+                again.Content?.Headers.TryAddWithoutValidation("Content-Type", type.ToString());
+
+            return await http.SendAsync(again, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// What Mojang says about a uuid, signature and all, or null for one it has never heard of.
     ///
     /// Kept once fetched. A server asks about a player every time they join, and the answer only
@@ -318,7 +360,7 @@ public sealed class SessionShim(HttpClient http, SessionUpstreams? upstreams = n
         if (request.Headers["Authorization"] is { Length: > 0 } authorization)
             forwarded.Headers.TryAddWithoutValidation("Authorization", authorization);
 
-        using var answer = await http.SendAsync(forwarded, cancellationToken).ConfigureAwait(false);
+        using var answer = await SendAsync(forwarded, cancellationToken).ConfigureAwait(false);
         var payload = await answer.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
 
         context.Response.StatusCode = (int)answer.StatusCode;

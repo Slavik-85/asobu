@@ -135,7 +135,7 @@ public partial class PackInstallViewModel(AsobuLauncher launcher, Action<Instanc
         try
         {
             outcome = _version is { } version
-                ? await launcher.Importer.ImportPackVersionAsync(version, name, progress, _work.Token)
+                ? await launcher.Importer.ImportPackVersionAsync(version, name, progress, _work.Token, pack)
                 : await launcher.Importer.ImportPackAsync(pack, name, progress, _work.Token);
         }
         catch (OperationCanceledException)

@@ -448,7 +448,10 @@ public sealed class AsobuLauncher
         // Microsoft one says "msa" and still goes to Mojang for everything.
         Session.JoinsWithoutMojang = session.UserType == "legacy";
 
-        var sessionHosts = Session.TryStart()
+        // Switched off, so the game talks to Mojang directly, exactly as every other launcher
+        // has it. An offline account can still play; what it cannot do is have somebody vouch
+        // for it, so joining a world hosted by a friend on Asobu stops working.
+        var sessionHosts = settings.LetOfflineFriendsJoin && Session.TryStart()
             ? new SessionUpstreams(Session.AuthHost, Session.AccountHost, Session.SessionHost, Session.ServicesHost)
             : null;
 
