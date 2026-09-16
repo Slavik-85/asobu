@@ -84,6 +84,94 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
     public bool HasVerdict => Analysis is { HasVerdict: true };
     public bool HasSuspects => Analysis is { HasSuspects: true };
 
+    /// <summary>
+    /// A dependency the loader said outright was not installed, and which Asobu can go and get.
+    ///
+    /// Its own thing rather than a suspect, because the action is the opposite one. A suspect is
+    /// offered a "turn off"; this mod is wanted and works, and turning it off is how somebody
+    /// ends up removing the thing they installed the pack for. What is missing is the mod nobody
+    /// knew to install.
+    /// </summary>
+    public bool HasMissing => Analysis?.Missing is not null;
+
+    public string MissingLabel => Analysis?.Missing is { } missing
+        ? $"{missing.Name} is not installed"
+        : "";
+
+    [ObservableProperty] public partial bool IsFetching { get; set; }
+    [ObservableProperty] public partial string? MissingNotice { get; set; }
+
+    /// <summary>
+    /// Set only once the mod is actually on disk. A failed fetch leaves the button, because the
+    /// usual reason one fails is the network and the usual answer is to press it again — a button
+    /// that disappears on a timeout has spent somebody's only attempt on it.
+    /// </summary>
+    [ObservableProperty] public partial bool HasFetched { get; set; }
+
+    /// <summary>
+    /// Which verdict the screen is showing. A fetch belongs to the report it was started from, so
+    /// anything that comes back after somebody has moved to another report is dropped rather than
+    /// written over the new one — otherwise one report's "Added quad-1.2.3.jar" lands under
+    /// another's "cloth_config is not installed", and takes that report's button with it.
+    /// </summary>
+    private int _shown;
+
+    public bool CanFetchMissing => HasMissing && !IsFetching && !HasFetched;
+
+    partial void OnIsFetchingChanged(bool value) => OnPropertyChanged(nameof(CanFetchMissing));
+    partial void OnHasFetchedChanged(bool value) => OnPropertyChanged(nameof(CanFetchMissing));
+    partial void OnMissingNoticeChanged(string? value) => OnPropertyChanged(nameof(HasMissingNotice));
+
+    public bool HasMissingNotice => MissingNotice is { Length: > 0 };
+
+    /// <summary>
+    /// Fetches it, from whichever catalogue has a build that fits this instance.
+    ///
+    /// The same path the sheet after a crashed launch uses. Here as well because that sheet is
+    /// only shown once, at the moment the game closes, and somebody who came back to read the
+    /// report an hour later would otherwise be told what was missing and left to find it.
+    /// </summary>
+    [RelayCommand]
+    private async Task FetchMissingAsync()
+    {
+        if (Instance is not { } instance || Analysis?.Missing is not { } missing || IsFetching) return;
+
+        var started = _shown;
+        IsFetching = true;
+
+        try
+        {
+            var found = await launcher.FindDependencyAsync(instance, missing);
+
+            if (found is null)
+            {
+                if (started == _shown) MissingNotice = $"Neither shop has a mod called {missing.Name}.";
+                return;
+            }
+
+            var result = await launcher.InstallModAsync(instance, found);
+
+            // The mod is on disk either way; only the message about it is worth dropping.
+            if (started != _shown) return;
+
+            HasFetched = result.Installed;
+            MissingNotice = result.Installed
+                ? $"Added {result.FileName}. Launch again."
+                : result.Reason
+                  ?? (result.Blocked
+                      ? "The author allows downloads from their page only."
+                      : $"No build for {instance.LoaderName} {instance.MinecraftVersion}.");
+        }
+        catch (Exception e)
+        {
+            if (started == _shown) MissingNotice = e.Message;
+        }
+        finally
+        {
+            IsFetching = false;
+        }
+    }
+
     /// <summary>Opens the page for an instance, listing its crash reports and past sessions.</summary>
     public void Load(Instance instance)
     {
@@ -92,6 +180,12 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
         Selected = null;
         Analysis = null;
         Suspects.Clear();
+
+        // Another instance entirely, so a fetch still running for the last one is not this
+        // screen's any more and its answer must not land here.
+        _shown++;
+        MissingNotice = null;
+        HasFetched = false;
 
         Reports.Clear();
         foreach (var entry in CrashReports.List(launcher.Paths, instance)) Reports.Add(entry);
@@ -205,6 +299,15 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
         }
 
         Analysis = analysis;
+
+        // A different report is a different verdict, so last time's answer goes with it — and
+        // anything still in flight for the last one stops being this screen's business.
+        _shown++;
+        MissingNotice = null;
+        HasFetched = false;
+        OnPropertyChanged(nameof(HasMissing));
+        OnPropertyChanged(nameof(MissingLabel));
+        OnPropertyChanged(nameof(CanFetchMissing));
     }
 
     [RelayCommand]

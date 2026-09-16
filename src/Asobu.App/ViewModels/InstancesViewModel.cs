@@ -3665,6 +3665,13 @@ public partial class InstancesViewModel : ViewModelBase
         /// mod can be turned off to stop it — but Java will leave that method alone if asked.
         /// </summary>
         Compiler,
+
+        /// <summary>
+        /// The machine refused the game memory, and this instance was asking for most of it.
+        /// The opposite of <see cref="Memory"/>, and worth its own kind for exactly that reason:
+        /// one of the two had been offered for both.
+        /// </summary>
+        LessMemory,
     }
 
     /// <summary>
@@ -3721,6 +3728,18 @@ public partial class InstancesViewModel : ViewModelBase
                 RaiseMemoryToMb = toMb,
             };
 
+        /// <summary>
+        /// The machine was the one that ran out, and this instance is most of why. The figure is
+        /// what fits rather than a nudge downwards: halfway measures here mean crashing again a
+        /// week later.
+        /// </summary>
+        public static ProblemRow ForLessMemory(int fromMb, int toMb) =>
+            new(ProblemKind.LessMemory, "This instance is too big for this computer",
+                $"Set to {Gigabytes(fromMb)}, which is more than the machine can spare. {Gigabytes(toMb)} fits.")
+            {
+                RaiseMemoryToMb = toMb,
+            };
+
         private static string Gigabytes(int megabytes) =>
             (megabytes / 1024.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB";
 
@@ -3756,6 +3775,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.BadMod => "Turn off",
             ProblemKind.WrongBuild => "Fix it",
             ProblemKind.Compiler => "Skip it",
+            ProblemKind.LessMemory => "Give it less",
             _ => "Give it more",
         };
 
@@ -3776,6 +3796,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.BadMod => "Off",
             ProblemKind.WrongBuild => "Sorted",
             ProblemKind.Compiler => "Skipped",
+            ProblemKind.LessMemory => "Lowered",
             _ => "Raised",
         };
 
@@ -3806,6 +3827,7 @@ public partial class InstancesViewModel : ViewModelBase
             ProblemKind.BadMod => "One mod looks like the cause",
             ProblemKind.WrongBuild => "One mod was built for another version",
             ProblemKind.Compiler => "Java crashed compiling the game",
+            ProblemKind.LessMemory => "That instance is too big for this computer",
             _ => "That session ran out of memory",
         }
         : $"{Problems.Count} things went wrong in that session";
@@ -3892,14 +3914,31 @@ public partial class InstancesViewModel : ViewModelBase
                 rows.AddRange((named.Count > 0 ? named : analysis.Suspects.Take(1)).Select(ProblemRow.For));
             }
 
-            // Ran out of memory, and there is room to give it more. Offered only when raising it
-            // would actually change something: at the machine's own limit this is a different
-            // problem, and a button that sets the number it is already on wastes the click.
+            // The game filled the heap it was given, and there is room to give it more. Offered
+            // only when raising it would actually change something: at the machine's own limit
+            // this is a different problem, and a button that sets the number it is already on
+            // wastes the click.
+            //
+            // CrashCause.OutOfMemory only, and that distinction is the point. The machine
+            // refusing memory used to land here too, so a crash caused by the computer having
+            // nothing left was answered with "give the game more of it" — which makes the next
+            // one arrive sooner. That is CrashCause.MachineOutOfMemory now, and it is answered
+            // below or not at all.
             if (analysis is { Cause: CrashCause.OutOfMemory }
                 && MemoryPlanner.RaisedFor(_launcher.Paths, instance) is { } raised)
             {
                 rows.Add(ProblemRow.ForMemory(
                     MemoryPlanner.CurrentMaxMemoryMb(_launcher.Paths, instance), raised));
+            }
+
+            // And the other way. Only when the crash file's own figures said this instance was
+            // most of what the machine was being asked for — where it was not, there is nothing
+            // to take off it and no button is the honest answer.
+            if (analysis is { Cause: CrashCause.MachineOutOfMemory, LowerMemoryToMb: { } lowered })
+            {
+                var now = MemoryPlanner.CurrentMaxMemoryMb(_launcher.Paths, instance);
+
+                if (lowered < now) rows.Add(ProblemRow.ForLessMemory(now, lowered));
             }
 
             return rows;
@@ -4055,6 +4094,7 @@ public partial class InstancesViewModel : ViewModelBase
             }
 
             case ProblemKind.Memory:
+            case ProblemKind.LessMemory:
             {
                 // The floor moves with the ceiling: -Xms well under -Xmx is what lets the JVM
                 // grow into what the pack needs instead of reserving it all up front.

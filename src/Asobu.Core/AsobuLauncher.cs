@@ -41,7 +41,7 @@ public sealed class AsobuLauncher
         // something to do before the window exists, and nothing waits on the result.
         _ = Task.Run(Web.Prune);
 
-        Meta = new MojangMeta(http);
+        Meta = new MojangMeta(http, Paths);
         Instances = new InstanceStore(Paths);
         Accounts = new AccountStore(Paths);
         Settings = LauncherSettings.Load(Paths);
@@ -170,6 +170,29 @@ public sealed class AsobuLauncher
     {
         progress?.Report(new InstallProgress("Reading version metadata", 0));
 
+        // Everything below this works out which version document to install. An instance that
+        // has been launched before already knows: the document is on disk and the stamp says it
+        // was built from the same version, loader and loader build the instance still names.
+        // The install itself still runs and still checks every file — this skips the deriving,
+        // not the verifying.
+        if (instance.InstalledFrom == instance.InstallStamp
+            && instance.InstalledVersionId is { Length: > 0 } known
+            && Meta.TryReadInstalled(known) is { } ready)
+        {
+            // Both documents, exactly as the long way round installs them. A loader's document
+            // is not a superset of the vanilla one: Forge's drops the client jar and a handful
+            // of libraries it replaces, so installing it alone would leave five files this
+            // instance runs on outside anything that checks they are still there — and
+            // relaunching is how somebody repairs a half-deleted cache.
+            if (instance.MinecraftVersion != known && Meta.TryReadInstalled(instance.MinecraftVersion) is { } beneath)
+                await _installer.InstallAsync(beneath, progress, cancellationToken).ConfigureAwait(false);
+
+            await _installer.InstallAsync(ready, progress, cancellationToken).ConfigureAwait(false);
+            await EnsureModsAsync(instance, progress, cancellationToken).ConfigureAwait(false);
+
+            return ready;
+        }
+
         var vanilla = await Meta.GetResolvedVersionAsync(instance.MinecraftVersion, cancellationToken)
             .ConfigureAwait(false);
 
@@ -180,6 +203,28 @@ public sealed class AsobuLauncher
             : vanilla;
 
         await EnsureModsAsync(instance, progress, cancellationToken).ConfigureAwait(false);
+
+        // Written only now, with everything on disk behind it, so a run that failed halfway
+        // leaves nothing claiming to be installed.
+        //
+        // Except for a loader built the other way round. A document whose main class is
+        // ForgeWrapper's is one the ordinary build failed to produce, and remembering it would
+        // settle that failure permanently: the shortcut above would skip the build from then on,
+        // so the thing that went wrong is never tried again and never found to be fixed. Worse,
+        // nothing here has seen the wrapper launch — committing an instance to it on the strength
+        // of an install is committing it on no evidence at all.
+        //
+        // So it is not remembered. Every launch tries the ordinary way first and uses the wrapper
+        // only while the ordinary way is still failing, which costs those instances the failed
+        // attempt each time and gets them back to normal the moment whatever broke is fixed.
+        if (Minecraft.ForgeWrapper.IsWrapped(version)) return version;
+
+        if (instance.InstalledVersionId != version.Id || instance.InstalledFrom != instance.InstallStamp)
+        {
+            instance.InstalledVersionId = version.Id;
+            instance.InstalledFrom = instance.InstallStamp;
+            Instances.Save(instance);
+        }
 
         return version;
     }
@@ -274,10 +319,13 @@ public sealed class AsobuLauncher
                 .ConfigureAwait(false);
         }
 
+        // The loader's document inherits from the vanilla one, which is the document this
+        // method was handed. Asking for it again is a network round trip for something already
+        // in a local variable.
         var merged = await VersionResolver.ResolveAsync(
             document.Id,
-            (wanted, token) => wanted == document.Id
-                ? Task.FromResult(document)
+            (wanted, token) => wanted == document.Id ? Task.FromResult(document)
+                : wanted == vanilla.Id ? Task.FromResult(vanilla)
                 : Meta.GetVersionAsync(wanted, token),
             cancellationToken).ConfigureAwait(false);
 
@@ -372,6 +420,24 @@ public sealed class AsobuLauncher
 
         if (!File.Exists(javaExecutable))
             throw new FileNotFoundException($"No Java executable at '{javaExecutable}'. Check Settings.", javaExecutable);
+
+        // A Java too old for this version of the game, which only happens when somebody has
+        // pointed the instance at one themselves — Asobu's own runtimes are chosen by the
+        // version. Said here rather than discovered from the wreckage: the game dies on an
+        // UnsupportedClassVersionError naming a class file version nobody can map to a Java
+        // release from memory, and no crash report is written for it.
+        //
+        // Only too old is refused. Newer than the version asks for is how most modded setups
+        // run and refusing that would stop launches that work today.
+        if (!settings.UsesManagedJava
+            && version.JavaVersion?.MajorVersion is { } required
+            && JavaManager.MajorOf(javaExecutable) is { } actual
+            && actual < required)
+        {
+            throw new InvalidOperationException(
+                $"{instance.Name} needs Java {required} or newer, and the Java it is set to use is {actual}. "
+                + "Set this instance's Java back to Automatic and Asobu will install the right one.");
+        }
 
         // Windows keys the GPU choice off the executable path, so this has to happen after we
         // know which java binary is being launched.

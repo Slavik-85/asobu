@@ -72,6 +72,32 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
             var tokens = BuildTokens(profile, archive, staging, installerPath, minecraftJar);
             await RunProcessorsAsync(profile, tokens, javaExecutable, progress, cancellationToken).ConfigureAwait(false);
         }
+        catch (Exception failure) when (failure is not OperationCanceledException)
+        {
+            // Building Forge out here did not work, and without a second answer this instance is
+            // finished: every launch from now on runs the same processors and fails the same way.
+            //
+            // So try the other way round. ForgeWrapper does the same build inside the game's own
+            // JVM at launch, which is how Prism Launcher starts instances that will not start
+            // anywhere else — no subprocess for security software to object to, no staging
+            // directory, no generated command line, and each Forge generation handled by people
+            // who follow Forge. Reached only from here, so an instance that builds normally has
+            // never been near it.
+            //
+            // No marker is written, because nothing was built out here. The instance remembers
+            // the document it ended up with, so later launches keep using the wrapper; the
+            // ordinary way is tried again only when that memory goes — a changed loader build,
+            // or a cleared cache.
+            if (await TryWrapAsync(version, installerPath, minecraftJar, progress, cancellationToken).ConfigureAwait(false)
+                is { } wrapped)
+            {
+                return wrapped;
+            }
+
+            // The wrapper could not be fetched either. The first failure is the one that explains
+            // the instance, so it is the one that gets reported.
+            throw;
+        }
         finally
         {
             TryDeleteDirectory(staging);
@@ -81,6 +107,27 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
         await File.WriteAllTextAsync(marker, DateTimeOffset.UtcNow.ToString("o"), cancellationToken).ConfigureAwait(false);
 
         return version;
+    }
+
+    /// <summary>
+    /// The version document rewritten to launch through ForgeWrapper, or null when the wrapper
+    /// itself could not be had — offline, or its jar refused verification.
+    ///
+    /// Only ever called after the ordinary build has thrown.
+    /// </summary>
+    private async Task<VersionJson?> TryWrapAsync(
+        VersionJson version,
+        string installerPath,
+        string minecraftJar,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        progress?.Report(new InstallProgress("Building the loader the other way", 0));
+
+        if (!await ForgeWrapper.TryFetchAsync(paths, downloader, cancellationToken).ConfigureAwait(false))
+            return null;
+
+        return ForgeWrapper.Wrap(version, paths, installerPath, minecraftJar);
     }
 
     private async Task<string> DownloadInstallerAsync(

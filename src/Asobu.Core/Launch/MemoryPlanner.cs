@@ -51,6 +51,28 @@ public static class MemoryPlanner
         return current >= ceiling ? null : Math.Min(Round(current + RaiseMb), ceiling);
     }
 
+    /// <summary>
+    /// What this instance's ceiling should come down to for it to fit a machine of this size, or
+    /// null when it already fits.
+    ///
+    /// Half the machine, because the heap is not the only thing the game needs from it: the rest
+    /// pays for the JVM itself, the driver, the textures it hands the card, and the file cache
+    /// the world is read through — and then for everything else that is running, which on the
+    /// machine somebody plays on is a browser. A heap over half is a setting somebody typed once
+    /// and it is the reason the machine has nothing left to give.
+    ///
+    /// Only ever asked when a crash said the machine refused memory, so this is not an opinion
+    /// about what is best — it is the arithmetic of what will run.
+    /// </summary>
+    public static int? LoweredFor(int currentMb, long physicalMb)
+    {
+        if (physicalMb <= 0) return null;
+
+        var fits = Round((int)Math.Min(physicalMb / 2, int.MaxValue));
+
+        return currentMb <= Math.Max(fits, FloorMb) ? null : Math.Max(fits, FloorMb);
+    }
+
     /// <summary>What an instance is set to run on now, whether it says so itself or leaves it to Asobu.</summary>
     public static int CurrentMaxMemoryMb(AsobuPaths paths, Instance instance) =>
         instance.MaxMemoryMb ?? MaxMemoryMbFor(paths, instance);

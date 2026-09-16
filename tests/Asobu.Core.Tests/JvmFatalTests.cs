@@ -406,9 +406,15 @@ public class JvmFatalTests
 
         var analysis = CrashAnalyzer.Analyze(crash, Installed);
 
-        Assert.Equal(CrashCause.OutOfMemory, analysis.Cause);
-        Assert.Contains("Lower it", analysis.Advice, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(CrashCause.MachineOutOfMemory, analysis.Cause);
         Assert.Contains("G1 virtual space", analysis.Advice);
+
+        // No figures in this one to be specific with, so the advice is the general one: the
+        // machine ran out, and more memory for the instance is the opposite of a fix. Which of
+        // the machine's limits it was, and whether the instance is a big enough share of it to
+        // be worth changing, is read from the figures where a file has them - see CrashAdviceTests.
+        Assert.Contains("close whatever else is running", analysis.Advice, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Raise this instance", analysis.Advice);
     }
 
     // ---- what Asobu can do about it ----

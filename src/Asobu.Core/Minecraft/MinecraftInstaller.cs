@@ -104,10 +104,25 @@ public sealed class MinecraftInstaller(HttpClient http, AsobuPaths paths, Mojang
     private string LibraryFile(Library library) =>
         Path.Combine(paths.Libraries, library.Downloads?.Artifact?.Path ?? Maven.PathFor(library.Name));
 
-    private DownloadTask? LibraryDownload(Library library)
+    /// <summary>
+    /// What to fetch for one library, or null when there is nothing to fetch. Internal so the
+    /// "nothing to fetch" cases can be tested for directly — each of them is a rule about
+    /// somebody else's metadata rather than anything this code decides.
+    /// </summary>
+    internal DownloadTask? LibraryDownload(Library library)
     {
+        // An artifact with no URL is an output rather than a download: Forge from 1.21 on lists
+        // its own patched client as a library, with a path and a hash and an empty url, because
+        // the thing at that path is what its processors produce. There is nowhere to fetch it
+        // from, and asking anyway throws "An invalid request URI was provided" — which until the
+        // loader build could fail and carry on was never reached, since the processors had always
+        // just written the file and the size check skipped it.
+        //
+        // The same rule DownloadToolsAsync has always applied to the installer's own libraries.
         if (library.Downloads?.Artifact is { } artifact)
-            return new DownloadTask(artifact.Url, LibraryFile(library), artifact.Sha1, artifact.Size);
+            return artifact.Url is { Length: > 0 }
+                ? new DownloadTask(artifact.Url, LibraryFile(library), artifact.Sha1, artifact.Size)
+                : null;
 
         // Natives-only libraries (pre-1.19 LWJGL, jinput) publish classifier payloads and no plain
         // jar at all. Asking Mojang's repository for one returns 404 and fails the whole install.

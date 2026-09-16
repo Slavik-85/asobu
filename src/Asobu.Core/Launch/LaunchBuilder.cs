@@ -69,10 +69,18 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
             ["resolution_height"] = "480",
         };
 
+        // The floor cannot be above the ceiling: java refuses to start at all on
+        // "-Xms8192M -Xmx4096M", with "Initial heap size set to a larger value than the maximum
+        // heap size" and nothing else — no crash report, no log, nothing that names the setting.
+        // Prism swaps them rather than passing them on, which is the right call: somebody who
+        // typed the two numbers the wrong way round meant the pair, not the order.
+        var floor = Math.Min(settings.MinMemoryMb, settings.MaxMemoryMb);
+        var ceiling = Math.Max(settings.MinMemoryMb, settings.MaxMemoryMb);
+
         var arguments = new List<string>
         {
-            $"-Xms{settings.MinMemoryMb}M",
-            $"-Xmx{settings.MaxMemoryMb}M",
+            $"-Xms{floor}M",
+            $"-Xmx{ceiling}M",
         };
 
         // Where the game asks whether a player is who they say they are. Pointed at Asobu's own

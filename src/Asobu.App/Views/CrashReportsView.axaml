@@ -90,6 +90,27 @@
                     <TextBlock Text="{Binding Analysis.Advice}" Classes="sub" TextWrapping="Wrap"/>
                   </StackPanel>
 
+                  <!-- Something the loader named as absent, rather than something guessed at.
+                       Its own row because its button is the opposite of the suspects' one: this
+                       is a mod to add, not a mod to turn off. -->
+                  <Border Classes="suspect" IsVisible="{Binding HasMissing}">
+                    <StackPanel Spacing="8">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding MissingLabel}" FontSize="13.5" FontWeight="SemiBold"
+                                     TextTrimming="CharacterEllipsis"/>
+                          <TextBlock Text="Named by the loader" Classes="label"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="ghost" Content="Get it"
+                                VerticalAlignment="Center" IsVisible="{Binding CanFetchMissing}"
+                                Command="{Binding FetchMissingCommand}"/>
+                      </Grid>
+                      <TextBlock Text="{Binding MissingNotice}" Classes="label"
+                                 Foreground="{DynamicResource Accent}" TextWrapping="Wrap"
+                                 IsVisible="{Binding HasMissingNotice}"/>
+                    </StackPanel>
+                  </Border>
+
                   <ItemsControl ItemsSource="{Binding Suspects}" IsVisible="{Binding HasSuspects}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:CrashSuspectViewModel">

@@ -40,7 +40,7 @@ public sealed class Downloader(HttpClient http, int parallelism = 32)
         IProgress<DownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var pending = tasks.Where(NeedsDownload).ToArray();
+        var pending = StillWanted(tasks);
         var totalBytes = pending.Sum(t => t.Size);
         var completed = 0;
         var completedBytes = 0L;
@@ -60,6 +60,28 @@ public sealed class Downloader(HttpClient http, int parallelism = 32)
                 progress?.Report(new DownloadProgress(
                     doneCount, pending.Length, doneBytes, totalBytes, Path.GetFileName(task.Destination)));
             }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Which of these are not already on disk.
+    ///
+    /// In parallel because it is thousands of syscalls and nothing else: a full asset set is
+    /// ~3600 files, and asking Windows about them one at a time took 210 ms of every launch —
+    /// twice over for a modded instance, which installs the vanilla set and then the loader's.
+    /// Nothing here touches shared state, so the only cost is the loop.
+    /// </summary>
+    private static DownloadTask[] StillWanted(IReadOnlyList<DownloadTask> tasks)
+    {
+        // Below this the partitioning costs more than the stats do.
+        if (tasks.Count < 64) return [.. tasks.Where(NeedsDownload)];
+
+        var wanted = new bool[tasks.Count];
+
+        Parallel.For(0, tasks.Count, i => wanted[i] = NeedsDownload(tasks[i]));
+
+        // Rebuilt in the original order, which the progress figures and the retry order both
+        // assume and which a parallel append would not keep.
+        return [.. tasks.Where((_, i) => wanted[i])];
     }
 
     private static bool NeedsDownload(DownloadTask task)

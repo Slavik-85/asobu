@@ -270,6 +270,27 @@ public sealed class Instance : INotifyPropertyChanged
     /// </summary>
     public List<string> SkipCompiling { get; set; } = [];
 
+    /// <summary>
+    /// The version document the last successful install produced, and the three things it was
+    /// built from — "1.19.2|forge|43.5.0".
+    ///
+    /// Working this out again is what most of a launch used to be. For a modded instance it
+    /// meant asking Mojang for the vanilla document, asking Forge's repository which installer
+    /// answers to that build, opening the installer, and reading the profile inside it — every
+    /// launch, to arrive at a document already sitting in the versions folder from last time.
+    ///
+    /// The stamp is what makes it safe to trust: it carries the version, the loader and the
+    /// loader's build, so anything that changes any of those makes it stop matching and the long
+    /// way round runs again. Nothing has to remember to clear it.
+    /// </summary>
+    public string? InstalledVersionId { get; set; }
+
+    public string? InstalledFrom { get; set; }
+
+    /// <summary>What <see cref="InstalledFrom"/> has to equal for the id above to be this instance's.</summary>
+    [JsonIgnore]
+    public string InstallStamp => $"{MinecraftVersion}|{Loader}|{LoaderVersion}";
+
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastPlayed { get; set; }
     public long PlaytimeSeconds

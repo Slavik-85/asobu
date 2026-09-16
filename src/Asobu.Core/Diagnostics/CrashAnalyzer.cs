@@ -27,7 +27,15 @@ public enum CrashCause
     /// of a working one, which is why the fix is to get the right build rather than to remove it.
     /// </summary>
     WrongBuild,
+    /// <summary>The game filled the heap it was given. There is room to give it more.</summary>
     OutOfMemory,
+
+    /// <summary>
+    /// The machine refused the runtime memory — its RAM or its page file, not the game's own
+    /// ceiling. Told apart from the above because the answers are opposites: more memory for the
+    /// instance makes this one happen sooner, and Asobu used to offer exactly that.
+    /// </summary>
+    MachineOutOfMemory,
     Graphics,
 
     /// <summary>
@@ -93,6 +101,22 @@ public sealed record CrashAnalysis(
     /// it takes — see <see cref="CompilerExclusion"/>.
     /// </summary>
     public string? CompilingMethod { get; init; }
+
+    /// <summary>
+    /// The dependency this crash is about, when the loader named one that is simply not there.
+    ///
+    /// Carried rather than only described because it is the difference between a screen that
+    /// says what is wrong and one that puts it right: this is everything the catalogues need to
+    /// go and fetch it.
+    /// </summary>
+    public MissingDependency? Missing { get; init; }
+
+    /// <summary>
+    /// What this instance's memory should come down to, when a machine that refused the runtime
+    /// memory was mostly being asked for it by this instance. Null when taking memory off the
+    /// game would not have changed anything, which is most of the time.
+    /// </summary>
+    public int? LowerMemoryToMb { get; init; }
 
     public static readonly CrashAnalysis None =
         new(CrashCause.Unknown, "Nothing obvious", "Asobu couldn't pin this one down. The full text is below.", []);
@@ -341,14 +365,7 @@ public static partial class CrashAnalyzer
         // alongside it: no signal, no frame, nothing was executing. Java asked the machine for
         // memory and the machine said no.
         if (NativeMemoryPattern().Match(report) is { Success: true } starved)
-            return new CrashAnalysis(CrashCause.OutOfMemory, "The computer ran out of memory",
-                "Java asked Windows for memory and was refused, which stops it outright. This is the machine's "
-                + "memory rather than the game's own limit, so giving the instance more would bring it on sooner "
-                + "rather than later — lower it instead, and close whatever else is running. "
-                + "32-bit Java does this at around 1.5 GB however much the machine has, so it is worth checking "
-                + "the instance is on a 64-bit runtime."
-                + (starved.Groups["what"].Success ? $" Java's own words: {starved.Groups["what"].Value.Trim()}" : ""),
-                []);
+            return Starved(report, starved.Groups["what"].Success ? starved.Groups["what"].Value.Trim() : null);
 
         if (ReadFatalError(report) is not { } fatal) return null;
 
@@ -777,6 +794,10 @@ public static partial class CrashAnalyzer
 
     private static CrashAnalysis? MissingDependency(string report)
     {
+        // Forge's own block first, because it is the most precise thing in the file and the
+        // loosest patterns below would otherwise answer for it.
+        if (ForgeModFailure(report) is { } stated) return stated;
+
         var match = MissingDependencyPattern().Match(report);
         if (!match.Success) return null;
 
@@ -786,6 +807,208 @@ public static partial class CrashAnalyzer
         return new CrashAnalysis(CrashCause.MissingDependency, $"Missing dependency: {name}",
             $"A mod needs {name} and it isn't installed, or the installed version is too old. " +
             "Install it and the crash should go with it.", []);
+    }
+
+    /// <summary>
+    /// What the machine had, as the error file records it. Every figure in megabytes, as written.
+    /// </summary>
+    /// <param name="Physical">RAM fitted, and how much of it was free.</param>
+    /// <param name="Commit">
+    /// The page file's size and what was left of it. Windows will not hand out memory it could
+    /// not eventually write somewhere, so this is a limit in its own right and nothing to do with
+    /// how much RAM is fitted — a machine with 32 GB and a full page file refuses allocations
+    /// while most of that RAM sits free.
+    /// </param>
+    /// <param name="HeapMb">What the instance was allowed, from the command line Java recorded.</param>
+    private sealed record MachineMemory(
+        (long Total, long Free)? Physical,
+        (long Total, long Free)? Commit,
+        long? HeapMb)
+    {
+        /// <summary>Under this much left is not "low", it is nothing — allocations are failing.</summary>
+        private const long ExhaustedMb = 512;
+
+        public bool CommitExhausted => Commit is { Free: < ExhaustedMb };
+        public bool PhysicalExhausted => Physical is { Free: < ExhaustedMb };
+
+        /// <summary>
+        /// Whether the instance is a large enough share of the machine for its own setting to be
+        /// worth changing. Half, because below that the machine ran out for reasons of its own
+        /// and taking memory off the game trades a crash for stuttering without fixing anything.
+        /// </summary>
+        public bool GameIsGreedy => HeapMb is { } heap && Physical is { } ram && heap > ram.Total / 2;
+
+        /// <summary>
+        /// In whichever unit says something. A page file with 3 MB left of 40 GB is the whole
+        /// finding, and rounding it to "0 GB" throws exactly that away.
+        /// </summary>
+        public static string Gb(long megabytes) => megabytes < 1024
+            ? megabytes + " MB"
+            : (megabytes / 1024.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " GB";
+    }
+
+    private static MachineMemory ReadMachineMemory(string report)
+    {
+        (long, long)? physical = PhysicalMemoryPattern().Match(report) is { Success: true } ram
+            && long.TryParse(ram.Groups["total"].Value, out var fitted)
+            && long.TryParse(ram.Groups["free"].Value, out var spare)
+                ? (fitted, spare)
+                : null;
+
+        (long, long)? commit = PageFilePattern().Match(report) is { Success: true } page
+            && long.TryParse(page.Groups["total"].Value, out var size)
+            && long.TryParse(page.Groups["free"].Value, out var left)
+                ? (size, left)
+                : null;
+
+        long? heap = null;
+        if (MaxHeapPattern().Match(report) is { Success: true } max && long.TryParse(max.Groups["size"].Value, out var amount))
+            heap = max.Groups["unit"].Value.ToUpperInvariant() == "G" ? amount * 1024 : amount;
+
+        return new MachineMemory(physical, commit, heap);
+    }
+
+    /// <summary>
+    /// The verdict for a runtime the machine would not give memory to.
+    ///
+    /// The blunt version of this said "lower the instance's memory", which is wrong often enough
+    /// to be worth the arithmetic: on the five of these on hand the game was allowed 4 GB on a
+    /// 32 GB machine and the page file was down to single-digit megabytes. Taking memory off a
+    /// game using an eighth of the machine fixes nothing, and the file says so plainly — it
+    /// records what was fitted, what was free, and what the page file had left.
+    /// </summary>
+    private static CrashAnalysis Starved(string report, string? what)
+    {
+        var memory = ReadMachineMemory(report);
+        var said = what is { Length: > 0 } ? $" Java's own words: {what}." : "";
+
+        var had = memory.HeapMb is { } heap
+            ? $" The game itself was allowed {MachineMemory.Gb(heap)}"
+              + (memory.Physical is { } fitted ? $" of the machine's {MachineMemory.Gb(fitted.Total)}." : ".")
+            : "";
+
+        // Windows' commit limit rather than RAM. The distinction is the whole point: this happens
+        // with gigabytes of RAM free, and every instinct about "close something" or "give it less"
+        // is aimed at the wrong number.
+        if (memory is { CommitExhausted: true, Commit: { } commit })
+            return Fit(memory, new CrashAnalysis(CrashCause.MachineOutOfMemory, "Windows' page file was full",
+                $"Not RAM — the page file. Windows had {MachineMemory.Gb(commit.Free)} left of its "
+                + $"{MachineMemory.Gb(commit.Total)} page file when it refused Java, and it will not hand out "
+                + "memory it has nowhere to put"
+                + (memory.Physical is { } ram ? $", however much RAM is free — {MachineMemory.Gb(ram.Free)} was." : ".")
+                + had
+                + (memory.GameIsGreedy
+                    ? " Lowering this instance's memory would help, since most of what was asked for was its."
+                    : " Lowering this instance's memory would not help much, since most of what filled that page file"
+                      + " was not the game. Closing other programs is the thing that frees it, and a page file set to"
+                      + " a fixed size or turned off is worth putting back to Windows-managed.")
+                + said, []));
+
+        if (memory is { PhysicalExhausted: true, Physical: { } exhausted })
+            return Fit(memory, new CrashAnalysis(CrashCause.MachineOutOfMemory, "The computer ran out of memory",
+                $"Java asked Windows for memory and was refused: {MachineMemory.Gb(exhausted.Free)} of the "
+                + $"machine's {MachineMemory.Gb(exhausted.Total)} was free.{had} "
+                + (memory.GameIsGreedy
+                    ? "This instance is asking for most of the machine, so lowering its memory is the fix."
+                    : "Closing whatever else is running is the fix; the game's own limit is not the problem.")
+                + said, []));
+
+        return new CrashAnalysis(CrashCause.MachineOutOfMemory, "The computer ran out of memory",
+            "Java asked the machine for memory and was refused, which stops it outright. This is the machine's "
+            + "memory rather than the game's own limit, so giving the instance more would bring it on sooner rather "
+            + "than later — close whatever else is running." + had
+            + " 32-bit Java does this at around 1.5 GB however much is fitted, so it is worth checking the instance "
+            + "is on a 64-bit runtime." + said, []);
+    }
+
+    /// <summary>
+    /// Hangs a figure to come down to off a verdict, when the instance was most of what the
+    /// machine was being asked for. Only then: on a game using an eighth of the machine there is
+    /// nothing to take off it, and a button that changes a number without changing the outcome is
+    /// worse than no button — it is a fix that was tried.
+    /// </summary>
+    private static CrashAnalysis Fit(MachineMemory memory, CrashAnalysis analysis) =>
+        memory is { GameIsGreedy: true, HeapMb: { } heap, Physical: { } ram }
+        && MemoryPlanner.LoweredFor((int)Math.Min(heap, int.MaxValue), ram.Total) is { } lowered
+            ? analysis with { LowerMemoryToMb = lowered }
+            : analysis;
+
+    /// <summary>
+    /// Forge saying, in its own words, why mod loading stopped.
+    ///
+    /// A crash report from a failed mod load carries one block per mod that would not load, and
+    /// the useful line in it is Forge's own sentence rather than anything in the stack trace —
+    /// which is entirely Forge's own code and names no mod at all:
+    ///
+    ///     -- MOD lolmcv --
+    ///     Details:
+    ///     	Mod File: /C:/.../mods/MoreChestVariants-1.5.6+1.20.2-Forge.jar
+    ///     	Failure message: Mod lolmcv requires quad 1.2.3 or above
+    ///     		Currently, quad is not installed
+    ///
+    /// Worth reading precisely because of what happens without it. The stack trace is Forge's, so
+    /// the hunt for a mod to blame lands on whichever one the block is about — and answers a
+    /// missing dependency by offering to turn off the mod that wanted it, which is the opposite
+    /// of the fix. Two of the three mod-loading crashes on hand did exactly that.
+    ///
+    /// The sentence is Forge's fml.modloading.missingdependency template, which is the same in
+    /// every version from 1.19 to 1.21:
+    ///
+    ///     Mod {mod} requires {dep} {range}
+    ///     Currently, {dep} is {version or "not installed"}
+    ///
+    /// The range is free text — "1.2.3 or above", "between 1.0 and 2.0" — so it is read as text
+    /// and passed through rather than parsed. The optional variant says "only supports" instead
+    /// of "requires" and is not a failure at all, so it never matches here.
+    /// </summary>
+    private static CrashAnalysis? ForgeModFailure(string report)
+    {
+        if (ForgeFailurePattern().Match(report) is not { Success: true } failure) return null;
+
+        var by = failure.Groups["by"].Value;
+        var dep = failure.Groups["dep"].Value;
+        var range = failure.Groups["range"].Value.Trim();
+        var state = failure.Groups["state"].Value.Trim().TrimEnd('.');
+
+        // Forge names the jar the failing mod came from a couple of lines above, which is a
+        // better thing to show somebody than a mod id they have never seen.
+        var wanted = ForgeFailingFilePattern().Matches(report)
+            .LastOrDefault(file => file.Index < failure.Index);
+
+        // A path ending in a separator gives an empty name, and the sentence below would open
+        // with a blank where the subject goes. The mod's own id is what there is to fall back on.
+        var asked = wanted is null ? by : Path.GetFileName(wanted.Groups["file"].Value.Trim());
+        if (asked.Length == 0) asked = by;
+
+        var evidence = failure.Value.Trim();
+
+        // Installed, but not at a version that will do. A different answer from the one below:
+        // there is nothing to fetch, there is something to change.
+        if (!state.Equals("not installed", StringComparison.OrdinalIgnoreCase))
+        {
+            // What the mod wants is the game itself, or the loader it runs on. The words are the
+            // same as for any other dependency and the answer is the opposite one: nobody updates
+            // Minecraft to suit a mod, they get the build of the mod made for their Minecraft.
+            // Saying "updating minecraft is the fix" to somebody with a 1.19 mod in a 1.20 folder
+            // is the most confidently wrong thing this could tell them.
+            if (Platform.Contains(dep))
+                return new CrashAnalysis(CrashCause.WrongBuild, $"{asked} was built for another {dep}",
+                    $"It needs {dep} {range}, and this instance is {state}. The mod is the thing to change, not "
+                    + $"the instance: the build of {by} made for {dep} {state} is the fix, and turning it off is "
+                    + "the answer if there isn't one.", []);
+
+            return new CrashAnalysis(CrashCause.MissingDependency, $"{dep} is the wrong version",
+                $"{asked} needs {dep} {range}, and this instance has {state}. Updating {dep} is the fix — "
+                + $"or, if something else here needs the older one, a build of {by} made for it.", []);
+        }
+
+        return new CrashAnalysis(CrashCause.MissingDependency, $"Missing dependency: {dep}",
+            $"{asked} needs {dep} {range} and it isn't installed, so the loader stopped before the game "
+            + $"started. Nothing is wrong with {by} — it is waiting on something that was never put in "
+            + "beside it. Asobu can fetch it.", [])
+        {
+            Missing = new MissingDependency(by, dep, dep, evidence),
+        };
     }
 
     /// <summary>
@@ -1259,6 +1482,48 @@ public static partial class CrashAnalyzer
         @"SHA-?1 mismatch|checksum mismatch",
         RegexOptions.IgnoreCase)]
     private static partial Regex CorruptPattern();
+
+    /// <summary>"Memory: 4k page, system-wide physical 32703M (3400M free)".</summary>
+    [GeneratedRegex(@"system-wide physical (?<total>\d+)M \((?<free>\d+)M free\)", RegexOptions.IgnoreCase)]
+    private static partial Regex PhysicalMemoryPattern();
+
+    /// <summary>"TotalPageFile size 40703M (AvailPageFile size 18M)".</summary>
+    [GeneratedRegex(@"TotalPageFile size (?<total>\d+)M \(AvailPageFile size (?<free>\d+)M\)", RegexOptions.IgnoreCase)]
+    private static partial Regex PageFilePattern();
+
+    /// <summary>The ceiling the instance was launched with, off the command line Java recorded.</summary>
+    [GeneratedRegex(@"-Xmx(?<size>\d+)(?<unit>[MmGg])")]
+    private static partial Regex MaxHeapPattern();
+
+    /// <summary>
+    /// Dependencies that are not mods and cannot be fetched: the game, and the loader it runs on.
+    /// A mod wanting a different one of these is a mod built for a different instance.
+    /// </summary>
+    private static readonly HashSet<string> Platform = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "minecraft", "forge", "neoforge", "fabric", "fabricloader", "fabric-loader",
+        "quilt_loader", "quiltloader", "java",
+    };
+
+    /// <summary>
+    /// Forge's own failure sentence, and the line under it saying what is actually installed.
+    ///
+    /// Taken from fml.modloading.missingdependency, which reads
+    ///
+    ///     Mod §e{mod}§r requires §6{dep}§r §o{range}§r
+    ///     §7Currently, §6{dep}§r§7 is §o{version}
+    ///
+    /// once its colour codes are gone, as they are in a crash report. The dependency is named
+    /// twice by the template and both are matched, so a line that merely looks like this cannot
+    /// half-match into a different mod's name.
+    /// </summary>
+    [GeneratedRegex(@"Failure message: Mod (?<by>[\w.$+-]+) requires (?<dep>[\w.$+-]+) (?<range>[^\r\n]+)"
+        + @"\r?\n\s*Currently, \k<dep> is (?<state>[^\r\n]+)")]
+    private static partial Regex ForgeFailurePattern();
+
+    /// <summary>The jar a failed mod came out of, which Forge prints just above its failure.</summary>
+    [GeneratedRegex(@"Mod File: (?<file>[^\r\n]+)")]
+    private static partial Regex ForgeFailingFilePattern();
 
     /// <summary>Fabric and Forge both spell missing dependencies out in plain words.</summary>
     [GeneratedRegex(@"requires (?:any )?version [^,]+ of (?<dep>[\w .'-]+), which is missing|" +

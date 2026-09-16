@@ -145,6 +145,28 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
         }
     }
 
+    /// <summary>
+    /// Which Java a given executable is, or null when it will not say.
+    ///
+    /// Read from the "release" file two folders up from the binary, which every distribution
+    /// ships and which costs one file read — unlike asking the binary itself, which means
+    /// starting a JVM before the launch that was about to start one anyway.
+    /// </summary>
+    public static int? MajorOf(string executablePath)
+    {
+        try
+        {
+            // <home>/bin/java.exe
+            var home = Path.GetDirectoryName(Path.GetDirectoryName(executablePath));
+
+            return home is { Length: > 0 } && ReadRelease(home) is { } release ? release.Major : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     private static (string Version, int Major)? ReadRelease(string home)
     {
         var release = Path.Combine(home, "release");
