@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -308,11 +309,28 @@ public partial class SkinsViewModel : ViewModelBase
     [ObservableProperty] public partial bool IsLoadingCapes { get; set; }
 
     /// <summary>
+    /// Which account the cape list on screen belongs to, counted rather than named.
+    ///
+    /// Loading capes is two round trips — a token refresh and then Mojang — and switching account
+    /// starts another load without waiting for the one in flight. Both then add their cards to
+    /// the same list, and what is on screen is one account's capes mixed with another's: worn
+    /// marks against the wrong cape, and buttons that quietly do nothing because the account they
+    /// belong to is no longer the one signed in.
+    ///
+    /// So every load takes a number on the way in and checks it is still the current one after
+    /// each await. A load overtaken by a newer one simply stops. Same idea as the search box
+    /// next door, which cancels rather than counts because it has a token to cancel with.
+    /// </summary>
+    private int _capesGeneration;
+
+    /// <summary>
     /// Asks Mojang what the account owns and which it is wearing. Called whenever the account
     /// changes and never for an offline one, which has no profile to ask.
     /// </summary>
     private async Task LoadCapesAsync()
     {
+        var generation = ++_capesGeneration;
+
         Capes.Clear();
         OnPropertyChanged(nameof(HasCapes));
         OnPropertyChanged(nameof(CanHaveCapes));
@@ -325,7 +343,10 @@ public partial class SkinsViewModel : ViewModelBase
         try
         {
             var session = await _launcher.ResolveSessionAsync(account);
+            if (generation != _capesGeneration) return;
+
             var owned = await _service.CapesAsync(session);
+            if (generation != _capesGeneration) return;
 
             foreach (var cape in owned)
             {
@@ -334,14 +355,22 @@ public partial class SkinsViewModel : ViewModelBase
                 _ = LoadCapeThumbnailAsync(card);
             }
         }
-        catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
+        catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException
+                                  or JsonException or TaskCanceledException)
         {
             // A cape list that would not load is not an error worth a red line: the skins are
             // the page, and the section simply reads as having none.
+            //
+            // Json and cancellation among them because this is run without anybody waiting on it.
+            // A proxy answering 200 with a login page, or Mojang not answering inside the minute
+            // the client allows, would otherwise throw where there is nobody to catch it.
         }
         finally
         {
-            IsLoadingCapes = false;
+            // Only the newest load owns the flag; an overtaken one must not clear it while the
+            // one that replaced it is still going.
+            if (generation == _capesGeneration) IsLoadingCapes = false;
+
             OnPropertyChanged(nameof(HasCapes));
         }
     }
@@ -359,7 +388,8 @@ public partial class SkinsViewModel : ViewModelBase
                 ? new CroppedBitmap(sheet, new PixelRect(1, 1, 10, 16))
                 : sheet;
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or ArgumentException)
+        catch (Exception e) when (e is HttpRequestException or IOException or ArgumentException
+                                  or TaskCanceledException)
         {
             // A card with no picture still has its name.
         }
@@ -371,6 +401,8 @@ public partial class SkinsViewModel : ViewModelBase
     {
         if (card is null || IsBusy || _accounts.Active is not { Kind: AccountKind.Microsoft } account) return;
 
+        var generation = _capesGeneration;
+
         Error = null;
         Status = null;
         IsBusy = true;
@@ -379,6 +411,11 @@ public partial class SkinsViewModel : ViewModelBase
         {
             var session = await _launcher.ResolveSessionAsync(account);
             await _service.WearCapeAsync(session, card.Cape.Id);
+
+            // Mojang has been told either way. But if the account was switched while it was being
+            // told, these cards belong to somebody else now — marking one of them worn would put
+            // this account's choice against another account's capes.
+            if (generation != _capesGeneration) return;
 
             foreach (var other in Capes) other.IsSelected = ReferenceEquals(other, card);
 
@@ -400,6 +437,8 @@ public partial class SkinsViewModel : ViewModelBase
     {
         if (IsBusy || _accounts.Active is not { Kind: AccountKind.Microsoft } account) return;
 
+        var generation = _capesGeneration;
+
         Error = null;
         Status = null;
         IsBusy = true;
@@ -408,6 +447,8 @@ public partial class SkinsViewModel : ViewModelBase
         {
             var session = await _launcher.ResolveSessionAsync(account);
             await _service.HideCapeAsync(session);
+
+            if (generation != _capesGeneration) return;
 
             foreach (var card in Capes) card.IsSelected = false;
 

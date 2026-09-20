@@ -162,7 +162,13 @@
                         IsVisible="{Binding HasCapes}" Command="{Binding HideCapeCommand}"/>
               </Grid>
 
-              <ItemsControl ItemsSource="{Binding Capes}" IsVisible="{Binding HasCapes}">
+              <!-- Capped and scrolled. This row sizes to its content and the skins above it
+                   take what is left, so an account with a shelf of capes would otherwise wrap to
+                   three rows and squeeze the skins list down to nothing. One row is shown; the
+                   rest are a scroll away. -->
+              <ScrollViewer MaxHeight="172" IsVisible="{Binding HasCapes}"
+                            HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding Capes}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
                     <WrapPanel/>
@@ -187,6 +193,7 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+              </ScrollViewer>
             </StackPanel>
           </Grid>
 
