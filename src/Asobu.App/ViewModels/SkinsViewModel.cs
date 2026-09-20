@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -83,6 +84,28 @@ public partial class SkinCard(SavedSkin saved) : ViewModelBase
         Saved = saved;
         OnPropertyChanged(nameof(Name));
     }
+}
+
+/// <summary>
+/// One cape the account owns, with the front of it shown on the card.
+///
+/// Not a file in the library: a cape is Mojang's to grant and the account's only to choose
+/// between, so the card has nothing to delete and nothing to export. It shows, it selects.
+/// </summary>
+public partial class CapeCard(PlayerCape cape) : ViewModelBase
+{
+    public PlayerCape Cape { get; } = cape;
+
+    public string Name => Cape.Alias;
+
+    /// <summary>
+    /// The front panel of the cape. The texture is a sheet with the front at (1,1), ten wide and
+    /// sixteen tall, so that patch is what a card shows rather than the whole sheet with its
+    /// margins of nothing.
+    /// </summary>
+    [ObservableProperty] public partial IImage? Thumbnail { get; set; }
+
+    [ObservableProperty] public partial bool IsSelected { get; set; }
 }
 
 /// <summary>
@@ -257,6 +280,148 @@ public partial class SkinsViewModel : ViewModelBase
     // ---- My skins ----
 
     public ObservableCollection<SkinCard> Mine { get; } = [];
+
+    // ---- Capes ----
+
+    /// <summary>The account's capes, once asked for. Empty for an account that has none, or an offline one.</summary>
+    public ObservableCollection<CapeCard> Capes { get; } = [];
+
+    public bool HasCapes => Capes.Count > 0;
+
+    /// <summary>Whether the account is one that can own capes at all, which decides what the section says.</summary>
+    public bool CanHaveCapes => _accounts.Active is { Kind: AccountKind.Microsoft };
+
+    /// <summary>
+    /// What the capes section says when there are no cards in it. An offline account is told the
+    /// truth: a cape is drawn from the account's Mojang profile and only when the game can verify
+    /// it, so there is nothing local to be done — unlike a skin, there is no default cape for a
+    /// resource pack to stand in for.
+    /// </summary>
+    public string CapesNote => _accounts.Active switch
+    {
+        null => "Sign in to see your capes.",
+        { Kind: AccountKind.Microsoft } => "This account owns no capes yet.",
+        _ => "Capes come from an account's Mojang profile and the game only draws ones it can verify, "
+             + "so an offline account can't wear one — not even locally.",
+    };
+
+    [ObservableProperty] public partial bool IsLoadingCapes { get; set; }
+
+    /// <summary>
+    /// Asks Mojang what the account owns and which it is wearing. Called whenever the account
+    /// changes and never for an offline one, which has no profile to ask.
+    /// </summary>
+    private async Task LoadCapesAsync()
+    {
+        Capes.Clear();
+        OnPropertyChanged(nameof(HasCapes));
+        OnPropertyChanged(nameof(CanHaveCapes));
+        OnPropertyChanged(nameof(CapesNote));
+
+        if (_accounts.Active is not { Kind: AccountKind.Microsoft } account) return;
+
+        IsLoadingCapes = true;
+
+        try
+        {
+            var session = await _launcher.ResolveSessionAsync(account);
+            var owned = await _service.CapesAsync(session);
+
+            foreach (var cape in owned)
+            {
+                var card = new CapeCard(cape) { IsSelected = cape.Active };
+                Capes.Add(card);
+                _ = LoadCapeThumbnailAsync(card);
+            }
+        }
+        catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
+        {
+            // A cape list that would not load is not an error worth a red line: the skins are
+            // the page, and the section simply reads as having none.
+        }
+        finally
+        {
+            IsLoadingCapes = false;
+            OnPropertyChanged(nameof(HasCapes));
+        }
+    }
+
+    private async Task LoadCapeThumbnailAsync(CapeCard card)
+    {
+        try
+        {
+            var png = await _service.DownloadAsync(card.Cape.Url);
+            using var stream = new MemoryStream(png);
+            var sheet = new Bitmap(stream);
+
+            // The front panel, if the sheet is big enough to have one; else the whole thing.
+            card.Thumbnail = sheet.PixelSize is { Width: >= 11, Height: >= 17 }
+                ? new CroppedBitmap(sheet, new PixelRect(1, 1, 10, 16))
+                : sheet;
+        }
+        catch (Exception e) when (e is HttpRequestException or IOException or ArgumentException)
+        {
+            // A card with no picture still has its name.
+        }
+    }
+
+    /// <summary>Puts one of the account's own capes on, and shows it as the one worn.</summary>
+    [RelayCommand]
+    private async Task WearCapeAsync(CapeCard? card)
+    {
+        if (card is null || IsBusy || _accounts.Active is not { Kind: AccountKind.Microsoft } account) return;
+
+        Error = null;
+        Status = null;
+        IsBusy = true;
+
+        try
+        {
+            var session = await _launcher.ResolveSessionAsync(account);
+            await _service.WearCapeAsync(session, card.Cape.Id);
+
+            foreach (var other in Capes) other.IsSelected = ReferenceEquals(other, card);
+
+            Status = $"{account.Username} is wearing the {card.Name} cape now.";
+        }
+        catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
+        {
+            Error = e.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Takes the cape off. The account keeps it; it is simply not worn.</summary>
+    [RelayCommand]
+    private async Task HideCapeAsync()
+    {
+        if (IsBusy || _accounts.Active is not { Kind: AccountKind.Microsoft } account) return;
+
+        Error = null;
+        Status = null;
+        IsBusy = true;
+
+        try
+        {
+            var session = await _launcher.ResolveSessionAsync(account);
+            await _service.HideCapeAsync(session);
+
+            foreach (var card in Capes) card.IsSelected = false;
+
+            Status = $"{account.Username} is wearing no cape now.";
+        }
+        catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
+        {
+            Error = e.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     public bool HasNoSkins => Mine.Count == 0;
 
@@ -1432,5 +1597,6 @@ public partial class SkinsViewModel : ViewModelBase
         OnPropertyChanged(nameof(WearNote));
 
         _ = ShowCurrentSkinAsync();
+        _ = LoadCapesAsync();
     }
 }

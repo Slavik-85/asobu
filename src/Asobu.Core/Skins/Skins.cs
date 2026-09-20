@@ -169,6 +169,8 @@ public sealed partial class SkinService(HttpClient http)
     private const string ProfileUrl = "https://sessionserver.mojang.com/session/minecraft/profile/";
     private const string SkinsUrl = "https://api.minecraftservices.com/minecraft/profile/skins";
     private const string ActiveSkinUrl = "https://api.minecraftservices.com/minecraft/profile/skins/active";
+    private const string OwnProfileUrl = "https://api.minecraftservices.com/minecraft/profile";
+    private const string ActiveCapeUrl = "https://api.minecraftservices.com/minecraft/profile/capes/active";
 
     private const string GalleryUrl = "https://api.mineskin.org/v2/skins";
     private const string TextureUrl = "https://textures.minecraft.net/texture/";
@@ -344,6 +346,80 @@ public sealed partial class SkinService(HttpClient http)
         }
     }
 
+    /// <summary>
+    /// The capes this account owns, and which of them it is wearing.
+    ///
+    /// Capes are not skins. A skin is a file anybody can upload; a cape is something Mojang
+    /// granted to an account — for a Minecon, a migration, a purchase — and the account can only
+    /// ever choose between the ones it has. So there is nothing to upload here, and the whole of
+    /// the feature is asking what is owned and pointing at one of them.
+    ///
+    /// Only an account Mojang knows can own any: the list comes off the account's own profile,
+    /// which an offline account does not have.
+    /// </summary>
+    public async Task<IReadOnlyList<PlayerCape>> CapesAsync(
+        MinecraftSession session, CancellationToken cancellationToken = default)
+    {
+        if (session.UserType == "legacy") return [];
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, OwnProfileUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+
+        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+            throw new SkinException($"Mojang wouldn't show the profile ({(int)response.StatusCode}).");
+
+        var profile = await response.Content.ReadFromJsonAsync<OwnProfile>(cancellationToken).ConfigureAwait(false);
+
+        return
+        [
+            .. (profile?.Capes ?? [])
+                .Where(cape => cape.Id is { Length: > 0 } && cape.Url is { Length: > 0 })
+                .Select(cape => new PlayerCape(
+                    cape.Id!,
+                    cape.Alias is { Length: > 0 } alias ? alias : "Cape",
+                    cape.Url!,
+                    string.Equals(cape.State, "ACTIVE", StringComparison.OrdinalIgnoreCase))),
+        ];
+    }
+
+    /// <summary>Puts one of the account's own capes on. The id is one <see cref="CapesAsync"/> handed out.</summary>
+    public async Task WearCapeAsync(
+        MinecraftSession session, string capeId, CancellationToken cancellationToken = default)
+    {
+        if (session.UserType == "legacy")
+            throw new SkinException("Offline accounts have no Mojang profile, so they have no capes to wear.");
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, ActiveCapeUrl)
+        {
+            Content = JsonContent.Create(new { capeId }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+
+        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            throw new SkinException($"Mojang wouldn't put the cape on ({(int)response.StatusCode})."
+                + (detail is { Length: > 0 and < 300 } ? " " + detail.Trim() : ""));
+        }
+    }
+
+    /// <summary>Takes the cape off, leaving the account wearing none. Owning it is unaffected.</summary>
+    public async Task HideCapeAsync(MinecraftSession session, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Delete, ActiveCapeUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.AccessToken);
+
+        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+            throw new SkinException($"Mojang wouldn't take the cape off ({(int)response.StatusCode}).");
+    }
+
     /// <summary>Back to the one Mojang gives an account that has never set its own.</summary>
     public async Task ResetAsync(MinecraftSession session, CancellationToken cancellationToken = default)
     {
@@ -365,6 +441,20 @@ public sealed partial class SkinService(HttpClient http)
     private sealed class SessionProfile
     {
         [JsonPropertyName("properties")] public List<ProfileProperty>? Properties { get; init; }
+    }
+
+    /// <summary>The account's own profile, as the services API returns it to the account itself.</summary>
+    private sealed class OwnProfile
+    {
+        [JsonPropertyName("capes")] public List<OwnCape>? Capes { get; init; }
+    }
+
+    private sealed class OwnCape
+    {
+        [JsonPropertyName("id")] public string? Id { get; init; }
+        [JsonPropertyName("state")] public string? State { get; init; }
+        [JsonPropertyName("url")] public string? Url { get; init; }
+        [JsonPropertyName("alias")] public string? Alias { get; init; }
     }
 
     private sealed class ProfileProperty
@@ -397,6 +487,12 @@ public sealed partial class SkinService(HttpClient http)
 
 /// <summary>A player and the skin they are wearing.</summary>
 public sealed record PlayerSkin(string Username, string Uuid, string Url, SkinModel Model);
+
+/// <summary>
+/// One cape an account owns. <paramref name="Alias"/> is what Mojang calls it — "Migrator",
+/// "MineCon 2016" — and <paramref name="Active"/> whether it is the one being worn.
+/// </summary>
+public sealed record PlayerCape(string Id, string Alias, string Url, bool Active);
 
 /// <summary>
 /// One skin on the public gallery. Which arms it was drawn for is not in the listing, so it is

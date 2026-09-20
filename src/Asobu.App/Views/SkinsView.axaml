@@ -92,7 +92,7 @@
         <Panel>
 
           <!-- My Skins -->
-          <Grid RowDefinitions="Auto,*" IsVisible="{Binding IsMine}">
+          <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsMine}">
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10" Margin="0,0,0,14">
               <Button x:Name="UploadButton" Classes="primary" Content="Upload skin"/>
               <Button Classes="ghost" Command="{Binding ToggleModelCommand}"
@@ -146,6 +146,48 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
+
+            <!-- Capes: the ones the account owns, which is the only kind there is. Nothing here
+                 is uploaded or kept; Mojang grants them and the account picks one. -->
+            <StackPanel Grid.Row="2" Spacing="10" Margin="0,16,0,0">
+              <Border Height="1" Background="{DynamicResource Border}"/>
+
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Text="Capes" Classes="value"/>
+                  <TextBlock Classes="label" TextWrapping="Wrap" IsVisible="{Binding !HasCapes}"
+                             Text="{Binding CapesNote}"/>
+                </StackPanel>
+                <Button Grid.Column="1" Classes="ghost" Content="No cape" VerticalAlignment="Center"
+                        IsVisible="{Binding HasCapes}" Command="{Binding HideCapeCommand}"/>
+              </Grid>
+
+              <ItemsControl ItemsSource="{Binding Capes}" IsVisible="{Binding HasCapes}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:CapeCard">
+                    <Button Classes="skinCard" Classes.on="{Binding IsSelected}"
+                            Command="{Binding $parent[ItemsControl].((vm:SkinsViewModel)DataContext).WearCapeCommand}"
+                            CommandParameter="{Binding}">
+                      <Grid RowDefinitions="*,Auto" Width="72" Height="132">
+                        <Border Grid.Row="0" Background="{DynamicResource SurfaceAlt}" CornerRadius="10"
+                                ClipToBounds="True">
+                          <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="6"
+                                 RenderOptions.BitmapInterpolationMode="None"/>
+                        </Border>
+                        <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="12" Margin="2,6,2,0"
+                                   TextTrimming="CharacterEllipsis" TextAlignment="Center"/>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
           </Grid>
 
           <!-- Browse -->
