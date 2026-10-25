@@ -1,4 +1,4 @@
-# Asobu as a Flatpak, for Flathub — and through it Discover, GNOME Software and the Steam Deck.
+# Asobu as a Flatpak, for Flathub — and through it Discover, GNOME Software and SteamOS.
 #
 # This repackages the Linux tarball from Asobu's own GitHub release rather than compiling: the
 # release build is the one that carries the CurseForge key, which a public Flathub build has no

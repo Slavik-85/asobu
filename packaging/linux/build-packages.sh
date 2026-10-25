@@ -120,7 +120,7 @@ echo tar > "$TAR/package-type"
 cp -r "$HERE/icons" "$TAR/icons"
 cp "$HERE/$ID.desktop" "$TAR/"
 
-# For installing without root, which a Steam Deck needs: into ~/.local, with a menu entry.
+# For installing without root, which SteamOS needs: into ~/.local, with a menu entry.
 install -m755 "$HERE/install.sh" "$TAR/install.sh"
 
 # The store metadata too, filled in. The Flatpak is this tarball repackaged, and takes the app's

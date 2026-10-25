@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Asobu for you alone, with no root needed — which is what a Steam Deck, or any system
+# Installs Asobu for you alone, with no root needed — which is what SteamOS, or any system
 # whose own folders are read-only, has to have. Run it from the unpacked download:
 #
 #     bash ~/Downloads/asobu/install.sh
