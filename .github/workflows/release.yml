@@ -308,3 +308,92 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.value }}
         run: gh release upload "v$VERSION" dist/Asobu-linux-x64.pkg.tar.zst --clobber -R "$GITHUB_REPOSITORY"
+
+  # Asobu's own Flatpak repository, signed, which the website serves at asobu.cc/flatpak/repo and
+  # app stores install from through asobu.cc/flatpak/asobu.flatpakref. Built here from this
+  # release's tarball and attached to the release as one archive; the Website workflow unpacks
+  # the newest one into the site whenever it deploys. Skipped, with a warning, until the signing
+  # key is in the repository's secrets, so it can never cost a release. Real releases only: a
+  # test build run by hand would otherwise be what every Flatpak user updates to.
+  flatpak:
+    needs: linux
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Import the signing key
+        shell: bash
+        env:
+          KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::No FLATPAK_GPG_PRIVATE_KEY secret, so no Flatpak repository this release."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          printf '%s\n' "$KEY" | gpg --batch --import
+          echo "GPG_KEY=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/{print $5; exit}')" >> "$GITHUB_ENV"
+
+      - name: Point the recipe at this release's tarball
+        if: env.SKIP != '1'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, re, urllib.request
+          url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/v{os.environ['VERSION']}/Asobu-linux-x64.tar.gz"
+          sha = hashlib.sha256(urllib.request.urlopen(url).read()).hexdigest()
+          path = "packaging/flatpak/cc.asobu.Asobu.yml"
+          text = open(path).read()
+          text = re.sub(r"url: https://github.com/.*/Asobu-linux-x64.tar.gz", "url: " + url, text)
+          text = re.sub(r"sha256: [0-9a-f]{64}", "sha256: " + sha, text)
+          open(path, "w").write(text)
+          print(url, sha)
+          PY
+
+      - name: Build and sign the repository
+        if: env.SKIP != '1'
+        shell: bash
+        run: |
+          flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak-builder --install-deps-from=flathub --disable-rofiles-fuse --force-clean \
+            --gpg-sign="$GPG_KEY" --repo=repo --default-branch=stable \
+            build-dir packaging/flatpak/cc.asobu.Asobu.yml
+          flatpak build-update-repo --gpg-sign="$GPG_KEY" --generate-static-deltas --prune \
+            --title=Asobu --default-branch=stable repo
+          tar -czf asobu-flatpak-repo.tar.gz repo
+          ls -la asobu-flatpak-repo.tar.gz
+
+      # Through the API rather than the GitHub CLI, which this image does not carry.
+      - name: Add it to the release
+        if: env.SKIP != '1'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          name = "asobu-flatpak-repo.tar.gz"
+          auth = {"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"}
+          api = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}"
+          release = json.load(urllib.request.urlopen(urllib.request.Request(f"{api}/releases/tags/v{os.environ['VERSION']}", headers=auth)))
+          for asset in release["assets"]:
+              if asset["name"] == name:
+                  urllib.request.urlopen(urllib.request.Request(asset["url"], method="DELETE", headers=auth))
+          upload = release["upload_url"].split("{")[0] + "?name=" + name
+          request = urllib.request.Request(upload, data=open(name, "rb").read(), method="POST",
+                                           headers={**auth, "Content-Type": "application/gzip"})
+          print(json.load(urllib.request.urlopen(request))["browser_download_url"])
+          PY

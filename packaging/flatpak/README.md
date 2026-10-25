@@ -1,76 +1,55 @@
-# Getting Asobu onto Flathub
+# Asobu's Flatpak
 
-Flathub is what Discover (KDE, SteamOS desktop mode), GNOME Software and most Linux app stores
-install from. The recipe here, `cc.asobu.Asobu.yml`, repackages the Linux tarball from Asobu's own
-GitHub releases. It doesn't compile, because only the release build carries the CurseForge key and
-a public Flathub build has no way to be given one.
+Asobu runs its own Flatpak repository at `https://asobu.cc/flatpak/repo/`. Users install it with
+one click from `https://asobu.cc/flatpak/asobu.flatpakref`, which GNOME Software and Discover
+(KDE, SteamOS desktop mode) open on their own. The same works from a terminal:
 
-## Before submitting
+```bash
+flatpak install --user https://asobu.cc/flatpak/asobu.flatpakref
+```
 
-1. **Ship a release from v0.1.42 on.** Earlier tarballs have no AppStream metadata inside them, and
-   earlier builds don't know they're in a Flatpak. They would keep data outside the sandbox and
-   offer updates the store should be doing.
-2. **Add screenshots.** Flathub requires them. Put two or three PNG screenshots of the app at
-   `docs/assets/screenshots/` (the site serves them from `https://asobu.cc/assets/screenshots/`).
-   Add this to `packaging/linux/cc.asobu.Asobu.metainfo.xml` after `</description>`, then cut a
-   release:
-   ```xml
-   <screenshots>
-     <screenshot type="default">
-       <image>https://asobu.cc/assets/screenshots/library.png</image>
-       <caption>Your instances</caption>
-     </screenshot>
-     <screenshot>
-       <image>https://asobu.cc/assets/screenshots/mods.png</image>
-       <caption>Mods from Modrinth and CurseForge</caption>
-     </screenshot>
-   </screenshots>
-   ```
-3. **Check the test build.** Every successful release runs the **Flatpak** workflow, which can
-   also be run by hand from the Actions tab. It builds the recipe the way Flathub does against
-   the latest release, then runs Flathub's linter. Download the `Asobu.flatpak` artifact from the
-   run and try it on a Linux machine:
-   ```bash
-   flatpak install --user ./Asobu.flatpak
-   ```
-   ```bash
-   flatpak run cc.asobu.Asobu
-   ```
+The runtime comes from Flathub, which the `.flatpakref` adds if it's missing. Updates then arrive
+through the app store like any other Flatpak.
 
-## Submitting
+## How it's built
 
-1. Fork https://github.com/flathub/flathub. Untick "copy the master branch only".
-2. Clone your fork's `new-pr` branch and branch off it:
-   ```bash
-   git clone --branch=new-pr https://github.com/<you>/flathub.git
-   ```
-   ```bash
-   cd flathub && git checkout -b add-asobu
-   ```
-3. Copy `cc.asobu.Asobu.yml` into it. Set the `url` and `sha256` to the latest release's tarball;
-   the test workflow prints both at the top of its log. Commit and push.
-4. Open a pull request against **`new-pr`** (not `master`), titled `Add cc.asobu.Asobu`. Worth
-   saying in the description:
-   - Why it repackages the release tarball rather than compiling: the CurseForge API key can't be
-     public.
-   - That the source is GPL-3.0 at https://github.com/Slavik-85/asobu.
-   - Why each permission is there:
-     - `x11`: the UI toolkit (Avalonia) draws through X11.
-     - `dri`: Minecraft needs the GPU.
-     - `pulseaudio`: game sound.
-     - `network`: downloads and sign-in.
-     - `StatusNotifierWatcher`: the tray icon.
-     - `xdg-download:ro`: picking up mods whose author only allows downloads from their own page.
-5. Reviewers comment on the PR; `bot, build` in a comment starts a test build. When it's merged,
-   Flathub creates `github.com/flathub/cc.asobu.Asobu` and gives you write access to it.
+- `cc.asobu.Asobu.yml` repackages the Linux tarball from each GitHub release. It doesn't compile,
+  because only the release build carries the CurseForge key.
+- The **Release** workflow's `flatpak` job points the recipe at the new tarball, builds it, signs
+  it, and attaches the repository to the release as `asobu-flatpak-repo.tar.gz`.
+- The **Website** workflow publishes `docs/` to asobu.cc. It unpacks the newest repository into
+  `/flatpak/repo/` and fills the public key into `asobu.flatpakref` and `asobu.flatpakrepo`.
 
-## After it's live
+## One-time setup
 
-- **Verify the domain**, so the store shows Asobu as verified. Sign in to https://flathub.org with
-  GitHub, open the developer portal, choose Asobu, then Verification, and pick the website
-  method. Flathub hands you a token. Put it in `docs/.well-known/org.flathub.VerifiedApps.txt`
-  in this repo and push. The site then serves it at
-  `https://asobu.cc/.well-known/org.flathub.VerifiedApps.txt`, which is where Flathub looks.
-- **Updates come by themselves.** Flathub's external data checker reads the `x-checker-data`
-  block, notices each new GitHub release, and opens a pull request on
-  `flathub/cc.asobu.Asobu` with the new URL and checksum. Merge it and the store updates.
+1. **Settings → Pages → Build and deployment → Source: GitHub Actions.** The site stops coming
+   straight from the `docs` folder and is deployed by the Website workflow instead. The custom
+   domain stays as it is.
+2. **Settings → Secrets and variables → Actions → New repository secret**, named
+   `FLATPAK_GPG_PRIVATE_KEY`, holding the whole private key file, header lines included. The key
+   has no passphrase, because CI can't type one. Until it exists, releases skip the Flatpak with a
+   warning and carry on.
+
+`asobu-flatpak.gpg` is the matching public key (`0B54 CCBF AF69 E5A0 3367 9D21 CE98 E897
+8749 51BA`). Keep a backup of the private key somewhere safe outside this repository. If it's
+lost, a new key means everyone who installed the Flatpak has to remove it and install it again.
+Never commit the private key.
+
+## Flathub: don't submit this recipe
+
+Flathub's [requirements](https://docs.flathub.org/docs/for-app-authors/requirements) forbid
+AI-generated or AI-assisted content in a submission's manifest, and disclosing it doesn't make it
+acceptable. AI tools may not open, write or automate the submission pull request, its
+description, or replies to reviewers. The PR checklist makes the submitter confirm that, and
+misrepresenting it can get an account banned for good.
+
+This recipe and most of Asobu were written with AI help, so:
+
+- **Don't submit `cc.asobu.Asobu.yml` to Flathub,** or anything derived from it.
+- A Flathub submission has to be a manifest the developer writes themselves, with no AI help.
+  The PR also has to be opened and handled by hand, and it must disclose that the app's code is
+  AI-assisted. Reviewers may still reject it for that.
+- Flathub also generally turns down very young projects, so waiting a while helps either way.
+
+The self-hosted repository above gives the same one-click install and store updates without any
+of that.

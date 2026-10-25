@@ -1,0 +1,67 @@
+# Publishes asobu.cc: the docs folder, plus Asobu's Flatpak repository under /flatpak.
+#
+# The repository is too big to keep in git, so the Release workflow builds it and attaches it to
+# the release, and this unpacks the newest one into the site. Runs when the site changes, after
+# every release, and by hand. After a release whatever its outcome: a failed Arch package
+# shouldn't hold back a Flatpak that built fine, and a release without one changes nothing.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "packaging/flatpak/**"
+      - ".github/workflows/website.yml"
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a release's deploy is never cut short by a docs push.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The newest release that has a repository, not just the newest release: one cut before the
+      # signing key was set up would otherwise take the Flatpak off the site.
+      - name: Put the site together
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp -r docs _site
+          mkdir -p _site/flatpak
+          key=$(base64 -w0 packaging/flatpak/asobu-flatpak.gpg)
+          for file in asobu.flatpakref asobu.flatpakrepo; do
+            sed "s|@GPGKEY@|$key|" "packaging/flatpak/$file" > "_site/flatpak/$file"
+          done
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            --jq '[.[] | select(any(.assets[]; .name == "asobu-flatpak-repo.tar.gz"))][0].tag_name // empty')
+          if [ -z "$tag" ]; then
+            echo "::warning::No release has a Flatpak repository yet, so the site goes up without one."
+            exit 0
+          fi
+          gh release download "$tag" -p asobu-flatpak-repo.tar.gz -D "$RUNNER_TEMP" -R "$GITHUB_REPOSITORY"
+          tar -xzf "$RUNNER_TEMP/asobu-flatpak-repo.tar.gz" -C _site/flatpak
+          rm -rf _site/flatpak/repo/tmp
+          echo "Flatpak repository from $tag"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+      - id: deploy
+        uses: actions/deploy-pages@v4

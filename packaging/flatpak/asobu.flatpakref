@@ -1,0 +1,11 @@
+[Flatpak Ref]
+Title=Asobu
+Name=cc.asobu.Asobu
+Branch=stable
+Url=https://asobu.cc/flatpak/repo/
+SuggestRemoteName=asobu
+Homepage=https://asobu.cc
+Icon=https://asobu.cc/assets/asobu.png
+RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
+IsRuntime=false
+GPGKey=@GPGKEY@

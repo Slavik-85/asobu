@@ -27,3 +27,4 @@ packaging/linux/*.xml text eol=lf
 *.ico     binary
 *.webp    binary
 *.jar     binary
+*.gpg     binary

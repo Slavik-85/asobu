@@ -1,0 +1,7 @@
+[Flatpak Repo]
+Title=Asobu
+Url=https://asobu.cc/flatpak/repo/
+Homepage=https://asobu.cc
+Comment=Asobu, a launcher for Minecraft: Java Edition
+Icon=https://asobu.cc/assets/asobu.png
+GPGKey=@GPGKEY@
