@@ -18,6 +18,20 @@
       port.
     </p>
   </description>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://asobu.cc/assets/screenshots/library.jpg</image>
+      <caption>Every instance in one library</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://asobu.cc/assets/screenshots/instance.jpg</image>
+      <caption>An instance, ready to play</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://asobu.cc/assets/screenshots/mod-page.jpg</image>
+      <caption>Mods from Modrinth and CurseForge, each with its own page</caption>
+    </screenshot>
+  </screenshots>
   <launchable type="desktop-id">cc.asobu.Asobu.desktop</launchable>
   <developer id="cc.asobu">
     <name>Asobu</name>
