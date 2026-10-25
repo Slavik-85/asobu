@@ -62,7 +62,7 @@ public sealed class AsobuPaths(string root)
     }
 
     /// <summary>
-    /// How this copy was installed when a Linux package put it there — "deb", "rpm" or "tar",
+    /// How this copy was installed when a Linux package put it there — "deb", "rpm", "arch" or "tar",
     /// from a file the package's build writes beside the executable, or "flatpak". Null for the
     /// Windows installer, the AppImage and a build folder. A package manager owns those files, so
     /// the launcher must not try to replace them itself.

@@ -40,7 +40,7 @@ public static class DesktopIntegration
 
             // Installed from a package, which owns the real entry and ours would shadow. Not a
             // tarball: that brings no entry of its own, and removing ours would leave none at all.
-            if (AsobuPaths.PackageType() is "deb" or "rpm")
+            if (AsobuPaths.PackageType() is "deb" or "rpm" or "arch")
             {
                 if (ours)
                 {

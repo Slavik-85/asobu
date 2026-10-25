@@ -108,7 +108,7 @@ public partial class UpdateViewModel : ViewModelBase
     public bool CanUpdate => _manager?.IsInstalled ?? false;
 
     /// <summary>A package install, which is told about new versions rather than given them.</summary>
-    public bool CanNotify => !CanUpdate && Package is "deb" or "rpm" or "tar";
+    public bool CanNotify => !CanUpdate && Package is "deb" or "rpm" or "arch" or "tar";
 
     public bool ShowCard => CanUpdate || CanNotify;
 
@@ -330,13 +330,14 @@ public partial class UpdateViewModel : ViewModelBase
     {
         "deb" => "Asobu-linux-x64.deb",
         "rpm" => "Asobu-linux-x64.rpm",
+        "arch" => "Asobu-linux-x64.pkg.tar.zst",
         "tar" => "Asobu-linux-x64.tar.gz",
         _ => null,
     };
 
     /// <summary>The new package, opened in the browser for the package manager to install.</summary>
     [RelayCommand]
-    private void Download() => AsobuLauncher.OpenUrl(Package is "deb" or "rpm"
+    private void Download() => AsobuLauncher.OpenUrl(Package is "deb" or "rpm" or "arch"
         ? $"{ReleasesUrl}/releases/latest/download/{PackageFile}"
         : $"{ReleasesUrl}/releases/latest");
 

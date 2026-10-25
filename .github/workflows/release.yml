@@ -251,3 +251,60 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.value }}
         run: gh release upload "v$VERSION" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Arch's own package, built inside Arch from the tarball the linux job just published, then
+  # installed there for real before it goes up. After that job rather than beside it, because it
+  # needs the tarball to exist; and on its own, so a fault here costs one file.
+  arch:
+    needs: linux
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+
+    steps:
+      - name: Install the build tools
+        run: pacman -Syu --noconfirm --needed base-devel git github-cli
+
+      - uses: actions/checkout@v4
+
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # makepkg refuses to run as root, which is all a container has, so it gets a user of its
+      # own. pacman allows no hyphen in a version: 0.2.0-beta becomes 0.2.0_beta.
+      - name: Build the package from the release's tarball
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          [[ $VERSION =~ ^[0-9A-Za-z.+-]+$ ]]
+          useradd -m builder
+          mkdir -p /tmp/arch dist
+          cp packaging/arch/PKGBUILD /tmp/arch/
+          sed -i "s/@VERSION@/${VERSION//-/_}/" /tmp/arch/PKGBUILD
+          gh release download "v$VERSION" -p Asobu-linux-x64.tar.gz -D /tmp/arch -R "$GITHUB_REPOSITORY"
+          chown -R builder /tmp/arch
+          su builder -c "cd /tmp/arch && makepkg --noconfirm --nodeps"
+          cp /tmp/arch/asobu-*.pkg.tar.zst dist/Asobu-linux-x64.pkg.tar.zst
+
+      - name: Check the package
+        shell: bash
+        run: |
+          pacman -U --noconfirm dist/Asobu-linux-x64.pkg.tar.zst
+          test -x /usr/bin/asobu
+          test "$(cat /opt/asobu/package-type)" = arch
+          test -f /usr/share/applications/cc.asobu.Asobu.desktop
+
+      - name: Add it to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: gh release upload "v$VERSION" dist/Asobu-linux-x64.pkg.tar.zst --clobber -R "$GITHUB_REPOSITORY"
