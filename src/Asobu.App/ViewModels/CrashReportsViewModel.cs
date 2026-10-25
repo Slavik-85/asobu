@@ -8,6 +8,7 @@ using Asobu.Core;
 using Asobu.Core.Diagnostics;
 using Asobu.Core.Instances;
 using Asobu.Core.Mods;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -149,7 +150,14 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
                 return;
             }
 
-            var result = await launcher.InstallModAsync(instance, found);
+            var result = await launcher.InstallModAsync(instance, found, item =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (started == _shown) MissingNotice = "Downloading from CurseForge in your browser. It goes in once it lands.";
+                });
+                return ModInstall.FetchByHandAsync(item);
+            });
 
             // The mod is on disk either way; only the message about it is worth dropping.
             if (started != _shown) return;
@@ -159,7 +167,7 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
                 ? $"Added {result.FileName}. Launch again."
                 : result.Reason
                   ?? (result.Blocked
-                      ? "The author allows downloads from their page only."
+                      ? "Only on its CurseForge page, and the download never landed."
                       : $"No build for {instance.LoaderName} {instance.MinecraftVersion}.");
         }
         catch (Exception e)

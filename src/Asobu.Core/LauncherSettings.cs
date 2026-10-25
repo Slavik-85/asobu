@@ -95,6 +95,21 @@ public sealed class LauncherSettings
     /// <summary>Which account the Play button uses.</summary>
     public string? ActiveAccountUuid { get; set; }
 
+    /// <summary>"System", "Light" or "Dark".</summary>
+    public string ThemeMode { get; set; } = "System";
+
+    /// <summary>A preset's name, or "Custom" to use <see cref="ThemeHue"/> and <see cref="ThemeTint"/>.</summary>
+    public string Theme { get; set; } = "Sakura";
+
+    /// <summary>The custom theme's accent, as a hue in degrees.</summary>
+    public double ThemeHue { get; set; } = 339;
+
+    /// <summary>How strongly the custom theme's greys take its hue: 0 is plain grey, 1 as designed.</summary>
+    public double ThemeTint { get; set; } = 1;
+
+    /// <summary>The Konami cat is out. It stays out, restarts included, until the code is entered again.</summary>
+    public bool KonamiCat { get; set; }
+
     /// <summary>
     /// Whether the welcome has been through. False on a fresh install, and also false for
     /// anyone upgrading from a build that predates it — so the launcher treats an existing

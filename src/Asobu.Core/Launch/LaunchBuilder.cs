@@ -79,6 +79,11 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
 
         var arguments = new List<string>
         {
+            // English, whatever the machine is set to, as Prism does. A Turkish dotless i breaks
+            // mods that upper-case their own enum names, and a decimal comma breaks mods that write
+            // a number out and read it back — "0,5" is a NumberFormatException in a config loader.
+            // First, so anything typed into the extra arguments still overrides it.
+            "-Duser.language=en",
             $"-Xms{floor}M",
             $"-Xmx{ceiling}M",
         };
@@ -119,6 +124,13 @@ public sealed partial class LaunchBuilder(AsobuPaths paths, MinecraftInstaller i
         else
         {
             // 1.12.2 and older ship no jvm argument list; the launcher supplies these itself.
+            //
+            // Including the one 1.13's list carries for Intel's Windows drivers, which key their
+            // OpenGL profile off this exact name. Without it, integrated Intel graphics can refuse
+            // an old version with "Pixel format not accelerated". Prism adds it to every version.
+            if (OperatingSystem.IsWindows())
+                arguments.Add("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump");
+
             arguments.Add($"-Djava.library.path={paths.NativesDir(version.Id)}");
             arguments.Add("-cp");
             arguments.Add(classpath);

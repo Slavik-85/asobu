@@ -101,14 +101,30 @@
               <Button x:Name="ExportButton" Classes="ghost" Content="Save as PNG"/>
             </StackPanel>
 
-            <StackPanel Grid.Row="1" Spacing="6" VerticalAlignment="Center" IsVisible="{Binding HasNoSkins}">
+            <StackPanel Grid.Row="1" Spacing="6" VerticalAlignment="Center">
+              <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="HasNoSkins"/>
+                  <Binding Path="!HasHistory"/>
+                </MultiBinding>
+              </StackPanel.IsVisible>
               <TextBlock Text="No skins yet" Classes="h2" HorizontalAlignment="Center"
                          Foreground="{DynamicResource TextMuted}"/>
               <TextBlock Classes="sub" TextAlignment="Center" TextWrapping="Wrap"
                          Text="Upload a 64×64 PNG, look someone up under Browse, or draw one."/>
             </StackPanel>
 
-            <ScrollViewer Grid.Row="1" VerticalAlignment="Top" IsVisible="{Binding !HasNoSkins}">
+            <!-- The account's past skins sit in the same shelf as the kept ones, after them: they
+                 are the same kind of thing, and a row of their own squeezed the shelf to nothing. -->
+            <ScrollViewer Grid.Row="1" VerticalAlignment="Top">
+              <ScrollViewer.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                  <Binding Path="!HasNoSkins"/>
+                  <Binding Path="HasHistory"/>
+                </MultiBinding>
+              </ScrollViewer.IsVisible>
+
+              <StackPanel>
               <ItemsControl ItemsSource="{Binding Mine}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
@@ -145,6 +161,37 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+
+              <!-- Clicking one puts it on the figure, to wear or keep. -->
+              <ItemsControl ItemsSource="{Binding History}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GalleryCard">
+                    <Button Classes="skinCard"
+                            Command="{Binding $parent[ItemsControl].((vm:SkinsViewModel)DataContext).ShowGalleryCommand}"
+                            CommandParameter="{Binding}">
+                      <Grid RowDefinitions="*,Auto,Auto" Width="100" Height="172">
+                        <Border Grid.Row="0" Background="{DynamicResource SurfaceAlt}" CornerRadius="10"
+                                ClipToBounds="True">
+                          <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="4"
+                                 RenderOptions.BitmapInterpolationMode="None"/>
+                        </Border>
+
+                        <TextBlock Grid.Row="1" Text="{Binding Label}" FontSize="12" Margin="2,6,2,0"
+                                   TextTrimming="CharacterEllipsis" TextAlignment="Center"/>
+                        <TextBlock Grid.Row="2" Text="Worn before" Classes="label"
+                                   TextAlignment="Center" Margin="0,2,0,0"/>
+                      </Grid>
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              </StackPanel>
             </ScrollViewer>
 
             <!-- Capes: the ones the account owns, which is the only kind there is. Nothing here

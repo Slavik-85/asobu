@@ -88,6 +88,25 @@ public class ManualDownloadTests : IDisposable
         Assert.False(await Landed(Wanting("shelfbackport-1.0.0.jar")));
     }
 
+    /// <summary>An older file of the same name used to block the real one sitting beside it.</summary>
+    [Fact]
+    public async Task A_stale_file_of_the_same_name_does_not_hide_the_real_download()
+    {
+        File.WriteAllBytes(Path.Combine(_downloads, "shelfbackport-1.0.0.jar"), [1, 2, 3]);
+        Drop("shelfbackport-1.0.0 (1).jar");
+
+        Assert.True(await Landed(Wanting("shelfbackport-1.0.0.jar")));
+    }
+
+    /// <summary>With no hash to check, a jar of the right name could be anybody's.</summary>
+    [Fact]
+    public async Task Nothing_is_taken_without_a_hash_to_check_it_against()
+    {
+        Drop("shelfbackport-1.0.0.jar");
+
+        Assert.False(await Landed(Wanting("shelfbackport-1.0.0.jar") with { Sha1 = null }));
+    }
+
     /// <summary>The original is theirs to keep — Asobu copies rather than moves.</summary>
     [Fact]
     public async Task The_download_stays_where_they_put_it()

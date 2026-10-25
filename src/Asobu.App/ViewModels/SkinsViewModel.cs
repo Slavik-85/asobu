@@ -43,8 +43,8 @@ public partial class GalleryCard(GallerySkin skin) : ViewModelBase
 {
     public GallerySkin Skin { get; } = skin;
 
-    /// <summary>Worked out from the file, since the listing does not say.</summary>
-    [ObservableProperty] public partial SkinModel Model { get; set; } = SkinModel.Classic;
+    /// <summary>Worked out from the file when the listing does not say; a history entry does.</summary>
+    [ObservableProperty] public partial SkinModel Model { get; set; } = skin.Model ?? SkinModel.Classic;
 
     [ObservableProperty] public partial Bitmap? Thumbnail { get; set; }
 
@@ -464,6 +464,45 @@ public partial class SkinsViewModel : ViewModelBase
         }
     }
 
+    // ---- Skin history ----
+
+    /// <summary>What the account wore before. Clicking one puts it on the figure, like a gallery card.</summary>
+    public ObservableCollection<GalleryCard> History { get; } = [];
+
+    public bool HasHistory => History.Count > 0;
+
+    /// <summary>Whose history is on screen, so opening the tab again doesn't fetch it again.</summary>
+    private string? _historyFor;
+
+    private async Task LoadHistoryAsync()
+    {
+        var uuid = _accounts.Active is { Kind: AccountKind.Microsoft } account ? account.Uuid : null;
+        if (uuid == _historyFor) return;
+
+        _historyFor = uuid;
+        History.Clear();
+        OnPropertyChanged(nameof(HasHistory));
+
+        if (uuid is null) return;
+
+        var past = await _service.HistoryAsync(uuid);
+        if (uuid != _historyFor) return;
+
+        // Nothing came back: offline, or never seen. Asked again next time the tab opens.
+        if (past.Count == 0)
+        {
+            _historyFor = null;
+            return;
+        }
+
+        foreach (var skin in past) History.Add(new GalleryCard(skin));
+        OnPropertyChanged(nameof(HasHistory));
+
+        // Not a second copy of a skin the shelf already keeps — the one being worn, usually.
+        await DrawCardsAsync(History, png => Kept(png) is not null);
+        OnPropertyChanged(nameof(HasHistory));
+    }
+
     public bool HasNoSkins => Mine.Count == 0;
 
     [ObservableProperty] public partial SkinCard? Selected { get; set; }
@@ -504,8 +543,20 @@ public partial class SkinsViewModel : ViewModelBase
         // Their own skin, every time. This used to be reached only when the stage was empty,
         // which it never is — the editor fills it with a starting drawing before anybody has
         // opened the page — so the one skin a person certainly wants to see was the one skin
-        // that never appeared.
-        _ = ShowCurrentSkinAsync();
+        // that never appeared. The history after it, so the skin being worn is in the library
+        // before the history is checked against it and is not shown twice.
+        _ = ShowCurrentThenHistoryAsync();
+
+        // Capes were only ever loaded on an account change, and the account picked at startup
+        // is chosen before anything is listening for one — so they stayed empty until somebody
+        // switched account and back. Not reloaded when already there, so the cards don't flicker.
+        if (!HasCapes && !IsLoadingCapes) _ = LoadCapesAsync();
+    }
+
+    private async Task ShowCurrentThenHistoryAsync()
+    {
+        await ShowCurrentSkinAsync();
+        await LoadHistoryAsync();
     }
 
     /// <summary>
@@ -571,19 +622,10 @@ public partial class SkinsViewModel : ViewModelBase
     /// <summary>Files the account's own skin, unless the library already has that exact image.</summary>
     private void Remember(byte[] png, SkinModel model, string username)
     {
-        foreach (var card in Mine)
+        if (Kept(png) is { } kept)
         {
-            try
-            {
-                if (File.ReadAllBytes(card.Saved.Path).AsSpan().SequenceEqual(png))
-                {
-                    Selected ??= card;
-                    return;
-                }
-            }
-            catch (IOException)
-            {
-            }
+            Selected ??= kept;
+            return;
         }
 
         try
@@ -601,6 +643,19 @@ public partial class SkinsViewModel : ViewModelBase
             Error = e.Message;
         }
     }
+
+    /// <summary>The library's card for this exact image, if it has one.</summary>
+    private SkinCard? Kept(byte[] png) => Mine.FirstOrDefault(card =>
+    {
+        try
+        {
+            return File.ReadAllBytes(card.Saved.Path).AsSpan().SequenceEqual(png);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    });
 
     /// <summary>Called by the view once its file picker has an answer.</summary>
     public void ImportFromFile(string path)
@@ -918,13 +973,16 @@ public partial class SkinsViewModel : ViewModelBase
         }
     }
 
+    private Task DrawGalleryAsync() => DrawCardsAsync(Gallery, png => !LooksDrawn(png));
+
     /// <summary>
     /// Each gallery card's figure, drawn from the real texture rather than shown as somebody
     /// else's picture — so the cards here look exactly like the cards under My Skins.
     /// </summary>
-    private async Task DrawGalleryAsync()
+    /// <param name="drop">Which skins never become cards once their file is in hand.</param>
+    private async Task DrawCardsAsync(ObservableCollection<GalleryCard> cards, Func<byte[], bool> drop)
     {
-        foreach (var card in Gallery.ToList())
+        foreach (var card in cards.ToList())
         {
             if (card.Thumbnail is not null) continue;
 
@@ -932,18 +990,18 @@ public partial class SkinsViewModel : ViewModelBase
             {
                 var png = await _service.TextureAsync(card.Skin.Texture);
 
-                // Most of what gets uploaded to a public skin API is not a skin. Blank sheets,
-                // half-finished tests, one pixel in a corner — a shelf of those is worse than a
-                // shorter shelf, so anything that is barely drawn on never becomes a card.
-                if (!LooksDrawn(png))
+                // Whatever the shelf has no use for: on the gallery, the blank sheets and test
+                // uploads that make up most of a public skin API; in the history, a skin the
+                // library already keeps.
+                if (drop(png))
                 {
-                    Gallery.Remove(card);
+                    cards.Remove(card);
                     continue;
                 }
 
-                // The listing says nothing about arms, so the file is asked instead — the same
-                // guess an imported PNG gets.
-                var model = GuessModel(png);
+                // The gallery's listing says nothing about arms, so the file is asked instead —
+                // the same guess an imported PNG gets.
+                var model = card.Skin.Model ?? GuessModel(png);
                 card.Model = model;
 
                 var drawn = await Task.Run(() =>
@@ -1637,7 +1695,7 @@ public partial class SkinsViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanWear));
         OnPropertyChanged(nameof(WearNote));
 
-        _ = ShowCurrentSkinAsync();
+        _ = ShowCurrentThenHistoryAsync();
         _ = LoadCapesAsync();
     }
 }

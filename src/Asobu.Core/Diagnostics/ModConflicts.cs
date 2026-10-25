@@ -17,9 +17,15 @@ public sealed partial record VersionBound(string? AtLeast, string? Below, string
     /// </summary>
     public string? Above { get; init; }
 
+    /// <summary>
+    /// An inclusive ceiling, for Forge's "[0.2.4,0.3.0]" and "between 0.2.4 and 0.3.0 (inclusive)".
+    /// Read as <see cref="Below"/> it turned away 0.3.0 itself, the one build the mod named.
+    /// </summary>
+    public string? AtMost { get; init; }
+
     public static readonly VersionBound Any = new(null, null, null);
 
-    public bool IsAny => AtLeast is null && Below is null && Exactly is null && Above is null;
+    public bool IsAny => AtLeast is null && Below is null && Exactly is null && Above is null && AtMost is null;
 
     public bool Accepts(string version)
     {
@@ -27,6 +33,7 @@ public sealed partial record VersionBound(string? AtLeast, string? Below, string
         if (AtLeast is { Length: > 0 } floor && Compare(version, floor) < 0) return false;
         if (Above is { Length: > 0 } exclusive && Compare(version, exclusive) <= 0) return false;
         if (Below is { Length: > 0 } ceiling && Compare(version, ceiling) >= 0) return false;
+        if (AtMost is { Length: > 0 } top && Compare(version, top) > 0) return false;
 
         return true;
     }
@@ -116,6 +123,8 @@ public sealed record ModConflict(
     {
         { Exactly: { Length: > 0 } exact } => exact,
         { AtLeast: { Length: > 0 } floor, Below: { Length: > 0 } ceiling } => $"{floor} up to {ceiling}",
+        { AtLeast: { Length: > 0 } floor, AtMost: { Length: > 0 } top } => $"{floor} to {top}",
+        { AtMost: { Length: > 0 } top } => $"{top} or earlier",
         { AtLeast: { Length: > 0 } floor } => $"{floor} or later",
 
         // An exclusive floor, which is what every breakage produces. Without this case they all
@@ -272,10 +281,10 @@ public static partial class ModConflicts
             var low = maven.Groups["low"].Value;
             var high = maven.Groups["high"].Value;
 
-            return new VersionBound(
-                low.Length > 0 ? low : null,
-                high.Length > 0 ? high : null,
-                null);
+            // A closing square bracket takes the ceiling in; a round one leaves it out.
+            return wanted.EndsWith(']') && high.Length > 0
+                ? new VersionBound(low.Length > 0 ? low : null, null, null) { AtMost = high }
+                : new VersionBound(low.Length > 0 ? low : null, high.Length > 0 ? high : null, null);
         }
 
         // A family, as Fabric's suggested fix writes it: 0.9.x means at least 0.9 and below

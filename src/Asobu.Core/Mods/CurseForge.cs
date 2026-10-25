@@ -207,7 +207,10 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
                         2 => ModChannel.Beta,
                         _ => ModChannel.Release,
                     },
-                    Required(file.Dependencies))),
+                    Required(file.Dependencies))
+                {
+                    FileId = file.Id.ToString(CultureInfo.InvariantCulture),
+                }),
         ];
     }
 
@@ -251,7 +254,10 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
             // algo 1 is SHA-1; 2 is MD5, which the downloader does not verify against.
             chosen.Hashes?.FirstOrDefault(h => h.Algo == 1)?.Value,
             chosen.FileLength,
-            Required(chosen.Dependencies));
+            Required(chosen.Dependencies))
+        {
+            FileId = chosen.Id.ToString(CultureInfo.InvariantCulture),
+        };
     }
 
     /// <summary>
@@ -790,7 +796,11 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
     private sealed class ModFile
     {
         [JsonPropertyName("id")] public int Id { get; init; }
-        [JsonPropertyName("fileName")] public string? FileName { get; init; }
+
+        /// <summary>Only ever a name: it is joined onto a folder on disk, so any path in it is dropped.</summary>
+        [JsonPropertyName("fileName")]
+        public string? FileName { get; init => field = value is null ? null : Path.GetFileName(value); }
+
         [JsonPropertyName("fileLength")] public long FileLength { get; init; }
         [JsonPropertyName("releaseType")] public int ReleaseType { get; init; }
 

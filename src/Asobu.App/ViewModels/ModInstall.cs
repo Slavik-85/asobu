@@ -1,5 +1,7 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using Asobu.Core;
 using Asobu.Core.Instances;
 using Asobu.Core.Mods;
@@ -26,7 +28,14 @@ public static class ModInstall
 
         try
         {
-            var result = await launcher.InstallModAsync(instance, card.Mod);
+            var result = await launcher.InstallModAsync(instance, card.Mod, item =>
+            {
+                // Called from the launcher's own continuation, off the UI thread.
+                Dispatcher.UIThread.Post(() =>
+                    card.Notice = "Only CurseForge's site may serve this one, so it's downloading in your browser. It goes in once it lands.");
+
+                return FetchByHandAsync(item);
+            });
 
             if (result.Installed)
             {
@@ -55,7 +64,7 @@ public static class ModInstall
             // Blocked only survives to here when the other provider had nothing either.
             card.Notice = result.Reason
                 ?? (result.Blocked
-                    ? "The author allows downloads from their page only."
+                    ? "Only on its CurseForge page, and the download never landed."
                     // A loader means nothing to a resource pack, so a refusal must not cite one.
                     : card.Mod.Kind is ModKind.Mod or ModKind.Any
                         ? $"No build for {instance.LoaderName} {instance.MinecraftVersion}."
@@ -71,5 +80,23 @@ public static class ModInstall
         }
 
         return card.Notice;
+    }
+
+    /// <summary>
+    /// Opens the author's own download page for exactly this file — which starts the download by
+    /// itself — and waits for it to land in a Downloads folder, then files it where it belongs.
+    /// The person's browser fetches it from CurseForge's site, which is what the author's flag asks.
+    /// </summary>
+    public static async Task<bool> FetchByHandAsync(BlockedDownload item)
+    {
+        AsobuLauncher.OpenUrl(item.PageUrl);
+
+        // ponytail: fixed ten minutes, no cancel button; add one if people sit through slow downloads.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+
+        var landed = false;
+        await new ManualDownloadWatcher().RunAsync([item], _ => landed = true, timeout.Token);
+
+        return landed;
     }
 }

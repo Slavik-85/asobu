@@ -50,6 +50,12 @@ public enum CrashCause
     /// prints a block saying what was executing, and saves an hs_err file with the rest.
     /// </summary>
     JvmFatal,
+
+    /// <summary>
+    /// Another program's overlay, injected into the game's process, faulted there — Overwolf's,
+    /// Discord's, Steam's. Nothing in the instance to change; the overlay is turned off for Java.
+    /// </summary>
+    Overlay,
     Java,
     CorruptFiles,
     /// <summary>The game shut down normally. Not every log in the list is a crash.</summary>
@@ -166,7 +172,13 @@ public static partial class CrashAnalyzer
         // Before the log is even looked at. A process killed by the operating system left a log
         // that ends mid-sentence and looks perfectly healthy, so every check below would call it
         // clean and send somebody to read crash reports that were never written.
-        if (NativeFault(exitCode) is { } fault) return Killed(fault, report);
+        //
+        // Unless the log does say what happened. Java crashing on its way out exits with the same
+        // access violation as a driver fault, after the game has already printed its own crash
+        // report — and the number alone answered "graphics driver" without reading a word of it.
+        if (NativeFault(exitCode) is { } fault
+            && (string.IsNullOrWhiteSpace(report) || !CrashMarkerPattern().IsMatch(report)))
+            return Killed(fault, report);
 
         if (string.IsNullOrWhiteSpace(report)) return CrashAnalysis.None;
 
@@ -184,7 +196,17 @@ public static partial class CrashAnalyzer
         // The block the runtime prints on its way out is the only part of the log written by the
         // crash, so it answers first or a mod gets blamed for being the noisiest thing in a file
         // it had nothing to do with.
+        //
+        // Except when the block came after the game had already finished, crashed or not. Then it
+        // is the last thing in the log without being the thing that went wrong.
+        if (OnTheWayOut(report, installedMods) is { } late) return late;
+
         if (JvmFatal(report, installedMods) is { } fatal) return fatal;
+
+        // From here on, only the crash report the game printed, where there is one. A launch log
+        // carries the whole session above it, and a handled exception from twenty minutes earlier
+        // is the first trace in the file — which the hunt below treats as the one that killed it.
+        report = CrashSection(report);
 
         if (Environmental(report) is { } environmental) return environmental;
 
@@ -194,7 +216,7 @@ public static partial class CrashAnalyzer
         // uninstall a mod that was never at fault.
         if (LoaderSplit(report) is { } split) return split;
 
-        if (MissingDependency(report) is { } missing) return missing;
+        if (MissingDependency(report, installedMods) is { } missing) return missing;
 
         // Before the suspect hunt: the loader has already said exactly which two mods disagree,
         // and guessing from stack frames after that would be picking through a bin next to a
@@ -211,6 +233,10 @@ public static partial class CrashAnalyzer
         // cast — where both are true, the missing method is the more useful thing to be told.
         if (AdapterMismatch(report, installedMods) is { } mismatch) return mismatch;
 
+        // Also before the hunt. Forge's "Suspected Mod" for a mixin that failed to apply is
+        // whichever mod's screen happened to load the class first, which is never the culprit.
+        if (MixinConflict(report, installedMods) is { } mixin) return mixin;
+
         var suspects = FindSuspects(report, installedMods);
         if (suspects.Count == 0)
         {
@@ -221,6 +247,9 @@ public static partial class CrashAnalyzer
         }
 
         var top = suspects[0];
+
+        if (StaleBuild(report, installedMods, top) is { } stale) return stale;
+
         return new CrashAnalysis(
             CrashCause.Mod,
             top.NamedDirectly
@@ -272,6 +301,154 @@ public static partial class CrashAnalyzer
             $"It {fault}, which ends the game outright — no crash report is written, which is why "
             + "there isn't one. Almost always a graphics driver. Updating yours is the first thing to try.",
             []);
+    }
+
+    // ---- After the game had already finished ----
+
+    private const string CrashReportHeader = "---- Minecraft Crash Report ----";
+
+    /// <summary>
+    /// The verdict for a log whose fatal block came after the game was done with: it had printed
+    /// its own crash report, or said it was stopping. Overwolf's overlay faulting inside
+    /// System.exit did exactly this on every quit for two days, and each one was reported as
+    /// "Java stopped the game" — on top of a real crash report in half of them, which went unread.
+    ///
+    /// Where the game printed a report, that report is the answer, with a line about the exit.
+    /// Where it was closing normally, nothing was lost and no mod needs turning off.
+    /// </summary>
+    private static CrashAnalysis? OnTheWayOut(string report, IReadOnlyList<ModEntry> installedMods)
+    {
+        if (FatalBannerPattern().Match(report) is not { Success: true } banner) return null;
+
+        var before = report[..banner.Index];
+        var printed = before.LastIndexOf(CrashReportHeader, StringComparison.Ordinal);
+
+        // An error file has no log above its banner. It names the operation the VM thread was
+        // running instead, and "Exit" is the process closing.
+        if (printed < 0 && !StoppingPattern().IsMatch(before) && !VmExitPattern().IsMatch(report)) return null;
+
+        var overlay = ReadFatalError(report)?.Library is { } library && OverlayLibraryPattern().IsMatch(library)
+            ? OverlayName(library)
+            : null;
+
+        if (printed >= 0)
+        {
+            var real = Analyze(before[printed..], installedMods);
+
+            return real with
+            {
+                Advice = real.Advice + " Java then crashed while the game was closing"
+                    + (overlay is null ? "" : $", inside {overlay}") + " — that part is not the cause.",
+            };
+        }
+
+        return overlay is not null
+            ? new CrashAnalysis(CrashCause.Overlay, $"{overlay} crashed the game as it closed",
+                $"The game had already shut down normally when {overlay} faulted inside it on the way out, so "
+                + "nothing was lost and no mod is involved. Turning that overlay off for Minecraft (javaw.exe) "
+                + "stops it.", [])
+            : new CrashAnalysis(CrashCause.JvmFatal, "Java crashed while the game was closing",
+                "The game had already shut down normally, so nothing was lost and no mod is to blame.", []);
+    }
+
+    /// <summary>The program behind an overlay's DLL, by the name somebody would find it under.</summary>
+    private static string OverlayName(string library) => library.ToLowerInvariant() switch
+    {
+        var dll when dll.StartsWith("ow") => "Overwolf (the CurseForge app's in-game overlay)",
+        var dll when dll.StartsWith("rtss") => "RivaTuner Statistics Server",
+        var dll when dll.StartsWith("graphics-hook") => "OBS game capture",
+        var dll when dll.StartsWith("discordhook") => "Discord's overlay",
+        var dll when dll.StartsWith("gameoverlayrenderer") => "Steam's overlay",
+        var dll when dll.StartsWith("nvspcap") => "NVIDIA's overlay",
+        var dll when dll.StartsWith("medal") => "Medal",
+        _ => library,
+    };
+
+    /// <summary>
+    /// The crash report the game printed into a launch log, or the whole text when it printed none.
+    /// The last one, because that is the crash that ended the session.
+    /// </summary>
+    private static string CrashSection(string report)
+    {
+        var start = report.LastIndexOf(CrashReportHeader, StringComparison.Ordinal);
+        if (start <= 0) return report;
+
+        var end = report.IndexOf("#@!@# Game crashed!", start, StringComparison.Ordinal);
+        return end < 0 ? report[start..] : report[start..end];
+    }
+
+    // ---- Mixins that would not apply ----
+
+    /// <summary>
+    /// A mixin that failed to apply, and — when Mixin says so — the other mod's mixin that got to
+    /// the method first:
+    ///
+    ///     MixinApplyError: Mixin [vivecraft.mixins.json:client_vr.KeyboardInputVRMixin] ... FAILED during APPLY
+    ///     InvalidInjectionException: ... cannot inject into KeyboardInput::m_214106_(ZF)V merged by
+    ///         hyperslide.mixins.DisableMovementMovementarrowsMixin with priority 1000
+    ///
+    /// Both mods are named, the one that merged first ahead: turning either off fixes it, and the
+    /// one that rewrote the method is usually the smaller loss. Forge's own suspect for this crash
+    /// was Essential, whose menu happened to load the class — and turning that off fixed nothing.
+    /// </summary>
+    private static CrashAnalysis? MixinConflict(string report, IReadOnlyList<ModEntry> installedMods)
+    {
+        if (MixinApplyPattern().Match(report) is not { Success: true } apply) return null;
+
+        var tokens = BuildTokens(installedMods);
+
+        var config = apply.Groups["config"].Value;
+        var failing = Installed(Resolve(
+            MixinConfigIdPattern().Match(config) is { Success: true } id ? id.Groups["id"].Value : config, tokens));
+
+        var merged = MergedByPattern().Match(report);
+        var partner = merged.Success ? Installed(OwnerOf(merged.Groups["by"].Value, tokens)) : null;
+
+        if (failing is not null && partner is not null && !ReferenceEquals(failing, partner))
+            return new CrashAnalysis(CrashCause.Mod, $"{failing.Name} and {partner.Name} patch the same code",
+                $"{partner.Name} rewrote a piece of the game that {failing.Name} also needs to change, so "
+                + $"{failing.Name}'s change could not go in and the game stopped. Neither is broken on its own: "
+                + "turn one of them off.",
+                [
+                    new CrashSuspect(partner.Name, partner.FileName, DirectAccusationScore, true, [Shorten(merged.Value)]),
+                    new CrashSuspect(failing.Name, failing.FileName, DirectAccusationScore, true, [Shorten(apply.Value)]),
+                ]);
+
+        if ((failing ?? partner) is not { } mod) return null;
+
+        return new CrashAnalysis(CrashCause.Mod, $"{mod.Name}'s changes to the game would not apply",
+            $"{mod.Name} tried to change a piece of the game it could not find or could not reach, which usually "
+            + "means it was made for another version of the game or of something it works with. Turn it off, "
+            + "or try another build of it.",
+            [new CrashSuspect(mod.Name, mod.FileName, DirectAccusationScore, true, [Shorten(apply.Value)])]);
+
+        ModEntry? Installed(string? file) => file is null
+            ? null
+            : installedMods.FirstOrDefault(m => m.FileName.Equals(file, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The top suspect, recast as the wrong build of itself when the game's own report opens with
+    /// it calling something that is not there — JEI 15.70 calling a method its own other half no
+    /// longer had. The mod is wanted; the fix is another build, which the sheet already knows how
+    /// to fetch while remembering this one crashed.
+    /// </summary>
+    private static CrashAnalysis? StaleBuild(string report, IReadOnlyList<ModEntry> installedMods, CrashSuspect top)
+    {
+        if (HeadLinkagePattern().Match(report) is not { Success: true } head) return null;
+
+        var frame = head.Groups["frame"].Value;
+        var file = StampedJar(frame) is { } jar && installedMods.Any(m => m.FileName.Equals(jar, StringComparison.OrdinalIgnoreCase))
+            ? jar
+            : OwnerOf(frame, BuildTokens(installedMods));
+
+        if (file is null || !file.Equals(top.FileName, StringComparison.OrdinalIgnoreCase)) return null;
+
+        return new CrashAnalysis(CrashCause.WrongBuild, $"{top.Name} does not match the rest of this instance",
+            $"Its code called something that is not there — {Shorten(head.Groups["ex"].Value)} — which is what a "
+            + $"build made against a different version looks like. Another build of {top.Name} is the fix, not "
+            + "turning it off.",
+            [top with { NamedDirectly = true }]);
     }
 
     // ---- The JVM's own fatal error ----
@@ -399,6 +576,14 @@ public static partial class CrashAnalyzer
                 + "off is the fix; nothing in the game's own settings touches it." + fatal.Detail, []);
         }
 
+        // Another program's overlay, loaded into the game to draw over it. Its DLL is in the frame
+        // because it was the thing executing; the game and its mods only happened to be its host.
+        if (library is not null && OverlayLibraryPattern().IsMatch(library))
+            return new CrashAnalysis(CrashCause.Overlay, $"{OverlayName(library)} crashed the game",
+                $"The game {fatal.InPlainWords} inside {library}, which {OverlayName(library)} puts into games to "
+                + "draw over them. No mod is involved. Turning that overlay off for Minecraft (javaw.exe) is the fix."
+                + fatal.Detail, []);
+
         if (library is not null && JvmLibraryPattern().IsMatch(library))
         {
             // The compiler, not the game. Java compiles the code it is running as it runs it, on
@@ -517,7 +702,8 @@ public static partial class CrashAnalyzer
 
         var driver = GraphicsDriverPattern().Match(report);
 
-        var full = device.Groups["name"].Value.Trim();
+        // "NVIDIA GeForce RTX 4070/PCIe/SSE2" is the card, then how it is attached.
+        var full = device.Groups["name"].Value.Split('/')[0].Trim();
         var name = TrailingVendorPattern().Replace(full, "");
 
         return (name.Length > 0 ? name : full, driver.Success ? driver.Groups["v"].Value : null);
@@ -525,20 +711,26 @@ public static partial class CrashAnalyzer
 
     /// <summary>
     /// "Using graphics device: Intel(R) UHD Graphics (Intel)" — vanilla writes this every launch.
+    /// Forge 1.20 and later print only their early window's "GL info: NVIDIA GeForce RTX 4070/PCIe/SSE2
+    /// GL version 4.6.0 NVIDIA 617.14", so that is read too.
     ///
     /// Read to the end of the line rather than to the first bracket. The first bracket in that
     /// example sits inside "Intel(R)", so stopping there names the card "Intel"; the trailing
-    /// vendor in brackets is taken off afterwards instead.
+    /// vendor in brackets is taken off afterwards instead. Not past "]" or "&lt;", which is where
+    /// an XML log's CDATA closes — reading through it put "]]&gt;&lt;/log4j:Message&gt;" in the headline.
     /// </summary>
-    [GeneratedRegex(@"Using graphics device: (?<name>[^\r\n]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"Using graphics device: (?<name>[^\r\n\]<]+)|GL info: (?<name>[^\r\n]+?) GL version", RegexOptions.IgnoreCase)]
     private static partial Regex GraphicsDevicePattern();
 
     /// <summary>The " (Intel)" a card's name ends with, which only repeats what the name says.</summary>
     [GeneratedRegex(@"\s*\([^()]*\)\s*$")]
     private static partial Regex TrailingVendorPattern();
 
-    /// <summary>Sodium's probe, which is the only line carrying the driver's own version.</summary>
-    [GeneratedRegex(@"openglIcdVersion=(?<v>[\d.]+)", RegexOptions.IgnoreCase)]
+    /// <summary>
+    /// The driver's own version: Sodium's probe, or the end of Forge's GL version string —
+    /// "4.6.0 NVIDIA 617.14,", "4.6.0 - Build 31.0.101.4502,".
+    /// </summary>
+    [GeneratedRegex(@"openglIcdVersion=(?<v>[\d.]+)|GL version \S+ [^\r\n,]*?(?<v>\d+(?:\.\d+)+),", RegexOptions.IgnoreCase)]
     private static partial Regex GraphicsDriverPattern();
 
     /// <summary>
@@ -792,11 +984,36 @@ public static partial class CrashAnalyzer
         return null;
     }
 
-    private static CrashAnalysis? MissingDependency(string report)
+    private static CrashAnalysis? MissingDependency(string report, IReadOnlyList<ModEntry> installedMods)
     {
         // Forge's own block first, because it is the most precise thing in the file and the
-        // loosest patterns below would otherwise answer for it.
-        if (ForgeModFailure(report) is { } stated) return stated;
+        // loosest patterns below would otherwise answer for it. Its sentence covers one mod; a
+        // dependency missing outright from the same table still rides along, so it can be fetched.
+        if (ForgeModFailure(report) is { } stated)
+            return stated.Missing is null && MissingDependencies.Find(report).FirstOrDefault() is { } alongside
+                ? stated with { Missing = alongside }
+                : stated;
+
+        // Forge's table and Fabric's sentence, read exactly as the sheet after a crash reads them,
+        // so this verdict carries the dependency and can fetch it. The loose pattern below used to
+        // answer for Forge's table first, and read the column heading: "Missing dependency: Mod ID".
+        if (MissingDependencies.Find(report).FirstOrDefault() is { } absent)
+        {
+            // The mod that asked, as a fallback fix: when no shop has the dependency, turning off
+            // what wanted it is what gets the game going.
+            var asker = BuildTokens(installedMods) is var tokens && Resolve(absent.RequiredBy, tokens) is { } file
+                ? installedMods.FirstOrDefault(m => m.FileName.Equals(file, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            return new CrashAnalysis(CrashCause.MissingDependency, $"Missing dependency: {absent.Name}",
+                $"{absent.RequiredBy} needs {absent.Name} and it isn't installed, so the loader stopped before the "
+                + "game started. Asobu can fetch it — or, if no shop has it, turning "
+                + $"{asker?.Name ?? absent.RequiredBy} off gets the game going without it.",
+                asker is null ? [] : [new CrashSuspect(asker.Name, asker.FileName, DirectAccusationScore, true, [Shorten(absent.Evidence)])])
+            {
+                Missing = absent,
+            };
+        }
 
         var match = MissingDependencyPattern().Match(report);
         if (!match.Success) return null;
@@ -963,6 +1180,7 @@ public static partial class CrashAnalyzer
     /// </summary>
     private static CrashAnalysis? ForgeModFailure(string report)
     {
+        report = ColourCodePattern().Replace(report, "");
         if (ForgeFailurePattern().Match(report) is not { Success: true } failure) return null;
 
         var by = failure.Groups["by"].Value;
@@ -996,6 +1214,19 @@ public static partial class CrashAnalyzer
                     $"It needs {dep} {range}, and this instance is {state}. The mod is the thing to change, not "
                     + $"the instance: the build of {by} made for {dep} {state} is the fix, and turning it off is "
                     + "the answer if there isn't one.", []);
+
+            // Too new rather than too old, which turns the advice round. "Updating lrtactical is the
+            // fix" was said to somebody whose lrtactical was 0.4.3 against a ceiling of 0.3.0.
+            if (ForgeCeilingPattern().Match(range) is { Success: true } ceiling
+                && (ceiling.Groups["hi"].Success
+                    ? VersionBound.Compare(state, ceiling.Groups["hi"].Value) > 0
+                    : VersionBound.Compare(state, ceiling.Groups["lt"].Value) >= 0))
+                return new CrashAnalysis(CrashCause.MissingDependency, $"{dep} is too new for {by}",
+                    $"{asked} needs {dep} {range}, and this instance has {state}. Going back to {dep} "
+                    + (ceiling.Groups["hi"].Success
+                        ? $"{ceiling.Groups["hi"].Value} or earlier"
+                        : $"below {ceiling.Groups["lt"].Value}")
+                    + $" is the fix — or a newer {by}, if there is one made for {dep} {state}.", []);
 
             return new CrashAnalysis(CrashCause.MissingDependency, $"{dep} is the wrong version",
                 $"{asked} needs {dep} {range}, and this instance has {state}. Updating {dep} is the fix — "
@@ -1178,13 +1409,10 @@ public static partial class CrashAnalyzer
                 continue;
             }
 
-            var qualified = frame.Groups["at"].Value;
-
-            foreach (var (token, file) in tokens)
-            {
-                if (!qualified.Contains(token, StringComparison.OrdinalIgnoreCase)) continue;
-                Accuse(file, weight, line);
-            }
+            // Whole package segments, not any substring. MezzConfig's "mezz" sits inside
+            // "mezz.jei", From The Fog's "from" inside "fromJson", Player Animator's "player"
+            // inside "multiplayer" — each of those took the blame for somebody else's crash.
+            if (OwnerOf(frame.Groups["at"].Value, tokens) is { } owner) Accuse(owner, weight, line);
         }
 
         var byName = installedMods.ToDictionary(m => m.FileName, StringComparer.OrdinalIgnoreCase);
@@ -1226,7 +1454,10 @@ public static partial class CrashAnalyzer
 
     private static IEnumerable<string> TokensFor(ModEntry mod)
     {
-        if (Usable(mod.ModId)) yield return mod.ModId!;
+        // A declared id is the mod's own word for itself, so three letters will do — JEI is "jei"
+        // and its classes live under mezz.jei. Guessed tokens below still need four.
+        var declared = mod.ModId is { Length: >= 3 } id && !Noise.Contains(id);
+        if (declared) yield return mod.ModId!;
 
         // "sodium-fabric-0.5.8+mc1.20.1.jar" -> "sodium". Strip the extension, then everything
         // from the first version-looking segment onwards, then the loader name.
@@ -1236,8 +1467,10 @@ public static partial class CrashAnalyzer
         var slug = stem.Replace('_', '-').Replace(' ', '-').Trim('-');
         if (Usable(slug)) yield return slug;
 
+        // The file name's first word, only when the mod never said what it is called: with an id
+        // to go on, "mezz" from mezz-config is a guess that only ever matches somebody else.
         var head = slug.Split('-', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (Usable(head)) yield return head!;
+        if (!declared && Usable(head)) yield return head!;
 
         var compact = mod.Name.Replace(" ", "").Replace("-", "");
         if (Usable(compact)) yield return compact;
@@ -1297,8 +1530,18 @@ public static partial class CrashAnalyzer
     {
         if (CrashMarkerPattern().IsMatch(report)) return true;
 
+        // The last real line has to be part of a trace. Any frame anywhere in the tail used to do,
+        // and a mod's handled exception followed by "Stopping!" is how half of all sessions end —
+        // each of those came up as a crash with a mod to turn off.
         var tail = report.Length <= TailScan ? report : report[^TailScan..];
-        return StackFramePattern().IsMatch(tail);
+        var last = tail.Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .LastOrDefault(line => line.Trim().Length > 0 && !TailNoisePattern().IsMatch(line));
+
+        return last is not null
+               && (StackFramePattern().IsMatch(last)
+                   || last.TrimStart().StartsWith("Caused by:", StringComparison.Ordinal)
+                   || last.TrimStart().StartsWith("... ", StringComparison.Ordinal));
     }
 
     // ---- Patterns ----
@@ -1478,8 +1721,13 @@ public static partial class CrashAnalyzer
         RegexOptions.IgnoreCase)]
     private static partial Regex JavaVersionPattern();
 
-    [GeneratedRegex(@"ZipException|Invalid CEN header|error in opening zip file|Corrupted|" +
-        @"SHA-?1 mismatch|checksum mismatch",
+    /// <summary>
+    /// A jar that would not open. Not "checksum mismatch" or "corrupted" on their own: Essential
+    /// logs a checksum mismatch for its cosmetics cache in every session, and a config line can say
+    /// "corrupted" — with those in, every crash in such an instance read as a damaged download.
+    /// </summary>
+    [GeneratedRegex(@"java\.util\.zip\.ZipException|Invalid CEN header|error in opening zip file|zip END header not found|" +
+        @"SHA-?1 mismatch",
         RegexOptions.IgnoreCase)]
     private static partial Regex CorruptPattern();
 
@@ -1517,9 +1765,22 @@ public static partial class CrashAnalyzer
     /// twice by the template and both are matched, so a line that merely looks like this cannot
     /// half-match into a different mod's name.
     /// </summary>
-    [GeneratedRegex(@"Failure message: Mod (?<by>[\w.$+-]+) requires (?<dep>[\w.$+-]+) (?<range>[^\r\n]+)"
+    /// <remarks>
+    /// A launch log has the same sentence without the "Failure message:" in front, as the message of
+    /// the ModLoadingException it throws.
+    /// </remarks>
+    [GeneratedRegex(@"(?:Failure message: |ModLoadingException: )Mod (?<by>[\w.$+-]+) requires (?<dep>[\w.$+-]+) (?<range>[^\r\n]+)"
         + @"\r?\n\s*Currently, \k<dep> is (?<state>[^\r\n]+)")]
     private static partial Regex ForgeFailurePattern();
+
+    /// <summary>
+    /// The top of a Forge range sentence, as its language file words each shape: "hi" a ceiling
+    /// that is allowed ("between 0.2.4 and 0.3.0 (inclusive)", "0.3.0 or below"), "lt" one that is
+    /// not ("0.2.4 or above, and below 0.3.0", "below 0.3.0", "between … (exclusive)").
+    /// </summary>
+    [GeneratedRegex(@"between \S+ and (?<hi>[\w.+-]+) \(inclusive\)|between \S+ and (?<lt>[\w.+-]+) \(exclusive\)|"
+        + @"(?<hi>[\w.+-]+) or below|below (?<lt>[\w.+-]+)")]
+    private static partial Regex ForgeCeilingPattern();
 
     /// <summary>The jar a failed mod came out of, which Forge prints just above its failure.</summary>
     [GeneratedRegex(@"Mod File: (?<file>[^\r\n]+)")]
@@ -1527,7 +1788,6 @@ public static partial class CrashAnalyzer
 
     /// <summary>Fabric and Forge both spell missing dependencies out in plain words.</summary>
     [GeneratedRegex(@"requires (?:any )?version [^,]+ of (?<dep>[\w .'-]+), which is missing|" +
-        @"Missing (?:or unsupported )?mandatory dependenc(?:y|ies)[:\s]+(?<dep>[\w .'-]+)|" +
         @"Mod (?:'[^']+'|""[^""]+"") requires (?<dep>[\w.'-]+) ",
         RegexOptions.IgnoreCase)]
     private static partial Regex MissingDependencyPattern();
@@ -1585,8 +1845,54 @@ public static partial class CrashAnalyzer
         @"development environment", RegexOptions.IgnoreCase)]
     private static partial Regex HarmlessPattern();
 
-    [GeneratedRegex(@"^\s+at (?<at>[\w$.]+)", RegexOptions.Multiline)]
+    /// <summary>
+    /// "at net.foo.Bar.baz(...)", past whatever loader or module prefix comes first: Fabric's
+    /// "knot//", "java.base/", ModLauncher's "TRANSFORMER/mod@1.0/". Without skipping those every
+    /// such frame read as belonging to "knot".
+    /// </summary>
+    [GeneratedRegex(@"^\s+at (?:[^\s/(]+/+)*(?<at>[\w$.]+)", RegexOptions.Multiline)]
     private static partial Regex StackFramePattern();
+
+    /// <summary>What can follow a trace at the very end of a log without being part of it.</summary>
+    [GeneratedRegex(@"^\s*(?:\]\]></log4j:Throwable>|</log4j:Event>|activate hook:.*)\s*$")]
+    private static partial Regex TailNoisePattern();
+
+    /// <summary>The game announcing a normal shutdown, in a plain log or an XML one.</summary>
+    [GeneratedRegex(@"(?:\]: |<!\[CDATA\[)Stopping!")]
+    private static partial Regex StoppingPattern();
+
+    /// <summary>An error file's note that the VM thread was closing the process when it died.</summary>
+    [GeneratedRegex(@"^VM_Operation \([^)]*\): Exit\b", RegexOptions.Multiline)]
+    private static partial Regex VmExitPattern();
+
+    /// <summary>DLLs other programs inject into games to draw over them.</summary>
+    [GeneratedRegex(@"^(?:owe-client|ow-graphics|ow-overlay|overwolf|RTSSHooks|graphics-hook|DiscordHook|GameOverlayRenderer|nvspcap|MedalHook)",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex OverlayLibraryPattern();
+
+    /// <summary>
+    /// The exception a failed mixin throws. Anchored on its class name: Mixin also logs a failure in
+    /// an optional config in the same words, as a warning, and that one stops nothing.
+    /// </summary>
+    [GeneratedRegex(@"MixinApplyError: Mixin \[(?<config>[^\]:\s]+\.json):(?<mixin>[^\]\s]+)\] from phase \[\w+\] in config \[[^\]]+\] FAILED during \w+")]
+    private static partial Regex MixinApplyPattern();
+
+    /// <summary>"vivecraft.mixins.json", "mixins.sodium.json", "create-common.mixins.json" → the mod's id.</summary>
+    [GeneratedRegex(@"^(?:mixins?\.)?(?<id>[\w-]+?)(?:[.-](?:common|client|forge|fabric|neoforge))?(?:\.mixins?)?\.json$",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex MixinConfigIdPattern();
+
+    /// <summary>The other mod's mixin that changed the method first.</summary>
+    [GeneratedRegex(@"InvalidInjectionException: [^\n]*? merged by (?<by>[\w.$]+) with priority")]
+    private static partial Regex MergedByPattern();
+
+    /// <summary>A crash report whose own exception is a call to something that isn't there, with the frame that made it.</summary>
+    [GeneratedRegex(@"Description: [^\r\n]*\r?\n\s*\r?\n(?<ex>(?:java\.lang\.)?(?:NoSuchMethodError|NoSuchFieldError|AbstractMethodError|IncompatibleClassChangeError)[^\r\n]*)\r?\n(?<frame>\s+at [^\r\n]+)")]
+    private static partial Regex HeadLinkagePattern();
+
+    /// <summary>Minecraft's colour codes, which Forge leaves in its messages: "Mod §ecs2_wt§r requires §6lrtactical§r".</summary>
+    [GeneratedRegex(@"§[0-9a-fk-or]", RegexOptions.IgnoreCase)]
+    private static partial Regex ColourCodePattern();
 
     /// <summary>Forge's "~[thejar-1.2.3.jar%23265!/:1.2.3]" on the end of a stack frame.</summary>
     [GeneratedRegex(@"~\[(?<jar>[^\]%]+(?:%20[^\]%]+)*\.jar)", RegexOptions.IgnoreCase)]

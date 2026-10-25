@@ -50,6 +50,9 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
             ?? throw new InvalidDataException(
                 "The loader installer carries no version document, in either of the two places Forge has kept one.");
 
+        // Before the marker, so an instance installed without these is mended on its next launch.
+        ExtractBundledLibraries(archive);
+
         var marker = Path.Combine(paths.VersionDir(version.Id), MarkerFile);
         if (File.Exists(marker)) return version;
 
@@ -136,7 +139,14 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
         var directory = Path.Combine(paths.Cache, "installers");
         Directory.CreateDirectory(directory);
 
-        var destination = Path.Combine(directory, Path.GetFileName(new Uri(url).LocalPath));
+        // NeoForge's 1.20.1 builds share file names with Forge's own — both publish
+        // forge-1.20.1-47.1.N-installer.jar — so a cached copy of one was handed out for the other.
+        var uri = new Uri(url);
+        var name = Path.GetFileName(uri.LocalPath);
+        if (uri.Host.Contains("neoforged", StringComparison.OrdinalIgnoreCase) && name.StartsWith("forge-", StringComparison.Ordinal))
+            name = "neo" + name;
+
+        var destination = Path.Combine(directory, name);
         if (File.Exists(destination)) return destination;
 
         progress?.Report(new InstallProgress("Fetching the loader installer", 0));
@@ -278,6 +288,8 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
             CreateNoWindow = true,
         };
 
+        Launch.GameLauncher.CleanJavaEnvironment(startInfo);
+
         startInfo.ArgumentList.Add("-cp");
         startInfo.ArgumentList.Add(string.Join(Path.PathSeparator, classpath));
         startInfo.ArgumentList.Add(mainClass);
@@ -386,6 +398,43 @@ public sealed class ForgeInstaller(AsobuPaths paths, Downloader downloader)
         // Written even where one is already there: a half-extracted jar from an interrupted
         // install would otherwise be kept forever, and the file is a few megabytes.
         entry.ExtractToFile(destination, overwrite: true);
+    }
+
+    /// <summary>
+    /// Copies out the libraries an installer carries under maven/, as Forge's own installer does.
+    ///
+    /// From 1.12.2's 14.23.5.2847 on, Forge's own jar is listed with no download address and
+    /// ships only in there — so nothing fetched it, the classpath named a file that did not exist,
+    /// and the game died looking for FMLTweaker. Prism's metadata points that entry at the
+    /// universal jar instead; taking it from the installer gets the same file without the trip.
+    /// </summary>
+    private void ExtractBundledLibraries(ZipArchive archive)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(paths.Libraries)) + Path.DirectorySeparatorChar;
+
+        foreach (var entry in archive.Entries)
+        {
+            if (!entry.FullName.StartsWith("maven/", StringComparison.Ordinal) || entry.FullName.EndsWith('/')) continue;
+
+            var destination = Path.GetFullPath(Path.Combine(paths.Libraries, entry.FullName["maven/".Length..]));
+
+            // Only ever into the libraries folder, whatever a "../" in the entry's name says.
+            if (!destination.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (File.Exists(destination) && new FileInfo(destination).Length == entry.Length) continue;
+
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                entry.ExtractToFile(destination, overwrite: true);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Held open by a game already running on it, or a second instance extracting the
+                // same build at the same moment. Not worth failing a launch over: the next one
+                // tries again.
+            }
+        }
     }
 
     private sealed class InstallProfile

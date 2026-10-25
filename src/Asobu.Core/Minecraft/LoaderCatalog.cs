@@ -122,8 +122,21 @@ public sealed partial class LoaderCatalog(HttpClient http)
     [GeneratedRegex(@"<version>([^<]+)</version>")]
     private static partial Regex ForgeVersionPattern();
 
-    public static string NeoForgeInstallerUrl(string neoForgeVersion) =>
-        $"{NeoForgeMaven}{neoForgeVersion}/neoforge-{neoForgeVersion}-installer.jar";
+    /// <summary>
+    /// Where a NeoForge build's installer is. 1.20.1's builds are the exception: NeoForge still
+    /// published them under Forge's name, net.neoforged:forge:1.20.1-47.1.x, so the usual address
+    /// is a 404. Packs write those as "47.1.106" or "1.20.1-47.1.106"; both are read.
+    /// </summary>
+    public static string NeoForgeInstallerUrl(string neoForgeVersion)
+    {
+        var bare = neoForgeVersion.StartsWith("1.20.1-", StringComparison.Ordinal)
+            ? neoForgeVersion["1.20.1-".Length..]
+            : neoForgeVersion;
+
+        return bare.StartsWith("47.", StringComparison.Ordinal)
+            ? $"https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-{bare}/forge-1.20.1-{bare}-installer.jar"
+            : $"{NeoForgeMaven}{bare}/neoforge-{bare}-installer.jar";
+    }
 
     /// <summary>"1.21.1" becomes "21.1.", "1.21" becomes "21.0.". Anything else has no mapping.</summary>
     private static string? NeoForgePrefix(string gameVersion)

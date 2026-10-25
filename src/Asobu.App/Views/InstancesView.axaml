@@ -9,6 +9,16 @@
 
   <Panel>
 
+    <!-- Up up down down left right left right B A. Behind everything, and never in the way of
+         a click. Filled in from code: see InstancesView.ToggleCat. -->
+    <Image x:Name="Cat" Stretch="Uniform" Margin="40" Opacity="0" IsHitTestVisible="False">
+      <Image.Transitions>
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.6"/>
+        </Transitions>
+      </Image.Transitions>
+    </Image>
+
     <!-- ================= Library (card grid) ================= -->
     <Grid IsVisible="{Binding IsLibraryVisible}" RowDefinitions="Auto,*" Margin="30,28,30,0">
 
@@ -438,7 +448,18 @@
                      flexible one, so it is given whatever room is left over instead of being
                      pushed along by the fixed-width box in front of it until it sat against
                      Open folder. -->
-                <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,*" VerticalAlignment="Center">
+                <!-- When Update all turns up there is not room for everything at the window's
+                     narrowest. The search box gives way first, down to a usable 80, and the
+                     update check's note trims itself; the count keeps its width. It used to sit
+                     in a StackPanel, which measures its children with infinite width, so it never
+                     trimmed and simply drew underneath the buttons. -->
+                <Grid Grid.Column="0" VerticalAlignment="Center">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="4*" MinWidth="80" MaxWidth="150"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
                   <!-- What the table is showing. The count follows it rather than leading, since
                        the kind is the thing being chosen and the number only describes it. -->
                   <ComboBox Grid.Column="0" Classes="field" ItemsSource="{Binding ContentKinds}"
@@ -454,18 +475,16 @@
                   <!-- Beside the kind rather than above the table, because it narrows what the
                        kind selected: the two questions are asked together and answered together. -->
                   <TextBox Grid.Column="1" Text="{Binding ContentSearch}" Watermark="Search"
-                           Width="130" Margin="10,0" VerticalAlignment="Center"
+                           Margin="10,0" VerticalAlignment="Center"
                            IsVisible="{Binding HasContent}"/>
 
-                  <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
-                              Margin="0,0,12,0" VerticalAlignment="Center">
-                    <TextBlock Classes="label" Text="{Binding ContentCountLabel}"
-                               VerticalAlignment="Center" IsVisible="{Binding !HasNoMods}"
-                               TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Classes="label" Text="checking for updates&#x2026;"
-                               VerticalAlignment="Center" IsVisible="{Binding IsCheckingUpdates}"
-                               TextTrimming="CharacterEllipsis"/>
-                  </StackPanel>
+                  <TextBlock Grid.Column="2" Classes="label" Text="{Binding ContentCountLabel}"
+                             Margin="0,0,10,0" VerticalAlignment="Center"
+                             IsVisible="{Binding !HasNoMods}"/>
+                  <TextBlock Grid.Column="3" Classes="label" Text="checking for updates&#x2026;"
+                             Margin="0,0,12,0" VerticalAlignment="Center"
+                             IsVisible="{Binding IsCheckingUpdates}"
+                             TextTrimming="CharacterEllipsis"/>
                 </Grid>
 
                 <Button Grid.Column="1" Classes="ghost" Content="Update all" Margin="0,0,8,0"
@@ -491,7 +510,7 @@
                    plain spacer of the same width: no label, no rule, nothing that would read as
                    a column. It only exists at all while something in the folder is behind. -->
               <DockPanel>
-                <Panel DockPanel.Dock="Right" Width="116" IsVisible="{Binding HasUpdates}"/>
+                <Panel DockPanel.Dock="Right" Width="170" IsVisible="{Binding HasUpdates}"/>
 
                 <!-- The class stays on the Grid: its styles are written as Grid.modHeader, and
                      the label rules as a direct-child selector under it. Wearing it on the
@@ -558,13 +577,21 @@
                       <DockPanel>
                         <!-- Outside the grid entirely: the same width the header leaves free, so
                              the columns are exactly what they were before any of this. -->
-                        <Panel DockPanel.Dock="Right" Width="116"
+                        <Panel DockPanel.Dock="Right" Width="170"
                                IsVisible="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).HasUpdates}">
-                          <Button Classes="primary" Content="Update" HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" IsVisible="{Binding HasUpdate}"
-                                  ToolTip.Tip="{Binding UpdateLabel}"
-                                  Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).UpdateModCommand}"
-                                  CommandParameter="{Binding}"/>
+                          <!-- Ignore is for a build that broke the game: it hides this update
+                               until a newer one comes out. -->
+                          <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" IsVisible="{Binding HasUpdate}">
+                            <Button Classes="primary" Content="Update"
+                                    ToolTip.Tip="{Binding UpdateLabel}"
+                                    Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).UpdateModCommand}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Classes="quiet" Content="Ignore"
+                                    ToolTip.Tip="Skip this update until a newer one is out"
+                                    Command="{Binding $parent[ItemsControl].((vm:InstancesViewModel)DataContext).IgnoreUpdateCommand}"
+                                    CommandParameter="{Binding}"/>
+                          </StackPanel>
                           <TextBlock Text="Updating&#x2026;" Classes="label" HorizontalAlignment="Center"
                                      VerticalAlignment="Center" IsVisible="{Binding IsUpdating}"/>
                           <TextBlock Text="Updated" Classes="label" HorizontalAlignment="Center"

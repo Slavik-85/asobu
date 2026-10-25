@@ -66,6 +66,9 @@ public sealed record ModDownload(
     /// build of it.
     /// </summary>
     public IReadOnlyList<string> Requires { get; init; } = Requires ?? [];
+
+    /// <summary>The provider's id for this file, for building the page a person downloads it from by hand.</summary>
+    public string? FileId { get; init; }
 }
 
 /// <summary>

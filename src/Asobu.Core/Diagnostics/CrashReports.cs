@@ -48,12 +48,14 @@ public static class CrashReports
     }
 
     /// <summary>Reads a report's text, tailing very large launch logs instead of loading them whole.</summary>
-    public static async Task<string> ReadAsync(string path, CancellationToken cancellationToken = default)
+    /// <param name="tailBytes">How much to keep of a file larger than that. The default suits a screen.</param>
+    public static async Task<string> ReadAsync(
+        string path, CancellationToken cancellationToken = default, int tailBytes = TailBytes)
     {
         var info = new FileInfo(path);
         if (!info.Exists) return "(file no longer exists)";
 
-        if (info.Length <= TailBytes)
+        if (info.Length <= tailBytes)
             return await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
 
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -65,17 +67,17 @@ public static class CrashReports
         if (Path.GetFileName(path).StartsWith("hs_err_pid", StringComparison.OrdinalIgnoreCase))
         {
             using var opening = new StreamReader(stream);
-            var buffer = new char[TailBytes];
+            var buffer = new char[tailBytes];
             var read = await opening.ReadBlockAsync(buffer, cancellationToken).ConfigureAwait(false);
 
-            return $"(showing the first {TailBytes / 1000} KB of a larger file)" + "\n\n"
+            return $"(showing the first {tailBytes / 1000} KB of a larger file)" + "\n\n"
                    + new string(buffer, 0, read);
         }
 
-        stream.Seek(-TailBytes, SeekOrigin.End);
+        stream.Seek(-tailBytes, SeekOrigin.End);
         using var reader = new StreamReader(stream);
         var tail = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
-        return $"(showing the last {TailBytes / 1000} KB of a larger file)\n\n{tail}";
+        return $"(showing the last {tailBytes / 1000} KB of a larger file)\n\n{tail}";
     }
 }

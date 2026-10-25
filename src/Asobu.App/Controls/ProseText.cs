@@ -93,6 +93,13 @@ public static class ProseText
     {
         if (sender is not TextBlock text || text.GetValue(HrefProperty) is not { Length: > 0 } href) return;
 
+        // Web links only. Any mod author writes these, and the shell would happily open a UNC path
+        // or another program's protocol handler — the first has Windows offer the user's
+        // credentials to whoever is at the other end.
+        if (!Uri.TryCreate(href, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            return;
+
         try
         {
             AsobuLauncher.OpenUrl(href);

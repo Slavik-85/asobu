@@ -7,6 +7,7 @@ using Asobu.Core;
 using Asobu.Core.Accounts;
 using Asobu.Core.Java;
 using Asobu.Core.Launch;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -17,6 +18,20 @@ public sealed record GpuOption(GpuPreference Value, string Label, string Detail)
 public sealed record JavaOption(string Value, string Label, string Detail);
 
 public sealed record SignInOption(AuthMethod Value, string Label, string Detail);
+
+/// <summary>One theme on the picker. Being checked is the whole interaction.</summary>
+public partial class ThemeChoice(ThemePreset preset, Action<ThemeChoice> picked) : ViewModelBase
+{
+    public string Name { get; } = preset.Name;
+
+    [ObservableProperty] public partial IBrush Swatch { get; set; } = preset.Swatch;
+    [ObservableProperty] public partial bool IsSelected { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        if (value) picked(this);
+    }
+}
 
 public partial class SettingsViewModel : ViewModelBase
 {
@@ -51,7 +66,82 @@ public partial class SettingsViewModel : ViewModelBase
             new(GpuPreference.Auto, "Let Windows decide", "Leave the system default alone."),
         ];
 
+        Themes =
+        [
+            .. Theming.Presets.Select(preset => new ThemeChoice(preset, PickTheme)),
+            new ThemeChoice(new ThemePreset(Theming.Custom, launcher.Settings.ThemeHue, launcher.Settings.ThemeTint), PickTheme),
+        ];
+
         Load();
+    }
+
+    // ---- Appearance ----
+
+    public IReadOnlyList<ThemeChoice> Themes { get; }
+
+    [ObservableProperty] public partial bool ModeSystem { get; set; }
+    [ObservableProperty] public partial bool ModeLight { get; set; }
+    [ObservableProperty] public partial bool ModeDark { get; set; }
+    [ObservableProperty] public partial bool IsCustomTheme { get; set; }
+    [ObservableProperty] public partial double ThemeHue { get; set; }
+    [ObservableProperty] public partial double ThemeTint { get; set; }
+
+    public string ThemeTintLabel => ThemeTint < 0.05 ? "None" : $"{ThemeTint:P0}";
+
+    /// <summary>
+    /// The theme being switched to, held apart from the choices' own flags: when one radio button
+    /// is checked the old one is unchecked after, so asking the list which is checked mid-switch
+    /// can still answer with the old one.
+    /// </summary>
+    private string _theme = "Sakura";
+
+    /// <summary>Same arrangement for System, Light and Dark.</summary>
+    private string _mode = "System";
+
+    private void PickTheme(ThemeChoice choice)
+    {
+        _theme = choice.Name;
+        IsCustomTheme = choice.Name == Theming.Custom;
+        SaveTheme();
+    }
+
+    partial void OnModeSystemChanged(bool value) => PickMode(value, "System");
+    partial void OnModeLightChanged(bool value) => PickMode(value, "Light");
+    partial void OnModeDarkChanged(bool value) => PickMode(value, "Dark");
+
+    private void PickMode(bool on, string mode)
+    {
+        if (!on) return;
+
+        _mode = mode;
+        SaveTheme();
+    }
+
+    partial void OnThemeHueChanged(double value)
+    {
+        Themes[^1].Swatch = new SolidColorBrush(Theming.SwatchColour(value));
+        if (IsCustomTheme) SaveTheme();
+    }
+
+    partial void OnThemeTintChanged(double value)
+    {
+        OnPropertyChanged(nameof(ThemeTintLabel));
+        if (IsCustomTheme) SaveTheme();
+    }
+
+    /// <summary>Applied as well as saved, so dragging a slider repaints the launcher under the pointer.</summary>
+    private void SaveTheme()
+    {
+        if (_loading) return;
+
+        var settings = _launcher.Settings;
+        settings.ThemeMode = _mode;
+        settings.Theme = _theme;
+        settings.ThemeHue = ThemeHue;
+        settings.ThemeTint = ThemeTint;
+
+        Theming.Apply(settings);
+        _launcher.SaveSettings();
     }
 
     public int MaximumMemoryMb { get; }
@@ -145,6 +235,13 @@ public partial class SettingsViewModel : ViewModelBase
 
         RefreshJavaOptions();
         Java = JavaOptions.FirstOrDefault(o => o.Value == settings.JavaSelection) ?? JavaOptions[0];
+
+        ModeLight = settings.ThemeMode == "Light";
+        ModeDark = settings.ThemeMode == "Dark";
+        ModeSystem = !ModeLight && !ModeDark;
+        ThemeHue = settings.ThemeHue;
+        ThemeTint = settings.ThemeTint;
+        (Themes.FirstOrDefault(t => t.Name == settings.Theme) ?? Themes[0]).IsSelected = true;
 
         _loading = false;
     }

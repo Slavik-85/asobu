@@ -59,44 +59,64 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
         var component = required?.Component is { Length: > 0 } named ? named : "jre-legacy";
         var home = Path.Combine(paths.Java, component);
 
-        if (FindExecutable(home) is { } installed) return installed;
+        // Finished, not merely started: java.exe is among the first files down, so a download cut
+        // off halfway used to count as installed for good and every launch failed on a missing
+        // DLL. A runtime from before the marker existed gets one quick verifying pass, then it.
+        var complete = Path.Combine(home, ".asobu-complete");
+        var installed = FindExecutable(home);
+        if (installed is not null && File.Exists(complete)) return installed;
 
-        progress?.Report(new InstallProgress($"Fetching {component}", 0));
-
-        var catalogue = await GetJsonAsync<Dictionary<string, Dictionary<string, List<JavaRuntimeEntry>>>>(
-            AllRuntimesUrl, cancellationToken).ConfigureAwait(false);
-
-        if (!catalogue.TryGetValue(PlatformKey(), out var components)
-            || !components.TryGetValue(component, out var entries)
-            || entries.FirstOrDefault()?.Manifest is not { } manifestRef)
+        try
         {
-            throw new InvalidOperationException(
-                $"Mojang publishes no '{component}' runtime for {PlatformKey()}. " +
-                "Pick a Java installation manually in Settings.");
+            progress?.Report(new InstallProgress($"Fetching {component}", 0));
+
+            var catalogue = await GetJsonAsync<Dictionary<string, Dictionary<string, List<JavaRuntimeEntry>>>>(
+                AllRuntimesUrl, cancellationToken).ConfigureAwait(false);
+
+            if (!catalogue.TryGetValue(PlatformKey(), out var components)
+                || !components.TryGetValue(component, out var entries)
+                || entries.FirstOrDefault()?.Manifest is not { } manifestRef)
+            {
+                throw new InvalidOperationException(
+                    $"Mojang publishes no '{component}' runtime for {PlatformKey()}. " +
+                    "Pick a Java installation manually in Settings.");
+            }
+
+            var manifest = await GetJsonAsync<JavaRuntimeManifest>(manifestRef.Url, cancellationToken).ConfigureAwait(false);
+
+            var downloads = new List<DownloadTask>();
+            foreach (var (relative, file) in manifest.Files)
+            {
+                if (file.Type != "file" || file.Downloads?.GetValueOrDefault("raw") is not { } raw) continue;
+                downloads.Add(new DownloadTask(
+                    raw.Url,
+                    Path.Combine(home, relative.Replace('/', Path.DirectorySeparatorChar)),
+                    raw.Sha1,
+                    raw.Size));
+            }
+
+            var reporter = new Progress<DownloadProgress>(p =>
+                progress?.Report(new InstallProgress($"Installing Java ({p.Completed} of {p.Total})", p.Fraction)));
+
+            await _downloader.RunAsync(downloads, reporter, cancellationToken).ConfigureAwait(false);
+
+            ApplyFileModes(home, manifest);
+
+            var executable = FindExecutable(home)
+                ?? throw new InvalidOperationException($"Installed '{component}' but found no java executable under {home}.");
+
+            await File.WriteAllTextAsync(complete, manifestRef.Url, cancellationToken).ConfigureAwait(false);
+
+            return executable;
         }
-
-        var manifest = await GetJsonAsync<JavaRuntimeManifest>(manifestRef.Url, cancellationToken).ConfigureAwait(false);
-
-        var downloads = new List<DownloadTask>();
-        foreach (var (relative, file) in manifest.Files)
+        catch (Exception e) when (installed is not null && !cancellationToken.IsCancellationRequested
+                                  && e is HttpRequestException or TaskCanceledException)
         {
-            if (file.Type != "file" || file.Downloads?.GetValueOrDefault("raw") is not { } raw) continue;
-            downloads.Add(new DownloadTask(
-                raw.Url,
-                Path.Combine(home, relative.Replace('/', Path.DirectorySeparatorChar)),
-                raw.Sha1,
-                raw.Size));
+            // A runtime from before the marker, with nothing reachable to check it against. It
+            // started the game yesterday; failing an offline launch over a check is worse than
+            // trusting it until the network is back.
+            return installed;
         }
-
-        var reporter = new Progress<DownloadProgress>(p =>
-            progress?.Report(new InstallProgress($"Installing Java ({p.Completed} of {p.Total})", p.Fraction)));
-
-        await _downloader.RunAsync(downloads, reporter, cancellationToken).ConfigureAwait(false);
-
-        ApplyFileModes(home, manifest);
-
-        return FindExecutable(home)
-            ?? throw new InvalidOperationException($"Installed '{component}' but found no java executable under {home}.");
     }
 
     /// <summary>Java runtimes already on this machine, for the manual override in Settings.</summary>

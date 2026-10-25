@@ -77,6 +77,10 @@ public partial class App : Application
             SingleInstance.Listen(() => Dispatcher.UIThread.Post(() => Reopen(window)));
 
             BuildTray(desktop, window);
+
+            // After the window and tray exist, since the theme recolours their icons too. Before
+            // either is shown, so nothing is ever seen in the wrong colours.
+            Theming.Apply(main.Launcher.Settings);
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -122,7 +126,7 @@ public partial class App : Application
     /// Windows wants an .ico and reads the sizes packed inside it. Everywhere else a PNG is what
     /// gets asked for, and handing over an .ico gives a blank square.
     /// </summary>
-    private static WindowIcon TrayImage()
+    internal static WindowIcon TrayImage()
     {
         var file = OperatingSystem.IsWindows() ? "asobu.ico" : "asobu.png";
         return new WindowIcon(AssetLoader.Open(new Uri($"avares://Asobu.App/Assets/{file}")));

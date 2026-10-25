@@ -46,7 +46,11 @@
               </Border>
 
               <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                <TextBlock Text="{Binding Title}" Classes="h1" TextWrapping="Wrap"/>
+                <!-- Click to copy, for pasting into a search, a pack list or a bug report. -->
+                <TextBlock Text="{Binding Title}" Classes="h1" TextWrapping="Wrap" Cursor="Hand"
+                           ToolTip.Tip="Click to copy the name" PointerPressed="Title_Pressed"/>
+                <TextBlock x:Name="CopiedNote" Text="Name copied" Classes="label" IsVisible="False"
+                           Foreground="{DynamicResource Accent}"/>
                 <TextBlock Text="{Binding MetaLine}" Classes="label"/>
                 <TextBlock Text="{Binding Card.Notice}" Classes="label" TextWrapping="Wrap"
                            Foreground="{DynamicResource Accent}"

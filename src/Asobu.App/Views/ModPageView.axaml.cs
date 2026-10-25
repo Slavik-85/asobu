@@ -1,12 +1,33 @@
 using Asobu.App.ViewModels;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 
 namespace Asobu.App.Views;
 
 public partial class ModPageView : UserControl
 {
     public ModPageView() => InitializeComponent();
+
+    private async void Title_Pressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not TextBlock { Text: { Length: > 0 } name }) return;
+        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+
+        try
+        {
+            await clipboard.SetTextAsync(name);
+        }
+        catch (System.Exception)
+        {
+            // Another application holding the clipboard open. The name is on screen to type.
+            return;
+        }
+
+        CopiedNote.IsVisible = true;
+        await System.Threading.Tasks.Task.Delay(1500);
+        CopiedNote.IsVisible = false;
+    }
 
     /// <summary>
     /// Escape and the arrow keys, while the full-size viewer is up. A picture filling the screen

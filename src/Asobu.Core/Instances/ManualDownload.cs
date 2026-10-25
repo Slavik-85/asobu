@@ -39,11 +39,36 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
 
         return [.. new[]
             {
+                OperatingSystem.IsWindows() ? WindowsDownloads() : null,
                 Path.Combine(home, "Downloads"),
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
             }
+            .OfType<string>()
             .Where(folder => folder.Length > 0 && Directory.Exists(folder))
             .Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>
+    /// The Downloads folder Windows actually uses, which every browser defaults to. Anyone who
+    /// moved it off C: — Properties, Location — has it somewhere %USERPROFILE%\Downloads isn't,
+    /// and a watcher looking only there never saw a single file land.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string? WindowsDownloads()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders");
+
+            return key?.GetValue("{374DE290-123F-4565-9164-39C4925E467B}") is string path
+                ? Environment.ExpandEnvironmentVariables(path)
+                : null;
+        }
+        catch (Exception e) when (e is System.Security.SecurityException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -61,8 +86,7 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
         {
             for (var i = waiting.Count - 1; i >= 0; i--)
             {
-                if (FindArrival(waiting[i]) is not { } arrival) continue;
-                if (!TryAccept(waiting[i], arrival)) continue;
+                if (!TryLand(waiting[i])) continue;
 
                 onLanded(waiting[i]);
                 waiting.RemoveAt(i);
@@ -88,22 +112,18 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
     public static bool TryAcceptChosen(BlockedDownload item, string sourcePath) =>
         File.Exists(sourcePath) && Place(item, sourcePath);
 
-    /// <summary>The finished download, or null while there is nothing to take yet.</summary>
-    private string? FindArrival(BlockedDownload item)
-    {
-        foreach (var folder in _folders)
-        {
-            foreach (var candidate in CandidateNames(item.FileName))
-            {
-                var path = Path.Combine(folder, candidate);
-                if (File.Exists(path)) return path;
-            }
-
-            if (FindByContent(item, folder) is { } renamed) return renamed;
-        }
-
-        return null;
-    }
+    /// <summary>
+    /// Files the download if it has arrived under any name it might have. Every candidate is
+    /// tried, not just the first that exists: an older file of the same name — or a browser's
+    /// empty placeholder — used to be found, refused, and found again on every poll, while the
+    /// real download sat beside it as "name (1).jar" until the wait ran out.
+    /// </summary>
+    private bool TryLand(BlockedDownload item) => _folders.Any(folder =>
+        CandidateNames(item.FileName)
+            .Select(candidate => Path.Combine(folder, candidate))
+            .Where(File.Exists)
+            .Any(path => TryAccept(item, path))
+        || (FindByContent(item, folder) is { } renamed && TryAccept(item, renamed)));
 
     /// <summary>
     /// The file under a name nobody predicted: saved by hand, renamed, or served under a name the
@@ -161,6 +181,11 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
     /// </summary>
     private static bool TryAccept(BlockedDownload item, string path)
     {
+        // Nothing to check it against, so nothing is taken on trust from a Downloads folder: a
+        // page left open could drop a jar of the right name there while Asobu is watching, and it
+        // would run with the next launch. Pointing at the file by hand still works.
+        if (item.Sha1 is not { Length: > 0 } expected) return false;
+
         try
         {
             var file = new FileInfo(path);
@@ -177,7 +202,7 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
                 if (length != file.Length || length == 0) return false;
             }
 
-            if (item.Sha1 is { Length: > 0 } expected && !Matches(path, expected)) return false;
+            if (!Matches(path, expected)) return false;
 
             return Place(item, path);
         }

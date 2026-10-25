@@ -43,6 +43,34 @@ public class LibraryDownloadTests : IDisposable
         },
     };
 
+    /// <summary>
+    /// Before 1.19 a natives entry carries the plain jar too, under the library's own coordinate.
+    /// It must not put vanilla's older jar beside a loader's newer one, nor list one jar twice.
+    /// </summary>
+    [Fact]
+    public void A_natives_entry_never_adds_a_second_build_of_its_library_to_the_classpath()
+    {
+        var natives = new Library
+        {
+            Name = "org.lwjgl:lwjgl:3.2.2",
+            Downloads = Published("org.lwjgl:lwjgl:3.2.2", "https://libraries.minecraft.net/x.jar").Downloads,
+            Natives = new() { ["windows"] = "natives-windows", ["linux"] = "natives-linux", ["osx"] = "natives-macos" },
+        };
+
+        var version = new VersionJson
+        {
+            Id = "1.16.5",
+            MainClass = "net.minecraft.client.main.Main",
+            Libraries = [Published("org.lwjgl:lwjgl:3.3.1", "https://libraries.minecraft.net/y.jar"), natives],
+        };
+
+        var lwjgl = Installer.BuildClasspath(version, RuleContext.Current)
+            .Where(path => Path.GetFileName(path).StartsWith("lwjgl-", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal("lwjgl-3.3.1.jar", Path.GetFileName(Assert.Single(lwjgl)));
+    }
+
     [Fact]
     public void A_library_that_is_published_somewhere_is_fetched()
     {

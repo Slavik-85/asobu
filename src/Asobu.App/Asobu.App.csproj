@@ -67,6 +67,7 @@
          Linux job builds this same file, and the Link becomes part of the resource's name. -->
     <AvaloniaResource Include="../../assets/asobu.ico" Link="Assets/asobu.ico" />
     <AvaloniaResource Include="../../assets/asobu.png" Link="Assets/asobu.png" />
+    <AvaloniaResource Include="../../assets/Easter/cat.png" Link="Assets/Easter/cat.png" />
   </ItemGroup>
 
   <ItemGroup>

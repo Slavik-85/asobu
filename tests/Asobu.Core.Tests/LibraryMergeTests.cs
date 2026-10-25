@@ -30,6 +30,62 @@ public class LibraryMergeTests
             .GetAwaiter().GetResult();
     }
 
+    /// <summary>
+    /// 1.16.5's shape: LWJGL's natives listed under exactly the jar's coordinate. Treated as a
+    /// duplicate, every modded 1.13–1.18.2 instance lost its natives and died wanting lwjgl.dll.
+    /// </summary>
+    [Fact]
+    public void KeepsANativesEntryThatSharesItsJarsCoordinate()
+    {
+        var vanilla = new VersionJson
+        {
+            Id = "1.16.5",
+            MainClass = "net.minecraft.client.main.Main",
+            Libraries =
+            [
+                Lib("org.lwjgl:lwjgl:3.2.2"),
+                new Library
+                {
+                    Name = "org.lwjgl:lwjgl:3.2.2",
+                    Natives = new() { ["windows"] = "natives-windows", ["linux"] = "natives-linux", ["osx"] = "natives-macos" },
+                },
+            ],
+        };
+
+        var merged = Resolve(Version("fabric-1.16.5", "1.16.5", "net.fabricmc:fabric-loader:0.14.21"), vanilla);
+
+        Assert.Equal(2, merged.Libraries.Count(l => l.Name == "org.lwjgl:lwjgl:3.2.2"));
+        Assert.Contains(merged.Libraries, l => l.Natives is not null);
+    }
+
+    /// <summary>
+    /// 1.8.1 and older: a macOS-only LWJGL build that sorts newer than everyone else's. It used to
+    /// win the merge, and every other platform was left without LWJGL.
+    /// </summary>
+    [Fact]
+    public void A_build_this_machine_never_uses_does_not_push_out_the_one_it_does()
+    {
+        static Rule Allow(string? os = null) => new() { Action = "allow", Os = os is null ? null : new OsRule { Name = os } };
+        static Rule Disallow(string os) => new() { Action = "disallow", Os = new OsRule { Name = os } };
+
+        var vanilla = new VersionJson
+        {
+            Id = "1.8.1",
+            MainClass = "net.minecraft.client.main.Main",
+            Libraries =
+            [
+                new Library { Name = "org.lwjgl.lwjgl:lwjgl:2.9.1", Rules = [Allow(), Disallow("osx")] },
+                new Library { Name = "org.lwjgl.lwjgl:lwjgl:2.9.2-nightly-20140822", Rules = [Allow("osx")] },
+            ],
+        };
+
+        var merged = Resolve(Version("forge-1.8.1", "1.8.1", "net.minecraftforge:forge:1.8.1-11.14.0.1281"), vanilla);
+
+        Assert.Contains(merged.Libraries, l =>
+            l.Name.StartsWith("org.lwjgl.lwjgl:lwjgl:", StringComparison.Ordinal)
+            && RuleEvaluator.Allows(l, RuleContext.Current));
+    }
+
     [Fact]
     public void KeepsOneBuildOfALibraryTheChainDisagreesAbout()
     {

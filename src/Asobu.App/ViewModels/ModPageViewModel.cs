@@ -138,8 +138,17 @@ public partial class ModVersionRow(ModVersion version) : ViewModelBase
     /// row that has to be reloaded to be used again. Installing replaces whichever build was
     /// there, so pressing these in turn walks the instance from one to another rather than
     /// piling them up.
+    ///
+    /// A CurseForge build the author keeps to their own page still installs, through the browser.
     /// </summary>
-    public bool CanDownload => Version.CanDownload && !IsInstalling;
+    public bool CanDownload => (Version.CanDownload || ByHand) && !IsInstalling;
+
+    /// <summary>
+    /// A build only its author's page may serve, which the browser can still fetch: a CurseForge
+    /// file with a hash to check the download against, and not a modpack — those import rather
+    /// than install, and an import needs a file it can fetch itself.
+    /// </summary>
+    public bool ByHand { get; init; }
 
     [ObservableProperty] public partial bool IsInstalling { get; set; }
     [ObservableProperty] public partial string? Notice { get; set; }
@@ -569,7 +578,11 @@ public partial class ModPageViewModel(
             var versions = await launcher.Mods.GetVersionsAsync(card.Mod, request.Token);
             if (request.IsCancellationRequested) return;
 
-            foreach (var version in Runnable(versions)) _allVersions.Add(new ModVersionRow(version));
+            foreach (var version in Runnable(versions))
+                _allVersions.Add(new ModVersionRow(version)
+                {
+                    ByHand = !card.Mod.IsPack && version.FileId is not null && version.Sha1 is { Length: > 0 },
+                });
 
             Page = 0;
             Rebuild();
@@ -722,7 +735,11 @@ public partial class ModPageViewModel(
             // The project goes along so an older build of this same mod is replaced rather than
             // left beside the new one, which is what a version list is usually being used for.
             var result = await launcher.InstallVersionAsync(
-                instance, row.Version, Card?.Mod.Kind ?? ModKind.Mod, Card?.Mod);
+                instance, row.Version, Card?.Mod.Kind ?? ModKind.Mod, Card?.Mod, item =>
+                {
+                    Dispatcher.UIThread.Post(() => row.Notice = "Downloading in your browser. It goes in once it lands.");
+                    return ModInstall.FetchByHandAsync(item);
+                });
 
             if (result.Installed)
             {
@@ -737,7 +754,7 @@ public partial class ModPageViewModel(
                 return null;
             }
 
-            row.Notice = result.Reason ?? "The author allows downloads from their page only.";
+            row.Notice = result.Reason ?? "Only on its CurseForge page, and the download never landed.";
         }
         catch (Exception ex)
         {

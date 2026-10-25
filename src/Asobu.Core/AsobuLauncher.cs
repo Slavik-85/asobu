@@ -85,6 +85,29 @@ public sealed class AsobuLauncher
 
         // After sharing, which it needs: a code someone pastes is one of the things it imports.
         Importer = new InstanceImporter(http, Paths, Instances, Modrinth, CurseForge, Mods, Shares);
+
+        PutBackLeftoverHunts();
+    }
+
+    /// <summary>Switches back on whatever an older build's unfinished mod hunt left off. See <see cref="LeftoverHunt"/>.</summary>
+    private void PutBackLeftoverHunts()
+    {
+        foreach (var instance in Instances.LoadAll())
+        {
+            if (instance.Bisect is not { } hunt) continue;
+
+            try
+            {
+                if (!hunt.PutBack(ModScanner.ModsDirectory(Paths, instance.Folder))) continue;
+
+                instance.Bisect = null;
+                Instances.Save(instance);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Kept on file and tried again next start. Never worth failing to open over.
+            }
+        }
     }
 
     /// <summary>Shared client, already carrying Asobu's user agent.</summary>
@@ -175,32 +198,33 @@ public sealed class AsobuLauncher
         // was built from the same version, loader and loader build the instance still names.
         // The install itself still runs and still checks every file — this skips the deriving,
         // not the verifying.
-        if (instance.InstalledFrom == instance.InstallStamp
-            && instance.InstalledVersionId is { Length: > 0 } known
-            && Meta.TryReadInstalled(known) is { } ready)
+        var ready = instance.InstalledVersionId is { Length: > 0 } known ? Meta.TryReadInstalled(known) : null;
+
+        if (instance.InstalledFrom == instance.InstallStamp && ready is not null)
+            return await QuickAsync(ready).ConfigureAwait(false);
+
+        VersionJson version;
+
+        try
         {
-            // Both documents, exactly as the long way round installs them. A loader's document
-            // is not a superset of the vanilla one: Forge's drops the client jar and a handful
-            // of libraries it replaces, so installing it alone would leave five files this
-            // instance runs on outside anything that checks they are still there — and
-            // relaunching is how somebody repairs a half-deleted cache.
-            if (instance.MinecraftVersion != known && Meta.TryReadInstalled(instance.MinecraftVersion) is { } beneath)
-                await _installer.InstallAsync(beneath, progress, cancellationToken).ConfigureAwait(false);
+            var vanilla = await Meta.GetResolvedVersionAsync(instance.MinecraftVersion, cancellationToken)
+                .ConfigureAwait(false);
 
-            await _installer.InstallAsync(ready, progress, cancellationToken).ConfigureAwait(false);
-            await EnsureModsAsync(instance, progress, cancellationToken).ConfigureAwait(false);
+            await _installer.InstallAsync(vanilla, progress, cancellationToken).ConfigureAwait(false);
 
-            return ready;
+            version = instance.IsModded
+                ? await InstallLoaderAsync(instance, vanilla, progress, cancellationToken).ConfigureAwait(false)
+                : vanilla;
         }
-
-        var vanilla = await Meta.GetResolvedVersionAsync(instance.MinecraftVersion, cancellationToken)
-            .ConfigureAwait(false);
-
-        await _installer.InstallAsync(vanilla, progress, cancellationToken).ConfigureAwait(false);
-
-        var version = instance.IsModded
-            ? await InstallLoaderAsync(instance, vanilla, progress, cancellationToken).ConfigureAwait(false)
-            : vanilla;
+        // Built from the same version, loader and build, only before merging last changed — so
+        // rebuilding it is an improvement, not a necessity. Offline, yesterday's document still
+        // starts the game, which beats refusing to.
+        catch (Exception e) when (ready is not null && !cancellationToken.IsCancellationRequested
+                                  && e is HttpRequestException or TaskCanceledException
+                                  && SameBuild(instance.InstalledFrom, instance.InstallStamp))
+        {
+            return await QuickAsync(ready).ConfigureAwait(false);
+        }
 
         await EnsureModsAsync(instance, progress, cancellationToken).ConfigureAwait(false);
 
@@ -227,7 +251,30 @@ public sealed class AsobuLauncher
         }
 
         return version;
+
+        async Task<VersionJson> QuickAsync(VersionJson document)
+        {
+            // Both documents, exactly as the long way round installs them. A loader's document
+            // is not a superset of the vanilla one: Forge's drops the client jar and a handful
+            // of libraries it replaces, so installing it alone would leave five files this
+            // instance runs on outside anything that checks they are still there — and
+            // relaunching is how somebody repairs a half-deleted cache.
+            if (instance.MinecraftVersion != document.Id && Meta.TryReadInstalled(instance.MinecraftVersion) is { } beneath)
+                await _installer.InstallAsync(beneath, progress, cancellationToken).ConfigureAwait(false);
+
+            await _installer.InstallAsync(document, progress, cancellationToken).ConfigureAwait(false);
+            await EnsureModsAsync(instance, progress, cancellationToken).ConfigureAwait(false);
+
+            return document;
+        }
     }
+
+    /// <summary>Two install stamps for the same version, loader and build, whatever merge revision either was made with.</summary>
+    private static bool SameBuild(string? installed, string current) =>
+        installed is not null && WithoutRevision(installed) == WithoutRevision(current);
+
+    private static string WithoutRevision(string stamp) =>
+        stamp.LastIndexOf("|r", StringComparison.Ordinal) is var at and >= 0 ? stamp[..at] : stamp;
 
     /// <summary>
     /// A project's picture, for the mods whose jars carry none of their own.
@@ -340,11 +387,39 @@ public sealed class AsobuLauncher
         IProgress<InstallProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var settings = Settings.ForInstance(instance, Paths);
+        return await ChooseJavaAsync(Settings.ForInstance(instance, Paths), version, progress, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-        return settings.UsesManagedJava
-            ? await _java.EnsureRuntimeAsync(version.JavaVersion, progress, cancellationToken).ConfigureAwait(false)
-            : settings.JavaSelection;
+    /// <summary>
+    /// The Java a version runs on: the one picked in settings, unless the version only runs on
+    /// Java 8 and the pick is newer. LaunchWrapper — every Forge up to 1.12.2 — dies on Java 9+
+    /// casting the class loader, and Forge 1.13–1.16.5 will not start on 17; a launcher-wide pick
+    /// of a modern Java broke every old pack at once. Asobu's own Java 8 is used for those instead,
+    /// which is what Prism does when it refuses a Java outside the version's range.
+    /// </summary>
+    private async Task<string> ChooseJavaAsync(
+        LauncherSettings settings, VersionJson version,
+        IProgress<InstallProgress>? progress, CancellationToken cancellationToken)
+    {
+        if (settings.UsesManagedJava)
+            return await _java.EnsureRuntimeAsync(version.JavaVersion, progress, cancellationToken).ConfigureAwait(false);
+
+        if (version.JavaVersion?.MajorVersion != 8 || JavaManager.MajorOf(settings.JavaSelection) is not >= 9)
+            return settings.JavaSelection;
+
+        try
+        {
+            return await _java.EnsureRuntimeAsync(version.JavaVersion, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (!cancellationToken.IsCancellationRequested
+                                  && e is InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            // No Java 8 to be had — Mojang publishes none for ARM machines, or there is no network
+            // to fetch it over. Their own pick ran vanilla and Fabric here before, so it still gets
+            // the chance to.
+            return settings.JavaSelection;
+        }
     }
 
     /// <summary>
@@ -414,9 +489,8 @@ public sealed class AsobuLauncher
         // so one heavy modpack can have 8 GB and its own Java without moving everything else.
         var settings = Settings.ForInstance(instance, Paths);
 
-        var javaExecutable = settings.UsesManagedJava
-            ? await _java.EnsureRuntimeAsync(version.JavaVersion, progress, cancellationToken).ConfigureAwait(false)
-            : settings.JavaSelection;
+        var javaExecutable = await ChooseJavaAsync(settings, version, progress, cancellationToken).ConfigureAwait(false);
+        var ownJava = javaExecutable == settings.JavaSelection && !settings.UsesManagedJava;
 
         if (!File.Exists(javaExecutable))
             throw new FileNotFoundException($"No Java executable at '{javaExecutable}'. Check Settings.", javaExecutable);
@@ -429,7 +503,7 @@ public sealed class AsobuLauncher
         //
         // Only too old is refused. Newer than the version asks for is how most modded setups
         // run and refusing that would stop launches that work today.
-        if (!settings.UsesManagedJava
+        if (ownJava
             && version.JavaVersion?.MajorVersion is { } required
             && JavaManager.MajorOf(javaExecutable) is { } actual
             && actual < required)
@@ -566,8 +640,15 @@ public sealed class AsobuLauncher
     /// Reconstructing the CDN address from the file id would work and is exactly the thing that
     /// flag exists to prevent — so the same mod is fetched from the other shop instead.
     /// </summary>
+    /// <param name="fetchByHand">
+    /// For a file only its author's page may serve: sends the person there and returns once the
+    /// file has landed at <see cref="BlockedDownload.Destination"/>, or false if it never did.
+    /// Only asked when no other provider had the mod. Null leaves such a mod uninstalled.
+    /// </param>
     public async Task<ModInstallResult> InstallModAsync(
-        Instance instance, CatalogueMod entry, CancellationToken cancellationToken = default)
+        Instance instance, CatalogueMod entry,
+        Func<BlockedDownload, Task<bool>>? fetchByHand = null,
+        CancellationToken cancellationToken = default)
     {
         if (ModScanner.ContentDirectory(Paths, instance.Folder, entry.Kind) is not { } destination)
             return new ModInstallResult(null, null, Reason: RefusalFor(entry.Kind));
@@ -578,6 +659,7 @@ public sealed class AsobuLauncher
         var previous = InstalledMods.For(Paths, instance).Find(entry);
 
         var blocked = false;
+        (IModSource Source, ModListing Listing, ModDownload Download, BlockedDownload Item)? byHand = null;
 
         foreach (var listing in entry.DownloadOrder)
         {
@@ -595,6 +677,15 @@ public sealed class AsobuLauncher
             if (download.Url is not { Length: > 0 } url)
             {
                 blocked = true;
+
+                // The author's own download page for exactly this file, which starts the download
+                // itself when opened. Kept for last: another shop handing it over is better still.
+                // Only with a hash: the watcher takes nothing from a Downloads folder it cannot check.
+                if (download.FileId is { } fileId && download.Sha1 is { Length: > 0 }
+                    && CurseDownloadPage(listing.PageUrl, fileId) is { } page)
+                    byHand ??= (source, listing, download, new BlockedDownload(
+                        listing.Title, download.FileName, download.Size, download.Sha1, page,
+                        Path.Combine(destination, download.FileName)));
                 continue;
             }
 
@@ -606,6 +697,19 @@ public sealed class AsobuLauncher
                 [new DownloadTask(url, landed, download.Sha1, download.Size)],
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            return await SettleAsync(source, listing, download, landed).ConfigureAwait(false);
+        }
+
+        if (byHand is { } hand && fetchByHand is not null && await fetchByHand(hand.Item).ConfigureAwait(false))
+            return await SettleAsync(hand.Source, hand.Listing, hand.Download, hand.Item.Destination)
+                .ConfigureAwait(false);
+
+        return new ModInstallResult(null, null, blocked);
+
+        // Everything after the file is in the folder, however it got there.
+        async Task<ModInstallResult> SettleAsync(
+            IModSource source, ModListing listing, ModDownload download, string landed)
+        {
             // A world is a folder to the game, so the zip is unpacked and then thrown away.
             if (entry.Kind == ModKind.World)
                 return UnpackAndTidy(landed, destination, download.FileName) is { } world
@@ -629,8 +733,6 @@ public sealed class AsobuLauncher
 
             return new ModInstallResult(download.FileName, listing.Provider, Dependencies: carried);
         }
-
-        return new ModInstallResult(null, null, blocked);
     }
 
     /// <summary>
@@ -646,22 +748,35 @@ public sealed class AsobuLauncher
     public async Task<ModInstallResult> InstallVersionAsync(
         Instance instance, ModVersion version, ModKind kind = ModKind.Mod,
         CatalogueMod? project = null,
+        Func<BlockedDownload, Task<bool>>? fetchByHand = null,
         CancellationToken cancellationToken = default)
     {
         if (ModScanner.ContentDirectory(Paths, instance.Folder, kind) is not { } directory)
             return new ModInstallResult(null, null, Reason: RefusalFor(kind));
 
-        if (version.Url is not { Length: > 0 } url) return new ModInstallResult(null, null, Blocked: true);
-
         var previous = project is null ? null : InstalledMods.For(Paths, instance).Find(project);
-
-        Directory.CreateDirectory(directory);
 
         var landed = Path.Combine(directory, version.FileName);
 
-        await _downloader.RunAsync(
-            [new DownloadTask(url, landed, version.Sha1, version.Size)],
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (version.Url is { Length: > 0 } url)
+        {
+            Directory.CreateDirectory(directory);
+
+            await _downloader.RunAsync(
+                [new DownloadTask(url, landed, version.Sha1, version.Size)],
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        // Only the author's page may serve it. Same arrangement as InstallModAsync's.
+        else if (fetchByHand is null
+                 || version.FileId is not { } fileId
+                 || version.Sha1 is not { Length: > 0 }
+                 || project is null
+                 || CurseDownloadPage(project.CurseForge?.PageUrl, fileId) is not { } page
+                 || !await fetchByHand(new BlockedDownload(
+                         project.Title, version.FileName, version.Size, version.Sha1, page, landed)).ConfigureAwait(false))
+        {
+            return new ModInstallResult(null, null, Blocked: true);
+        }
 
         if (kind == ModKind.World)
             return UnpackAndTidy(landed, directory, version.FileName) is { } world
@@ -686,6 +801,23 @@ public sealed class AsobuLauncher
 
         return new ModInstallResult(version.FileName, version.Provider, Dependencies: carried);
     }
+
+    /// <summary>
+    /// CurseForge's download page for one file, which starts the download when opened — or null
+    /// unless the project page really is a curseforge.com one. It is handed to the shell, and an
+    /// address out of an API answer is not something to hand the shell unchecked: a UNC path there
+    /// has Windows connect out and offer the user's credentials to whoever answers.
+    /// </summary>
+    private static string? CurseDownloadPage(string? projectPage, string fileId) =>
+        Uri.TryCreate(projectPage, UriKind.Absolute, out var page)
+        && page.Scheme == Uri.UriSchemeHttps
+        && page.Host.Equals("www.curseforge.com", StringComparison.OrdinalIgnoreCase)
+        // /minecraft/{section}/{slug}. The bare section is what a project with no page falls
+        // back to, and "/download/123" on the end of that is a 404 to wait ten minutes on.
+        && page.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Length == 3
+        && fileId.Length > 0 && fileId.All(char.IsAsciiDigit)
+            ? $"https://www.curseforge.com{page.AbsolutePath.TrimEnd('/')}/download/{fileId}"
+            : null;
 
     /// <summary>
     /// Takes out the build that was already there, now that its replacement has landed.
@@ -1313,6 +1445,9 @@ public sealed class AsobuLauncher
     {
         if (mods.Count == 0) return [];
 
+        bool Ignored(string fileName) =>
+            instance.IgnoredUpdates.Contains(fileName, StringComparer.OrdinalIgnoreCase);
+
         var updates = new List<ModUpdate>();
         var hashes = new Dictionary<string, ModEntry>(StringComparer.OrdinalIgnoreCase);
 
@@ -1332,7 +1467,7 @@ public sealed class AsobuLauncher
 
             hashes.Remove(hash);
 
-            if (!IsNewer(mod, version.FileName)) continue;
+            if (!IsNewer(mod, version.FileName) || Ignored(version.FileName)) continue;
 
             updates.Add(new ModUpdate(
                 mod.Path, mod.FileName, version.FileName,
@@ -1364,7 +1499,7 @@ public sealed class AsobuLauncher
                     modId, instance.MinecraftVersion, instance.Loader, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            if (download is null || !IsNewer(mod, download.FileName)) continue;
+            if (download is null || !IsNewer(mod, download.FileName) || Ignored(download.FileName)) continue;
 
             updates.Add(new ModUpdate(
                 mod.Path, mod.FileName, download.FileName,

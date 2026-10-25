@@ -24,7 +24,7 @@
           <!-- The icon itself rather than a tinted square behind a shape: the artwork carries its
                own colour, and sitting it on the accent would be pink on pink. Width matches the
                square it replaced; the height follows, the gamepad being wider than it is tall. -->
-          <Image Source="/Assets/asobu.png" Width="34" VerticalAlignment="Center"
+          <Image Source="{DynamicResource Logo}" Width="34" VerticalAlignment="Center"
                  RenderOptions.BitmapInterpolationMode="HighQuality"/>
           <TextBlock Text="Asobu" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
         </StackPanel>

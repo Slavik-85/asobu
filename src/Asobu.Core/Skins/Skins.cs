@@ -216,6 +216,70 @@ public sealed partial class SkinService(HttpClient http)
         }
     }
 
+    /// <summary>
+    /// The skins a player has worn before, newest first, as texture hashes.
+    ///
+    /// Mojang keeps no history, so this comes from a site that watched. NameMC is the famous one
+    /// and is behind the same bot wall as the galleries above; crafty.gg tracks the same thing
+    /// with an API meant to be called. Empty for a player it has never seen, or when it is down.
+    /// </summary>
+    public async Task<IReadOnlyList<GallerySkin>> HistoryAsync(
+        string uuid, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await http
+                .GetAsync(HistoryUrl + uuid.Replace("-", ""), cancellationToken)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return [];
+
+            var player = await response.Content
+                .ReadFromJsonAsync<HistoryResponse>(cancellationToken)
+                .ConfigureAwait(false);
+
+            return
+            [
+                // Texture hashes only, and a sensible number of them: each becomes a request to
+                // Mojang, and this is somebody else's server's say-so.
+                .. (player?.Data?.Skins ?? [])
+                    .Where(skin => skin.Hash is { } hash && TextureHashPattern().IsMatch(hash))
+                    .Take(50)
+                    .Select(skin => new GallerySkin(
+                        skin.Hash!,
+                        // Invariant, like the rest of the interface's dates: it's in English.
+                        skin.ChangedAt?.ToString("MMM yyyy", System.Globalization.CultureInfo.InvariantCulture),
+                        skin.Slim ? SkinModel.Slim : SkinModel.Classic))
+                    .DistinctBy(skin => skin.Texture),
+            ];
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return [];
+        }
+    }
+
+    private const string HistoryUrl = "https://api.crafty.gg/api/v2/players/";
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[0-9a-f]{32,64}$")]
+    private static partial System.Text.RegularExpressions.Regex TextureHashPattern();
+
+    private sealed class HistoryResponse
+    {
+        [JsonPropertyName("data")] public HistoryPlayer? Data { get; init; }
+    }
+
+    private sealed class HistoryPlayer
+    {
+        [JsonPropertyName("skins")] public List<HistorySkin>? Skins { get; init; }
+    }
+
+    private sealed class HistorySkin
+    {
+        [JsonPropertyName("hash")] public string? Hash { get; init; }
+        [JsonPropertyName("slim")] public bool Slim { get; init; }
+        [JsonPropertyName("changed_at")] public DateTimeOffset? ChangedAt { get; init; }
+    }
+
     /// <summary>The real 64×64 behind a gallery entry, from Mojang's own texture host.</summary>
     public Task<byte[]> TextureAsync(string hash, CancellationToken cancellationToken = default) =>
         http.GetByteArrayAsync(TextureUrl + hash, cancellationToken);
@@ -495,10 +559,11 @@ public sealed record PlayerSkin(string Username, string Uuid, string Url, SkinMo
 public sealed record PlayerCape(string Id, string Alias, string Url, bool Active);
 
 /// <summary>
-/// One skin on the public gallery. Which arms it was drawn for is not in the listing, so it is
-/// worked out from the file once that arrives.
+/// One skin on the public gallery, or from a player's history. The gallery's listing does not say
+/// which arms it was drawn for, so <paramref name="Model"/> is null there and the file is asked
+/// once it arrives.
 /// </summary>
-public sealed record GallerySkin(string Texture, string? Name);
+public sealed record GallerySkin(string Texture, string? Name, SkinModel? Model = null);
 
 /// <summary>A page of the gallery, and where the next one starts.</summary>
 public sealed record GalleryPageResult(IReadOnlyList<GallerySkin> Skins, string? Next);

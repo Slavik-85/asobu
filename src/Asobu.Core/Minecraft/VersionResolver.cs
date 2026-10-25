@@ -6,6 +6,12 @@ namespace Asobu.Core.Minecraft;
 /// </summary>
 public static class VersionResolver
 {
+    /// <summary>
+    /// Raised whenever merging changes, so a document merged the old way is merged again rather
+    /// than reused. Part of <see cref="Instances.Instance.InstallStamp"/>.
+    /// </summary>
+    public const int Revision = 2;
+
     /// <param name="load">Fetches a version descriptor by id, from cache or network.</param>
     public static async Task<VersionJson> ResolveAsync(
         string id,
@@ -79,6 +85,14 @@ public static class VersionResolver
     /// Position follows the first mention, so a loader library that has to precede vanilla on the
     /// classpath still does even when the version taken is vanilla's.
     /// </summary>
+    /// <remarks>
+    /// Two kinds of entry share a coordinate without being builds of one library, and both used to
+    /// be thrown away as duplicates. Before 1.19 Mojang lists LWJGL's natives under exactly the
+    /// jar's coordinate, so every modded 1.13–1.18.2 instance lost its natives and died looking for
+    /// lwjgl.dll. And on 1.8.1 and older a macOS-only LWJGL build sorts newer than the Windows one,
+    /// so it won and Windows was left with no LWJGL at all. Prism keeps natives in a list of their
+    /// own and skips what the machine never uses before comparing; this does the same.
+    /// </remarks>
     private static List<Library> Deduplicate(List<Library> libraries)
     {
         var best = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -86,7 +100,15 @@ public static class VersionResolver
 
         foreach (var library in libraries)
         {
-            var key = Maven.ArtifactKey(library.Name);
+            // Kept in place, so the merged document still describes every platform, but never in
+            // the running against what this machine does use. The install skips it by its rules.
+            if (!RuleEvaluator.Allows(library, RuleContext.Current))
+            {
+                kept.Add(library);
+                continue;
+            }
+
+            var key = Maven.ArtifactKey(library.Name) + (library.Natives is not null ? "|natives" : "");
 
             if (!best.TryGetValue(key, out var at))
             {

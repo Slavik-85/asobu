@@ -26,6 +26,120 @@ public partial class InstancesView : UserControl
         DataContextChanged += (_, _) => Observe(DataContext as InstancesViewModel);
     }
 
+    // ---- The cat ----
+
+    private static readonly Key[] Konami =
+        [Key.Up, Key.Up, Key.Down, Key.Down, Key.Left, Key.Right, Key.Left, Key.Right, Key.B, Key.A];
+
+    private int _konami;
+
+    /// <summary>
+    /// The window the handler went on. Kept, because by the time a view hears it has been
+    /// detached its parent is already gone and the window can no longer be looked up — so the
+    /// handler stayed, and every visit to this page left another view behind listening.
+    /// </summary>
+    private TopLevel? _listening;
+
+    /// <summary>
+    /// Listened for on the window, tunnelling, so a focused list or box that eats arrow keys
+    /// can't hide them. Only counts while this page is the one on screen.
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        _listening?.RemoveHandler(KeyDownEvent, CountKonami);
+        _listening = TopLevel.GetTopLevel(this);
+        _listening?.AddHandler(KeyDownEvent, CountKonami, RoutingStrategies.Tunnel);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _listening?.RemoveHandler(KeyDownEvent, CountKonami);
+        _listening = null;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void CountKonami(object? sender, KeyEventArgs e)
+    {
+        if (!IsEffectivelyVisible) return;
+
+        // A third Up keeps the last two rather than starting over.
+        _konami = e.Key == Konami[_konami] ? _konami + 1
+            : e.Key == Key.Up ? (_konami == 2 ? 2 : 1)
+            : 0;
+
+        if (_konami < Konami.Length) return;
+
+        _konami = 0;
+        _ = ToggleCatAsync();
+    }
+
+    private async Task ToggleCatAsync()
+    {
+        if (_observed is not { } viewModel) return;
+
+        viewModel.CatOut = !viewModel.CatOut;
+
+        if (viewModel.CatOut) await ShowCatAsync();
+        else Cat.Opacity = 0;
+    }
+
+    private async Task ShowCatAsync()
+    {
+        Cat.Source ??= await Task.Run(LoadCat);
+        if (Cat.Source is not null) Cat.Opacity = 1;
+    }
+
+    /// <summary>
+    /// The cat, with the white it was photographed against taken out — flooded in from the edges,
+    /// so its glowing eyes, which are nearly white too but sit inside black fur, stay.
+    /// </summary>
+    private static Avalonia.Media.Imaging.Bitmap? LoadCat()
+    {
+        try
+        {
+            using var asset = Avalonia.Platform.AssetLoader.Open(new Uri("avares://Asobu.App/Assets/Easter/cat.png"));
+            using var image = SkiaSharp.SKBitmap.Decode(asset);
+            if (image is null) return null;
+
+            using var cat = image.Copy(SkiaSharp.SKColorType.Bgra8888);
+            int width = cat.Width, height = cat.Height;
+            var pixels = cat.Pixels;
+
+            static bool White(SkiaSharp.SKColor c) => c.Alpha > 0 && Math.Min(c.Red, Math.Min(c.Green, c.Blue)) > 225;
+
+            var queue = new Queue<int>();
+            for (var x = 0; x < width; x++) { queue.Enqueue(x); queue.Enqueue((height - 1) * width + x); }
+            for (var y = 0; y < height; y++) { queue.Enqueue(y * width); queue.Enqueue(y * width + width - 1); }
+
+            while (queue.Count > 0)
+            {
+                var i = queue.Dequeue();
+                if (!White(pixels[i])) continue;
+
+                pixels[i] = SkiaSharp.SKColors.Transparent;
+
+                int px = i % width, py = i / width;
+                if (px > 0) queue.Enqueue(i - 1);
+                if (px < width - 1) queue.Enqueue(i + 1);
+                if (py > 0) queue.Enqueue(i - width);
+                if (py < height - 1) queue.Enqueue(i + width);
+            }
+
+            cat.Pixels = pixels;
+
+            using var png = cat.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            using var stream = png.AsStream();
+            return new Avalonia.Media.Imaging.Bitmap(stream);
+        }
+        catch (Exception e) when (e is System.IO.FileNotFoundException or System.IO.IOException or ArgumentException)
+        {
+            // No cat shipped with this build. Nothing happens, which is the right amount of nothing.
+            return null;
+        }
+    }
+
     /// <summary>
     /// The sheet's ScrollViewer keeps whatever offset it had last time, so a second visit would
     /// open part-way down the page. Reset it whenever the sheet is opened.
@@ -37,6 +151,9 @@ public partial class InstancesView : UserControl
         if (_observed is not null) _observed.PropertyChanged -= OnViewModelPropertyChanged;
         _observed = viewModel;
         if (_observed is not null) _observed.PropertyChanged += OnViewModelPropertyChanged;
+
+        // Left out last time, so it is still out.
+        if (viewModel is { CatOut: true }) _ = ShowCatAsync();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

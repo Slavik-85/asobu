@@ -770,7 +770,9 @@ public sealed class Modrinth(HttpClient http) : IModSource
     private sealed class VersionFile
     {
         [JsonPropertyName("url")] public string Url { get; init; } = "";
-        [JsonPropertyName("filename")] public string FileName { get; init; } = "";
+        /// <summary>Only ever a name: it is joined onto a folder on disk, so any path in it is dropped.</summary>
+        [JsonPropertyName("filename")]
+        public string FileName { get; init => field = Path.GetFileName(value); } = "";
         [JsonPropertyName("primary")] public bool Primary { get; init; }
         [JsonPropertyName("size")] public long Size { get; init; }
         [JsonPropertyName("hashes")] public Dictionary<string, string>? Hashes { get; init; }

@@ -262,6 +262,13 @@ public sealed class Instance : INotifyPropertyChanged
     public List<string> CrashedBuilds { get; set; } = [];
 
     /// <summary>
+    /// Updates somebody said no to, by the file name of the build offered. A newer build has a
+    /// different name, so it is offered again — which is the point: a mod that broke on one
+    /// release usually gets fixed in the next.
+    /// </summary>
+    public List<string> IgnoredUpdates { get; set; } = [];
+
+    /// <summary>
     /// Methods Java is not to compile here, in the "package.Class::method" form its own flag
     /// takes — see <see cref="Launch.CompilerExclusion"/>.
     ///
@@ -285,13 +292,10 @@ public sealed class Instance : INotifyPropertyChanged
     /// way round runs again. Nothing has to remember to clear it.
     /// </summary>
     /// <summary>
-    /// A hunt for the mod that is crashing this instance, if one is under way.
-    ///
-    /// On the instance because it spans launches: each one answers a question and the next is
-    /// chosen from the answer. Saved before the mods folder is touched, so an Asobu closed in the
-    /// middle of one comes back knowing what was switched off and what to put back.
+    /// A mod hunt an older build left unfinished. Only read to put its mods back on: see
+    /// <see cref="Mods.LeftoverHunt"/>.
     /// </summary>
-    public Mods.BisectState? Bisect { get; set; }
+    public Mods.LeftoverHunt? Bisect { get; set; }
 
     public string? InstalledVersionId { get; set; }
 
@@ -299,7 +303,7 @@ public sealed class Instance : INotifyPropertyChanged
 
     /// <summary>What <see cref="InstalledFrom"/> has to equal for the id above to be this instance's.</summary>
     [JsonIgnore]
-    public string InstallStamp => $"{MinecraftVersion}|{Loader}|{LoaderVersion}";
+    public string InstallStamp => $"{MinecraftVersion}|{Loader}|{LoaderVersion}|r{Minecraft.VersionResolver.Revision}";
 
     public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastPlayed { get; set; }

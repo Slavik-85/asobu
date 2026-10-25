@@ -92,14 +92,29 @@ public sealed class MinecraftInstaller(HttpClient http, AsobuPaths paths, Mojang
     }
 
     /// <summary>Everything the JVM needs on -cp, in version-JSON order.</summary>
-    public IReadOnlyList<string> BuildClasspath(VersionJson version, RuleContext platform) =>
-    [
-        .. version.Libraries
-            .Where(l => RuleEvaluator.Allows(l, platform))
-            .Where(l => l.Natives is null || l.Downloads?.Artifact is not null)
-            .Select(LibraryFile),
-        paths.VersionJarFile(version.JarVersionId),
-    ];
+    public IReadOnlyList<string> BuildClasspath(VersionJson version, RuleContext platform)
+    {
+        var allowed = version.Libraries.Where(l => RuleEvaluator.Allows(l, platform)).ToList();
+
+        // Before 1.19 a natives entry also carries the library's plain jar, under the same
+        // coordinate as the library's own entry. Where that entry is present it is the one on the
+        // classpath: otherwise a loader that moved the library on ran beside vanilla's older jar,
+        // which is the two-builds crash the merge exists to prevent.
+        var plain = allowed
+            .Where(l => l.Natives is null)
+            .Select(l => Maven.ArtifactKey(l.Name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. allowed
+                .Where(l => l.Natives is null
+                            || (l.Downloads?.Artifact is not null && !plain.Contains(Maven.ArtifactKey(l.Name))))
+                .Select(LibraryFile)
+                .Distinct(StringComparer.OrdinalIgnoreCase),
+            paths.VersionJarFile(version.JarVersionId),
+        ];
+    }
 
     private string LibraryFile(Library library) =>
         Path.Combine(paths.Libraries, library.Downloads?.Artifact?.Path ?? Maven.PathFor(library.Name));
