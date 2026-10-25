@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -42,9 +43,29 @@ public partial class App : Application
             // the moment it went to the tray.
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            _ = FindTrayAsync();
+            DesktopIntegration.Run(main.Launcher);
+
             window.Closing += (_, closing) =>
             {
                 if (_leaving) return;
+
+                // Nowhere to hide. Closing means quitting then, as it does for every other app on
+                // that desktop — except while a game is running, which quitting would take with
+                // it; minimised keeps both.
+                if (!_hasTray && window.IsVisible)
+                {
+                    if (main.InstancesPage.IsRunning)
+                    {
+                        closing.Cancel = true;
+                        window.WindowState = WindowState.Minimized;
+                        return;
+                    }
+
+                    _leaving = true;
+                    Dispatcher.UIThread.Post(() => desktop.Shutdown());
+                    return;
+                }
 
                 // Already in the tray, and something is still asking it to close. Nobody clicked
                 // anything, because there is nothing on screen to click: this is the system or a
@@ -84,6 +105,29 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Whether there is a tray to hide in. Always on Windows. On Linux only when the desktop runs
+    /// a StatusNotifierItem host — KDE, Ubuntu's GNOME and most others do, stock GNOME does not —
+    /// and without one a window hidden "to the tray" was simply gone, with Asobu still running
+    /// and nothing on screen to bring it back. Assumed absent until the desktop has answered.
+    /// </summary>
+    private static bool _hasTray = !OperatingSystem.IsLinux();
+
+    private static async Task FindTrayAsync()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        try
+        {
+            var services = await Tmds.DBus.Protocol.DBusConnection.Session.ListServicesAsync();
+            _hasTray = Array.IndexOf(services, "org.kde.StatusNotifierWatcher") >= 0;
+        }
+        catch (Exception)
+        {
+            // No session bus to ask, which means no tray to hide in either.
+        }
     }
 
     private void BuildTray(IClassicDesktopStyleApplicationLifetime desktop, Window window)

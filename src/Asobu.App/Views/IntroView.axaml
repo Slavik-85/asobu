@@ -103,7 +103,7 @@
                          copied the moment it appears — see the code-behind. -->
                     <Panel>
                       <SelectableTextBlock Text="{Binding Accounts.DeviceUserCode}" FontSize="26"
-                                           FontWeight="SemiBold" FontFamily="Consolas,monospace"
+                                           FontWeight="SemiBold" FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Foreground="{DynamicResource Accent}"/>
                       <Button Classes="copyButton" ToolTip.Tip="Copy the code" Click="CopyCode_Click"

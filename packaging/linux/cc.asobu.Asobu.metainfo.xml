@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what GNOME Software and Discover show for the package. @VERSION@ and
+     @DATE@ are filled in by build-packages.sh. -->
+<component type="desktop-application">
+  <id>cc.asobu.Asobu</id>
+  <name>Asobu</name>
+  <summary>Minecraft: Java Edition launcher</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <description>
+    <p>
+      A launcher for Minecraft: Java Edition with isolated instances, every mod loader, and mods
+      from Modrinth and CurseForge in one place.
+    </p>
+    <p>
+      When a game crashes, Asobu reads the crash and says what broke in plain words, with a
+      one-click fix where there is one. Friends can join each other's worlds without opening a
+      port.
+    </p>
+  </description>
+  <launchable type="desktop-id">cc.asobu.Asobu.desktop</launchable>
+  <url type="homepage">https://asobu.cc</url>
+  <url type="bugtracker">https://github.com/Slavik-85/asobu/issues</url>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <content_rating type="oars-1.1">
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

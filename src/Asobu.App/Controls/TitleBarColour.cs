@@ -36,20 +36,24 @@ public static class TitleBarColour
     {
         if (!OperatingSystem.IsWindows()) return;
 
-        Apply(window);
+        Refresh(window);
 
         // The handle does not exist before the window is opened, and the theme can change under
         // a running window when the desktop does.
-        window.Opened += (_, _) => Apply(window);
-        window.ActualThemeVariantChanged += (_, _) => Apply(window);
+        window.Opened += (_, _) => Refresh(window);
+        window.ActualThemeVariantChanged += (_, _) => Refresh(window);
     }
 
     /// <summary>
+    /// Paints the bar from the theme's current colours. Called by the theming too: it recolours
+    /// the brushes in place, which Windows has no way to notice, so the bar stayed in the colours
+    /// the window opened with.
+    ///
     /// The guard lives here rather than only in Follow because the handlers above are separate
     /// call sites, and an analyser reading one at a time cannot see that they were only ever
     /// attached on Windows.
     /// </summary>
-    private static void Apply(Window window)
+    public static void Refresh(Window window)
     {
         if (!OperatingSystem.IsWindows()) return;
         if (window.TryGetPlatformHandle()?.Handle is not { } handle || handle == IntPtr.Zero) return;

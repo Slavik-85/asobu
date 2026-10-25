@@ -578,7 +578,7 @@ public sealed class AsobuLauncher
 
         foreach (var game in games)
         {
-            try { if (!game.HasExited) game.CloseMainWindow(); }
+            try { if (!game.HasExited) AskToClose(game); }
             catch (Exception e) when (e is InvalidOperationException or PlatformNotSupportedException)
             {
                 // No window to close — a headless or already-gone process. The wait below sorts it.
@@ -601,6 +601,25 @@ public sealed class AsobuLauncher
             }
         }
     }
+
+    /// <summary>
+    /// Asks a game to quit the way its own window's close button would, so it saves first.
+    ///
+    /// CloseMainWindow does nothing at all off Windows, so on Linux every exit used to sit out
+    /// the whole wait and then kill the game outright, losing everything since the last
+    /// autosave. SIGTERM is the Unix way to ask: Java runs its shutdown hooks on it, and
+    /// Minecraft's own hook stops the world and saves.
+    /// </summary>
+    private static void AskToClose(Process game)
+    {
+        if (OperatingSystem.IsWindows()) game.CloseMainWindow();
+        else _ = Kill(game.Id, SigTerm);
+    }
+
+    private const int SigTerm = 15;
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "kill", SetLastError = true)]
+    private static extern int Kill(int pid, int signal);
 
     /// <summary>
     /// Turns an account into a live session, refreshing Microsoft tokens as needed. The route is
@@ -1831,14 +1850,49 @@ public sealed class AsobuLauncher
         }
     }
 
-    /// <summary>Opens a link in the user's own browser.</summary>
-    public static void OpenUrl(string url) =>
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+    /// <summary>
+    /// Opens a link in the user's own browser. Web links only: plenty of these come from a mod's
+    /// page or an API answer, and on Linux the shell runs an executable target outright rather
+    /// than handing it to a browser — a "file:///…/x" or a bare program name would be run.
+    /// </summary>
+    public static void OpenUrl(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
+            Open(uri.AbsoluteUri);
+    }
+
+    /// <summary>Opens one of Asobu's own files, such as a log, in whatever the desktop uses for it.</summary>
+    public static void OpenFile(string path) => Open(path);
 
     /// <summary>Opens a folder in the system file manager.</summary>
     public static void OpenFolder(string path)
     {
         Directory.CreateDirectory(path);
-        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+        Open(path);
+    }
+
+    /// <summary>
+    /// Hands a link or a folder to the desktop. On Linux that is xdg-open, which a bare window
+    /// manager may not have — and Process.Start throwing there took the whole app down from any
+    /// of the twenty buttons that open something. gio, GLib's own opener, is tried instead, and
+    /// if neither is there the click does nothing rather than crash.
+    /// </summary>
+    private static void Open(string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })?.Dispose();
+        }
+        catch (System.ComponentModel.Win32Exception) when (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("gio") { ArgumentList = { "open", "--", target } })?.Dispose();
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+            }
+        }
     }
 }

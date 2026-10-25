@@ -221,6 +221,8 @@
         Asobu asks GitHub whether a newer version exists when it starts, and downloads it in the
         background if so. That request tells GitHub your IP address and which version you are running,
         the same as any download would. It carries nothing else, and no Asobu server is involved.
+        A Linux .deb or .rpm install asks GitHub only for the latest version number and downloads
+        nothing itself; your package manager does that.
       </p>
 
       <h2>Opening a world to friends</h2>
@@ -255,8 +257,8 @@
         On Windows an installed Asobu keeps everything in one folder inside its own install directory,
         so an update replaces the program without touching your data. A source build uses
         <code>%APPDATA%\.asobu</code> instead. On Linux it is always <code>~/.asobu</code>, beside the
-        <code>~/.minecraft</code> you already have, because an AppImage runs from a read-only mount with
-        nowhere beside it to write.
+        <code>~/.minecraft</code> you already have, because an AppImage runs from a read-only mount and a
+        package installs into <code>/opt</code>, neither of which is yours to write.
       </p>
       <ul>
         <li><strong>Instances</strong> with your worlds, mods, configuration and screenshots.</li>
@@ -297,7 +299,7 @@
         <a href="https://github.com/Slavik-85/asobu/issues">GitHub</a>.
       </p>
 
-      <p style="color:var(--muted);font-size:0.9rem;margin-top:2.5rem">Last updated: 21 August 2026</p>
+      <p style="color:var(--muted);font-size:0.9rem;margin-top:2.5rem">Last updated: 25 October 2026</p>
     </div>
   </section>
 </main>

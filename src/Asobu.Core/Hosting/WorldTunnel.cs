@@ -345,7 +345,9 @@ public static class LocalAddresses
     public static IReadOnlyList<string> For(int port) =>
     [
         .. NetworkInterface.GetAllNetworkInterfaces()
-            .Where(card => card.OperationalStatus == OperationalStatus.Up
+            // Unknown as well as Up: Linux reports tun, WireGuard and Tailscale links as Unknown,
+            // and those VPNs are exactly the addresses this list is for.
+            .Where(card => card.OperationalStatus is OperationalStatus.Up or OperationalStatus.Unknown
                         && card.NetworkInterfaceType != NetworkInterfaceType.Loopback)
             .SelectMany(card => card.GetIPProperties().UnicastAddresses)
             .Select(address => address.Address)

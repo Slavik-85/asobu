@@ -183,7 +183,7 @@
                    thing being read stays optically centred rather than shoved off-axis. -->
               <Panel>
                 <SelectableTextBlock Text="{Binding DeviceUserCode}" FontSize="26" FontWeight="SemiBold"
-                                      FontFamily="Consolas,monospace" VerticalAlignment="Center"
+                                      FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace" VerticalAlignment="Center"
                                       HorizontalAlignment="Center" Foreground="{DynamicResource Accent}"/>
                 <Button Classes="copyButton" ToolTip.Tip="Copy the code" Click="CopyCode_Click"
                         HorizontalAlignment="Right" VerticalAlignment="Center">

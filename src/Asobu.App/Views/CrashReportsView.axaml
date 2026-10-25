@@ -136,7 +136,7 @@
                             <ItemsControl ItemsSource="{Binding Evidence}" IsVisible="{Binding HasEvidence}">
                               <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                  <TextBlock Text="{Binding}" FontFamily="Consolas,monospace" FontSize="11"
+                                  <TextBlock Text="{Binding}" FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace" FontSize="11"
                                              Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"
                                              Margin="0,0,0,3"/>
                                 </DataTemplate>
@@ -161,7 +161,7 @@
               <!-- Through the same formatter the live log uses, so a saved report reads the way
                    the running game did: log4j XML unwrapped into ordinary lines, and each one
                    coloured by how loud it was. -->
-              <SelectableTextBlock FontFamily="Consolas, Menlo, monospace" FontSize="12"
+              <SelectableTextBlock FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace" FontSize="12"
                                    TextWrapping="Wrap"
                                    ctrl:GameLogText.InfoBrush="{DynamicResource LogInfo}"
                                    ctrl:GameLogText.WarnBrush="{DynamicResource LogWarn}"

@@ -256,22 +256,31 @@
       </Border>
 
       <!-- Updates. Absent in a build with no update path — running from a build folder
-           rather than an install has nothing to update. -->
-      <Border Classes="card" Padding="24" IsVisible="{Binding Updates.CanUpdate}">
+           rather than an install has nothing to update. A Linux package gets the card too, as
+           a notice: its package manager does the updating. -->
+      <Border Classes="card" Padding="24" IsVisible="{Binding Updates.ShowCard}">
         <StackPanel Spacing="12">
           <StackPanel Spacing="4">
             <TextBlock Text="Updates" Classes="h2"/>
-            <TextBlock Classes="sub" TextWrapping="Wrap"
-                       Text="Asobu checks on its own when it starts and downloads quietly in the background. It never restarts without being asked."/>
+            <TextBlock Classes="sub" TextWrapping="Wrap" Text="{Binding Updates.Blurb}"/>
           </StackPanel>
 
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
             <TextBlock Grid.Column="0" Text="{Binding Updates.StatusLine}" Classes="value"
                        VerticalAlignment="Center" TextWrapping="Wrap"/>
+            <Button Grid.Column="1" Classes="primary" Content="Download"
+                    IsVisible="{Binding Updates.IsAvailable}"
+                    Command="{Binding Updates.DownloadCommand}"/>
             <Button Grid.Column="1" Classes="ghost" Content="Check now"
-                    IsVisible="{Binding !Updates.IsReady}"
                     IsEnabled="{Binding !Updates.IsChecking}"
-                    Command="{Binding Updates.CheckCommand}"/>
+                    Command="{Binding Updates.CheckCommand}">
+              <Button.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                  <Binding Path="!Updates.IsReady"/>
+                  <Binding Path="!Updates.IsAvailable"/>
+                </MultiBinding>
+              </Button.IsVisible>
+            </Button>
             <Button Grid.Column="1" Classes="primary" Content="Restart now"
                     IsVisible="{Binding Updates.IsReady}"
                     IsEnabled="{Binding Updates.CanRestart}"

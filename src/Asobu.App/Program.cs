@@ -38,5 +38,9 @@ sealed class Program
             .WithDeveloperTools()
 #endif
             .WithInterFont()
+            // The window's class on Linux, which docks match against the desktop entry's
+            // StartupWMClass. Left to default it is the assembly's name, Asobu.App, and the running
+            // window shows up as a second, iconless app beside the one that was clicked.
+            .With(new X11PlatformOptions { WmClass = "asobu" })
             .LogToTrace();
 }

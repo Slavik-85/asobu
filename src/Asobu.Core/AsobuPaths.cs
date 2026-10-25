@@ -55,6 +55,25 @@ public sealed class AsobuPaths(string root)
     }
 
     /// <summary>
+    /// How this copy was installed when a Linux package put it there — "deb", "rpm" or "tar",
+    /// from a file the package's build writes beside the executable. Null for the Windows
+    /// installer, the AppImage and a build folder. A package manager owns those files, so the
+    /// launcher must not try to replace them itself.
+    /// </summary>
+    public static string? PackageType()
+    {
+        try
+        {
+            var marker = Path.Combine(AppContext.BaseDirectory, "package-type");
+            return File.Exists(marker) ? File.ReadAllText(marker).Trim() is { Length: > 0 } kind ? kind : null : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The folder .asobu sits in: AppData\Roaming on Windows, the home directory everywhere else.
     ///
     /// Asking for ApplicationData on Linux gives ~/.config, and .asobu inside it would be a

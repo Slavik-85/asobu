@@ -39,13 +39,40 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
 
         return [.. new[]
             {
-                OperatingSystem.IsWindows() ? WindowsDownloads() : null,
+                OperatingSystem.IsWindows() ? WindowsDownloads() : XdgDownloads(home),
                 Path.Combine(home, "Downloads"),
                 Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
             }
             .OfType<string>()
             .Where(folder => folder.Length > 0 && Directory.Exists(folder))
             .Distinct(StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>
+    /// The Linux equivalent: the XDG user-dirs entry, which is where a desktop in another language
+    /// puts downloads — ~/Загрузки, ~/Téléchargements — and so where every browser saves them.
+    /// The file reads XDG_DOWNLOAD_DIR="$HOME/Загрузки".
+    /// </summary>
+    private static string? XdgDownloads(string home)
+    {
+        try
+        {
+            var config = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") is { Length: > 0 } set
+                ? set
+                : Path.Combine(home, ".config");
+            var file = Path.Combine(config, "user-dirs.dirs");
+            if (!File.Exists(file)) return null;
+
+            return File.ReadLines(file)
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith("XDG_DOWNLOAD_DIR=", StringComparison.Ordinal))
+                .Select(line => line["XDG_DOWNLOAD_DIR=".Length..].Trim('"').Replace("$HOME", home, StringComparison.Ordinal))
+                .FirstOrDefault();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

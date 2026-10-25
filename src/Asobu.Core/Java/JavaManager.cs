@@ -128,10 +128,21 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
         foreach (var home in CandidateHomes())
         {
             if (FindExecutable(home) is not { } executable) continue;
-            if (!seen.Add(executable)) continue;
-            if (ReadRelease(home) is not { } release) continue;
 
-            found.Add(new JavaInstallation(executable, release.Version, release.Major, Path.GetFileName(home)));
+            // By where it really is. Linux lists one Java under several names — default-java,
+            // default-runtime, jre-21-openjdk — each a link to the same folder.
+            if (!seen.Add(RealPath(home))) continue;
+
+            try
+            {
+                if (ReadRelease(home) is not { } release) continue;
+
+                found.Add(new JavaInstallation(executable, release.Version, release.Major, Path.GetFileName(home)));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // One unreadable Java is not a reason to list none.
+            }
         }
 
         return [.. found.OrderByDescending(j => j.Major)];
@@ -151,7 +162,14 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Zulu"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Amazon Corretto"),
             ]
-            : new[] { "/usr/lib/jvm", "/Library/Java/JavaVirtualMachines" };
+            : OperatingSystem.IsLinux() ? LinuxRoots() : ["/Library/Java/JavaVirtualMachines"];
+
+        // Whatever "java" on the PATH is, on Linux usually a link into one of the folders above,
+        // but not always: a distribution's alternatives can point anywhere.
+        // Checked for first: ResolveLinkTarget throws on a path that does not exist, and no system
+        // Java at all is the ordinary case for somebody letting Asobu fetch its own.
+        if (!OperatingSystem.IsWindows() && File.Exists("/usr/bin/java") && PathJavaHome() is { } pathHome)
+            yield return pathHome;
 
         foreach (var root in roots)
         {
@@ -162,6 +180,52 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
             catch (UnauthorizedAccessException) { continue; }
 
             foreach (var child in children) yield return child;
+        }
+    }
+
+    /// <summary>
+    /// Where Linux keeps Java: Debian's folder and Fedora's, Oracle's, and the per-user ones
+    /// SDKMAN, IntelliJ and Gradle download into.
+    /// </summary>
+    private static string[] LinuxRoots()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        return
+        [
+            "/usr/lib/jvm",
+            "/usr/lib64/jvm",
+            "/usr/java",
+            Path.Combine(home, ".sdkman", "candidates", "java"),
+            Path.Combine(home, ".jdks"),
+            Path.Combine(home, ".gradle", "jdks"),
+        ];
+    }
+
+    private static string? PathJavaHome()
+    {
+        try
+        {
+            return new FileInfo("/usr/bin/java").ResolveLinkTarget(returnFinalTarget: true)?.FullName is { } real
+                   && Path.GetDirectoryName(Path.GetDirectoryName(real)) is { Length: > 0 } home
+                ? home
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string RealPath(string directory)
+    {
+        try
+        {
+            return new DirectoryInfo(directory).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? directory;
+        }
+        catch (IOException)
+        {
+            return directory;
         }
     }
 
@@ -197,10 +261,13 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
             if (!line.StartsWith("JAVA_VERSION=", StringComparison.Ordinal)) continue;
 
             var value = line["JAVA_VERSION=".Length..].Trim('"', ' ');
-            // "1.8.0_402" means 8; "21.0.3" means 21.
-            var head = value.Split('.', '_')[0];
-            var major = head == "1" ? int.Parse(value.Split('.')[1]) : int.Parse(head);
-            return (value, major);
+
+            // "1.8.0_402" means 8; "21.0.3" means 21; "25-ea", which Fedora and Arch ship, means
+            // 25 — and used to throw out of the whole list.
+            var parts = value.Split('.', '_', '-', '+');
+            var head = parts[0] == "1" && parts.Length > 1 ? parts[1] : parts[0];
+
+            return int.TryParse(head, out var major) ? (value, major) : null;
         }
 
         return null;
@@ -222,9 +289,12 @@ public sealed class JavaManager(HttpClient http, AsobuPaths paths)
             if (File.Exists(direct)) return direct;
         }
 
+        // Shallow, and past folders it may not read: some of the roots searched are shared ones.
+        var search = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MaxRecursionDepth = 4 };
+
         foreach (var name in names)
         {
-            var match = Directory.EnumerateFiles(home, name, SearchOption.AllDirectories).FirstOrDefault();
+            var match = Directory.EnumerateFiles(home, name, search).FirstOrDefault();
             if (match is not null) return match;
         }
 

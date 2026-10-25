@@ -80,6 +80,9 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Already underneath Avalonia on Linux; named so asking the desktop whether it has a tray
+         does not depend on what Avalonia happens to pull in. Same version it brings. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.1" />
     <!-- Already underneath Avalonia; named here so its codec can be used directly to walk the
          frames of an animated GIF, which Avalonia's own Bitmap does not do. -->
     <PackageReference Include="SkiaSharp" Version="3.119.4" />

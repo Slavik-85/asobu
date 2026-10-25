@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Asobu
+GenericName=Minecraft Launcher
+Comment=Play Minecraft: Java Edition with mods, instances and friends
+Exec=/usr/bin/asobu
+TryExec=/usr/bin/asobu
+Icon=cc.asobu.Asobu
+Terminal=false
+Categories=Game;
+Keywords=minecraft;launcher;mods;modrinth;curseforge;
+StartupWMClass=asobu

@@ -254,7 +254,7 @@
 
                     <DataTemplate DataType="mods:ProseCode">
                       <Border Classes="proseCode">
-                        <TextBlock Text="{Binding Text}" FontFamily="Consolas, Menlo, monospace"
+                        <TextBlock Text="{Binding Text}" FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace"
                                    FontSize="12.5" TextWrapping="NoWrap"/>
                       </Border>
                     </DataTemplate>

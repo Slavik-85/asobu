@@ -372,7 +372,7 @@
             <TextBlock Text="Is this really them?" FontWeight="SemiBold" FontSize="13"/>
             <TextBlock Classes="sub" TextWrapping="Wrap"
                        Text="Read these numbers to each other somewhere else — in game, on a call. If they match, nobody is reading your messages. If they don't, someone is."/>
-            <SelectableTextBlock Text="{Binding Fingerprint}" FontFamily="Consolas, Menlo, monospace"
+            <SelectableTextBlock Text="{Binding Fingerprint}" FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace"
                                  FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
                                  Foreground="{DynamicResource Accent}"/>
           </StackPanel>

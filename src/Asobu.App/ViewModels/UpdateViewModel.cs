@@ -1,5 +1,10 @@
 ﻿using System;
+using System.Linq;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Asobu.Core;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,6 +28,9 @@ public enum UpdateStage
 
     /// <summary>Downloaded and staged. Restarting is all that is left.</summary>
     Ready,
+
+    /// <summary>A newer version is out, for an install whose package manager has to fetch it.</summary>
+    Available,
 
     Failed,
 }
@@ -83,8 +91,15 @@ public partial class UpdateViewModel : ViewModelBase
     /// <summary>What went wrong, in words worth showing.</summary>
     [ObservableProperty] public partial string? Error { get; set; }
 
+    /// <summary>
+    /// A .deb, .rpm or tarball install. Velopack cannot update those and must not try — the files
+    /// belong to the package manager — so Asobu says when a newer version is out instead.
+    /// </summary>
+    private static readonly string? Package = AsobuPaths.PackageType();
+
     /// <summary>This build's own version, for the Settings page to show.</summary>
-    public string CurrentVersion => _manager?.CurrentVersion?.ToString() ?? "development build";
+    public string CurrentVersion =>
+        _manager?.CurrentVersion?.ToString() ?? (Package is not null ? BuiltVersion() : "development build");
 
     /// <summary>
     /// False when running from a plain build directory, where there is nothing to update. The
@@ -92,8 +107,18 @@ public partial class UpdateViewModel : ViewModelBase
     /// </summary>
     public bool CanUpdate => _manager?.IsInstalled ?? false;
 
+    /// <summary>A package install, which is told about new versions rather than given them.</summary>
+    public bool CanNotify => !CanUpdate && Package is not null;
+
+    public bool ShowCard => CanUpdate || CanNotify;
+
+    public string Blurb => CanNotify
+        ? "Installed from a package, so your package manager owns the files. Asobu tells you when a new version is out."
+        : "Asobu checks on its own when it starts and downloads quietly in the background. It never restarts without being asked.";
+
     public bool IsChecking => Stage is UpdateStage.Checking or UpdateStage.Downloading;
     public bool IsReady => Stage == UpdateStage.Ready;
+    public bool IsAvailable => Stage == UpdateStage.Available;
 
     /// <summary>
     /// Whether a game is up, asked of whoever knows. Updating replaces the launcher underneath a
@@ -123,6 +148,7 @@ public partial class UpdateViewModel : ViewModelBase
         UpdateStage.Checking => "Looking for an update…",
         UpdateStage.Downloading => $"Downloading {NewVersion}…",
         UpdateStage.Ready => $"Asobu {NewVersion} is ready.",
+        UpdateStage.Available => $"Asobu {NewVersion} is out.",
         UpdateStage.Current => "Asobu is up to date.",
         UpdateStage.Failed => Error ?? "Couldn't check for updates.",
         _ => $"Asobu {CurrentVersion}",
@@ -133,7 +159,7 @@ public partial class UpdateViewModel : ViewModelBase
         // An update is downloaded and waiting for a restart, so there is nothing further to look
         // for. CheckAsync would refuse anyway; stopping means not waking every ten minutes for
         // the rest of the session to be refused.
-        if (value == UpdateStage.Ready)
+        if (value is UpdateStage.Ready or UpdateStage.Available)
         {
             _timer?.Stop();
             _timer = null;
@@ -141,6 +167,7 @@ public partial class UpdateViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(IsChecking));
         OnPropertyChanged(nameof(IsReady));
+        OnPropertyChanged(nameof(IsAvailable));
         RefreshCanRestart();
         OnPropertyChanged(nameof(IsCurrent));
         OnPropertyChanged(nameof(HasFailed));
@@ -171,7 +198,7 @@ public partial class UpdateViewModel : ViewModelBase
     {
         // Nothing to check in a build that has no update path — a source run, or an unpacked
         // folder. Velopack says so rather than being guessed at.
-        if (_timer is not null || !CanUpdate) return;
+        if (_timer is not null || !ShowCard) return;
 
         _timer = new DispatcherTimer { Interval = HowOften };
         _timer.Tick += (_, _) => _ = CheckQuietlyAsync();
@@ -190,6 +217,12 @@ public partial class UpdateViewModel : ViewModelBase
 
     private async Task CheckAsync(bool quiet)
     {
+        if (CanNotify)
+        {
+            await CheckReleasesAsync(quiet);
+            return;
+        }
+
         if (_manager is not { IsInstalled: true } manager) return;
         if (IsChecking || IsReady) return;
 
@@ -229,6 +262,88 @@ public partial class UpdateViewModel : ViewModelBase
             });
         }
     }
+
+    private static readonly HttpClient Http = new();
+
+    /// <summary>
+    /// For a package install: is GitHub's latest release newer than this one. Asks for the
+    /// version number and nothing else — the download is the package manager's to do. The same
+    /// endpoint skips pre-releases, as Velopack is told to.
+    /// </summary>
+    private async Task CheckReleasesAsync(bool quiet)
+    {
+        if (IsChecking || IsAvailable) return;
+
+        Error = null;
+        Stage = UpdateStage.Checking;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/Slavik-85/asobu/releases/latest");
+            request.Headers.UserAgent.ParseAdd("Asobu");
+
+            using var response = await Http.SendAsync(request).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+
+            using var release = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+            var tag = release.RootElement.GetProperty("tag_name").GetString()?.TrimStart('v');
+
+            // Only once this install's own file is up. The release goes live with the Windows
+            // build, and the Linux packages follow minutes later — or not at all, if packaging
+            // failed — and a Download button pointing at nothing is worse than waiting.
+            var hasFile = PackageFile is not { } file
+                          || release.RootElement.TryGetProperty("assets", out var assets)
+                          && assets.EnumerateArray().Any(asset =>
+                              asset.TryGetProperty("name", out var name) && name.GetString() == file);
+
+            var newer = hasFile
+                        && tag is not null
+                        && SemanticVersion.TryParse(tag, out var latest)
+                        && SemanticVersion.TryParse(CurrentVersion, out var mine)
+                        && latest > mine;
+
+            await OnUi(() =>
+            {
+                if (newer)
+                {
+                    NewVersion = tag;
+                    Stage = UpdateStage.Available;
+                }
+                else
+                {
+                    Stage = quiet ? UpdateStage.Idle : UpdateStage.Current;
+                }
+            });
+        }
+        catch (Exception e)
+        {
+            await OnUi(() =>
+            {
+                Error = quiet ? null : Readable(e);
+                Stage = quiet ? UpdateStage.Idle : UpdateStage.Failed;
+            });
+        }
+    }
+
+    /// <summary>The release file this install updates from, or null when that is a whole release page.</summary>
+    private static string? PackageFile => Package switch
+    {
+        "deb" => "Asobu-linux-x64.deb",
+        "rpm" => "Asobu-linux-x64.rpm",
+        "tar" => "Asobu-linux-x64.tar.gz",
+        _ => null,
+    };
+
+    /// <summary>The new package, opened in the browser for the package manager to install.</summary>
+    [RelayCommand]
+    private void Download() => AsobuLauncher.OpenUrl(Package is "deb" or "rpm"
+        ? $"{ReleasesUrl}/releases/latest/download/{PackageFile}"
+        : $"{ReleasesUrl}/releases/latest");
+
+    /// <summary>The version this was built as, without the commit hash the SDK appends.</summary>
+    private static string BuiltVersion() =>
+        typeof(UpdateViewModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            .Split('+')[0] ?? "unknown";
 
     /// <summary>How long the view takes to bring the curtain up. Keep the two in step.</summary>
     private const int VeilMilliseconds = 420;

@@ -902,7 +902,7 @@
                                 OnContent="" OffContent="" VerticalAlignment="Center"/>
                 </Grid>
                 <TextBox Text="{Binding InstanceJvmArguments}" IsEnabled="{Binding OverridesJvmArguments}"
-                         FontFamily="Consolas,monospace" FontSize="12.5"
+                         FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace" FontSize="12.5"
                          PlaceholderText="-XX:+UseG1GC"/>
               </StackPanel>
 
@@ -961,7 +961,7 @@
               <StackPanel Spacing="7">
                 <TextBlock Text="Environment variables" Classes="value"/>
                 <TextBox Text="{Binding EnvironmentVariablesText, UpdateSourceTrigger=LostFocus}"
-                         AcceptsReturn="True" MinHeight="76" FontFamily="Consolas,monospace"
+                         AcceptsReturn="True" MinHeight="76" FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace"
                          FontSize="12.5" PlaceholderText="KEY=value, one per line"/>
               </StackPanel>
 
@@ -1418,7 +1418,7 @@
               <ScrollViewer Name="LogScroll" ctrl:SmoothScroll.Enabled="True">
                 <!-- Selectable so a line can be copied out into a bug report, which is most of
                      what anybody wants from a log they are looking at. -->
-                <SelectableTextBlock FontSize="12" FontFamily="Consolas, Menlo, monospace"
+                <SelectableTextBlock FontSize="12" FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace"
                                      TextWrapping="NoWrap"
                                      ctrl:GameLogText.InfoBrush="{DynamicResource LogInfo}"
                                      ctrl:GameLogText.WarnBrush="{DynamicResource LogWarn}"
@@ -1575,7 +1575,7 @@
               <StackPanel Spacing="8">
                 <Panel>
                   <SelectableTextBlock Text="{Binding ShareCodeText}" FontSize="30" FontWeight="SemiBold"
-                                       FontFamily="Consolas,monospace" HorizontalAlignment="Center"
+                                       FontFamily="Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace" HorizontalAlignment="Center"
                                        VerticalAlignment="Center" Foreground="{DynamicResource Accent}"/>
                   <Button Classes="copyButton" ToolTip.Tip="Copy the code" Click="CopyShareCode_Click"
                           HorizontalAlignment="Right" VerticalAlignment="Center">

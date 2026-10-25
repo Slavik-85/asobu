@@ -49,6 +49,16 @@
           </StackPanel>
         </Button>
 
+        <!-- The same chip for a Linux package install, where a new version is something to
+             download for the package manager rather than something already staged. -->
+        <Button DockPanel.Dock="Bottom" Classes="updateChip" Margin="0,16,0,0"
+                IsVisible="{Binding Updates.IsAvailable}" Command="{Binding Updates.DownloadCommand}"
+                ToolTip.Tip="Download the new package">
+          <TextBlock FontSize="12.5" FontWeight="Medium" HorizontalAlignment="Center"
+                     Foreground="{DynamicResource OnAccent}"
+                     Text="{Binding Updates.NewVersion, StringFormat='Get Asobu {0}'}"/>
+        </Button>
+
         <Border DockPanel.Dock="Bottom" Classes="accountBar" Margin="0,16,0,0">
           <Grid ColumnDefinitions="*,Auto,Auto">
             <Button Grid.Column="0" x:Name="AccountChip" Classes="accountChip"

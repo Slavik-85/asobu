@@ -116,6 +116,10 @@ public static class Theming
                 }
             }
         }
+
+        // The title bar is Windows' to draw, from colours it was handed once.
+        if (app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
+            Controls.TitleBarColour.Refresh(window);
     }
 
     /// <summary>The controller artwork as shipped, read once and recoloured from each time.</summary>

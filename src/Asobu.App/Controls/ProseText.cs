@@ -61,7 +61,7 @@ public static class ProseText
 
             if (span.Code)
             {
-                run.FontFamily = FontFamily.Parse("Consolas, Menlo, monospace");
+                run.FontFamily = FontFamily.Parse("Consolas, DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Menlo, monospace");
                 run.FontSize = target.FontSize - 0.5;
             }
 

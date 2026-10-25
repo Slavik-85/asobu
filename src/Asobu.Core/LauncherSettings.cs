@@ -111,6 +111,12 @@ public sealed class LauncherSettings
     public bool KonamiCat { get; set; }
 
     /// <summary>
+    /// The AppImage has put itself in the Linux app menu once. Remembered so an entry the user
+    /// deleted is not quietly put back on the next start.
+    /// </summary>
+    public bool LinuxMenuEntryWritten { get; set; }
+
+    /// <summary>
     /// Whether the welcome has been through. False on a fresh install, and also false for
     /// anyone upgrading from a build that predates it — so the launcher treats an existing
     /// account or instance as proof of a returning user rather than showing them a welcome

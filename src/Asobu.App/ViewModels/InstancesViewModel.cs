@@ -3178,7 +3178,7 @@ public partial class InstancesViewModel : ViewModelBase
     {
         if ((_logGame?.Instance ?? Selected) is not { } instance) return;
 
-        if (_launcher.LatestLogFor(instance) is { Length: > 0 } path) AsobuLauncher.OpenUrl(path);
+        if (_launcher.LatestLogFor(instance) is { Length: > 0 } path) AsobuLauncher.OpenFile(path);
         else AsobuLauncher.OpenFolder(_launcher.Paths.Logs);
     }
 

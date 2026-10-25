@@ -28,6 +28,7 @@
     </a>
     <nav class="nav">
       <a href="#features">Features</a>
+      <a href="#linux">Linux</a>
       <a href="#signin">Sign-in</a>
       <a href="privacy.html">Privacy</a>
       <a href="https://github.com/Slavik-85/asobu">GitHub</a>
@@ -50,7 +51,7 @@
         it reads the log and tells you which mod did it.
       </p>
       <div class="hero-actions rise">
-        <a class="btn btn-primary" href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-win-Setup.exe">
+        <a class="btn btn-primary" id="download-primary" href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-win-Setup.exe">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
@@ -62,10 +63,12 @@
         </a>
       </div>
       <p class="tagline rise" style="font-size:0.9rem;margin-top:1rem">
-        Windows, about 65&nbsp;MB. There's a
-        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">Linux AppImage</a>
-        too, plus a portable build and every past version
-        <a href="https://github.com/Slavik-85/asobu/releases">on the releases page</a>.
+        Windows, about 65&nbsp;MB. On Linux there's a
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a>, an
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a>, an
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">AppImage</a> and a
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.tar.gz">tarball</a> &mdash; <a href="#linux">which one?</a>
+        Every past version is <a href="https://github.com/Slavik-85/asobu/releases">on the releases page</a>.
       </p>
     </div>
   </section>
@@ -169,6 +172,42 @@
     </div>
   </section>
 
+  <section id="linux">
+    <div class="wrap">
+      <div class="panel">
+        <div class="section-head">
+          <h2>Asobu on Linux</h2>
+          <p>A proper app on every desktop: in your app menu, with its own icon, and your data in <code>~/.asobu</code>.</p>
+        </div>
+
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>Ubuntu, Debian, Mint, Pop!_OS</strong>
+              <span>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a>, then <code>sudo apt install ./Asobu-linux-x64.deb</code></span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Fedora, openSUSE</strong>
+              <span>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a>, then <code>sudo dnf install ./Asobu-linux-x64.rpm</code> (on openSUSE, <code>sudo zypper install --allow-unsigned-rpm ./Asobu-linux-x64.rpm</code>)</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Anything else</strong>
+              <span>The <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">AppImage</a> runs anywhere: <code>chmod +x Asobu.AppImage</code> and open it. It adds itself to your app menu the first time. There's also a <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.tar.gz">tarball</a> to unpack wherever you like.</span>
+            </div>
+          </li>
+        </ol>
+
+        <div class="note" style="margin-top:2rem">
+          <p><strong>Updates.</strong> The AppImage updates itself, like the Windows install. The .deb and .rpm belong to your package manager, so Asobu tells you when a new version is out and links you to it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="signin">
     <div class="wrap">
       <div class="panel">
@@ -244,6 +283,7 @@
       </a>
       <nav class="footer-links">
         <a href="#features">Features</a>
+        <a href="#linux">Linux</a>
         <a href="#signin">Sign-in</a>
         <a href="privacy.html">Privacy</a>
         <a href="https://github.com/Slavik-85/asobu">GitHub</a>
@@ -257,5 +297,13 @@
   </div>
 </footer>
 
+<script>
+  // On Linux the big button says so, and goes to the Linux downloads rather than Setup.exe.
+  if (/Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent)) {
+    const button = document.getElementById('download-primary');
+    button.href = '#linux';
+    button.lastChild.textContent = ' Download for Linux';
+  }
+</script>
 </body>
 </html>

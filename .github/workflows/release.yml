@@ -113,7 +113,8 @@ jobs:
           --releaseName "Asobu ${{ steps.version.outputs.value }}"
           --publish
 
-  # The same application, packed as an AppImage.
+  # The same application for Linux: an AppImage that updates itself, and a .deb, .rpm and
+  # tarball for installing it like any other program.
   #
   # Runs after the Windows job rather than beside it, and merges into the release that job
   # created. Two jobs creating the same tag at the same time is a race with a corrupted release
@@ -140,7 +141,7 @@ jobs:
       - name: Install the packaging dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libfontconfig1 desktop-file-utils
+          sudo apt-get install -y libfontconfig1 desktop-file-utils rpm
 
       - name: Work out the version
         id: version
@@ -212,3 +213,33 @@ jobs:
           --releaseName "Asobu ${{ steps.version.outputs.value }}"
           --merge
           --publish
+
+      # The same app as a .deb, an .rpm and a tarball, for installing like any other program:
+      # into /opt, in the app menu, owned by the package manager. Built from the publish folder
+      # the AppImage came from, and after the AppImage is safely up, so a fault in packaging
+      # costs these three files and never the release.
+      # The version arrives through the environment rather than pasted into the script, so a tag
+      # name with shell characters in it is only ever text.
+      - name: Build the .deb, .rpm and tarball
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: bash packaging/linux/build-packages.sh "$VERSION" publish dist
+
+      # Installed for real on the runner, which catches a dependency that does not exist on
+      # Ubuntu before anybody else finds it.
+      - name: Check the packages
+        run: |
+          desktop-file-validate packaging/linux/cc.asobu.Asobu.desktop
+          sudo apt-get install -y ./dist/Asobu-linux-x64.deb
+          test -x /usr/bin/asobu
+          test "$(cat /opt/asobu/package-type)" = deb
+          rpm -qpi dist/Asobu-linux-x64.rpm
+          rpm -qpl dist/Asobu-linux-x64.rpm | grep -q /usr/bin/asobu
+          tar -tzf dist/Asobu-linux-x64.tar.gz asobu/Asobu.App
+
+      # vpk uploads only what it built itself, so these go up through the GitHub CLI.
+      - name: Add the .deb, .rpm and tarball to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: gh release upload "v$VERSION" dist/* --clobber --repo "$GITHUB_REPOSITORY"
