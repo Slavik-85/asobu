@@ -41,8 +41,8 @@ modules:
       - cp -r /app/lib/asobu/icons/hicolor /app/share/icons/
     sources:
       - type: file
-        url: https://github.com/Slavik-85/asobu/releases/download/v0.1.42/Asobu-linux-x64.tar.gz
-        sha256: 0000000000000000000000000000000000000000000000000000000000000000
+        url: https://github.com/Slavik-85/asobu/releases/download/v0.1.44/Asobu-linux-x64.tar.gz
+        sha256: b01e21426e69cc17d02f5d8bdf305bd3c9a6f804c3c72a0021b55f423e430ca7
         x-checker-data:
           type: json
           url: https://api.github.com/repos/Slavik-85/asobu/releases/latest
