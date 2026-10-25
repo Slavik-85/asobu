@@ -97,6 +97,18 @@ public partial class App : Application
             // which is the same request the tray's own Open makes.
             SingleInstance.Listen(() => Dispatcher.UIThread.Post(() => Reopen(window)));
 
+            // Avalonia's Linux tray claims its D-Bus name with nothing around the call, so a bus
+            // that says no — a Flatpak not allowed that name — took the whole app down a second
+            // after it opened. A tray that failed is no tray: closing then quits rather than
+            // hiding the window somewhere nobody can get it back from.
+            Dispatcher.UIThread.UnhandledException += (_, e) =>
+            {
+                if (e.Exception.StackTrace?.Contains("DBusTrayIconImpl") != true) return;
+                _trayFailed = true;
+                _hasTray = false;
+                e.Handled = true;
+            };
+
             BuildTray(desktop, window);
 
             // After the window and tray exist, since the theme recolours their icons too. Before
@@ -115,6 +127,9 @@ public partial class App : Application
     /// </summary>
     private static bool _hasTray = !OperatingSystem.IsLinux();
 
+    /// <summary>Set when the tray failed to register, which outranks the desktop having one.</summary>
+    private static bool _trayFailed;
+
     private static async Task FindTrayAsync()
     {
         if (!OperatingSystem.IsLinux()) return;
@@ -122,7 +137,7 @@ public partial class App : Application
         try
         {
             var services = await Tmds.DBus.Protocol.DBusConnection.Session.ListServicesAsync();
-            _hasTray = Array.IndexOf(services, "org.kde.StatusNotifierWatcher") >= 0;
+            _hasTray = !_trayFailed && Array.IndexOf(services, "org.kde.StatusNotifierWatcher") >= 0;
         }
         catch (Exception)
         {

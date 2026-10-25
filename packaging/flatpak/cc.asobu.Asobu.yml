@@ -22,8 +22,10 @@ finish-args:
   - --socket=x11
   - --socket=pulseaudio
   - --device=dri
-  # The tray, where Asobu waits while a game runs.
+  # The tray, where Asobu waits while a game runs. Avalonia registers the icon under the name
+  # StatusNotifierItem-{pid}-{n}; inside the sandbox the app is always pid 2 and the first icon n 0.
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-0
   - --filesystem=xdg-download:ro
 
 modules:
