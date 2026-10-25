@@ -117,7 +117,8 @@ public sealed partial class RunningGame(Instance instance) : ViewModelBase
     /// </summary>
     public Process Process { get; private set; } = null!;
 
-    public Instance Instance { get; } = instance;
+    /// <summary>Settable because reloading the list replaces every instance object; see Reload.</summary>
+    public Instance Instance { get; set; } = instance;
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.UtcNow;
 
     /// <summary>Somebody ended it on purpose, so the exit code is not news.</summary>
@@ -537,6 +538,18 @@ public partial class InstancesViewModel : ViewModelBase
 
         _all.Clear();
         _all.AddRange(_launcher.Instances.LoadAll());
+
+        // A game started before this belongs to an instance object that was just replaced, so the
+        // page reopened on it said Play while it ran. The game is handed the new object: it shows
+        // as playing, and the game's exit — playtime, clearing the flag — lands on the object on
+        // screen rather than on one nothing shows any more.
+        foreach (var game in Running)
+        {
+            if (_all.FirstOrDefault(i => i.Id == game.Instance.Id) is not { } fresh) continue;
+
+            fresh.IsPlaying = true;
+            game.Instance = fresh;
+        }
 
         RefreshGroups();
         ApplyFilter();
