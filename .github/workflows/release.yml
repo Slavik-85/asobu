@@ -235,7 +235,15 @@ jobs:
           test "$(cat /opt/asobu/package-type)" = deb
           rpm -qpi dist/Asobu-linux-x64.rpm
           rpm -qpl dist/Asobu-linux-x64.rpm | grep -q /usr/bin/asobu
-          tar -tzf dist/Asobu-linux-x64.tar.gz asobu/Asobu.App
+          tar -tzf dist/Asobu-linux-x64.tar.gz asobu/Asobu.App asobu/install.sh
+
+          # The tarball's own installer, run for real as an ordinary user.
+          mkdir -p "$RUNNER_TEMP/tarball" && tar -xzf dist/Asobu-linux-x64.tar.gz -C "$RUNNER_TEMP/tarball"
+          bash "$RUNNER_TEMP/tarball/asobu/install.sh"
+          test -x "$HOME/.local/share/asobu/Asobu.App"
+          grep -q "^Exec=\"$HOME/.local/share/asobu/Asobu.App\"" "$HOME/.local/share/applications/cc.asobu.Asobu.desktop"
+          desktop-file-validate "$HOME/.local/share/applications/cc.asobu.Asobu.desktop"
+          bash "$HOME/.local/share/asobu/install.sh" --uninstall
 
       # vpk uploads only what it built itself, so these go up through the GitHub CLI.
       - name: Add the .deb, .rpm and tarball to the release

@@ -19,8 +19,19 @@
     </p>
   </description>
   <launchable type="desktop-id">cc.asobu.Asobu.desktop</launchable>
+  <developer id="cc.asobu">
+    <name>Asobu</name>
+  </developer>
   <url type="homepage">https://asobu.cc</url>
   <url type="bugtracker">https://github.com/Slavik-85/asobu/issues</url>
+  <url type="vcs-browser">https://github.com/Slavik-85/asobu</url>
+  <provides>
+    <binary>asobu</binary>
+  </provides>
+  <branding>
+    <color type="primary" scheme_preference="light">#ffd1e1</color>
+    <color type="primary" scheme_preference="dark">#5c2338</color>
+  </branding>
   <categories>
     <category>Game</category>
   </categories>

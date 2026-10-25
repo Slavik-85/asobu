@@ -108,7 +108,7 @@ public partial class UpdateViewModel : ViewModelBase
     public bool CanUpdate => _manager?.IsInstalled ?? false;
 
     /// <summary>A package install, which is told about new versions rather than given them.</summary>
-    public bool CanNotify => !CanUpdate && Package is not null;
+    public bool CanNotify => !CanUpdate && Package is "deb" or "rpm" or "tar";
 
     public bool ShowCard => CanUpdate || CanNotify;
 

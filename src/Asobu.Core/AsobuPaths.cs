@@ -46,6 +46,13 @@ public sealed class AsobuPaths(string root)
         if (File.Exists(Path.Combine(exeDir, "portable")))
             return new AsobuPaths(Path.Combine(exeDir, "data"));
 
+        // Inside a Flatpak, the app's own data folder — ~/.var/app/cc.asobu.Asobu/data on the
+        // host — rather than ~/.asobu, which the sandbox would have to be given the home folder
+        // to reach. Flathub asks apps not to want that.
+        if (Environment.GetEnvironmentVariable("FLATPAK_ID") is { Length: > 0 }
+            && Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } sandboxData)
+            return new AsobuPaths(Path.Combine(sandboxData, "asobu"));
+
         var home = DataHome();
 
         if (InstalledDataDir(exeDir) is { } installed)
@@ -56,12 +63,15 @@ public sealed class AsobuPaths(string root)
 
     /// <summary>
     /// How this copy was installed when a Linux package put it there — "deb", "rpm" or "tar",
-    /// from a file the package's build writes beside the executable. Null for the Windows
-    /// installer, the AppImage and a build folder. A package manager owns those files, so the
-    /// launcher must not try to replace them itself.
+    /// from a file the package's build writes beside the executable, or "flatpak". Null for the
+    /// Windows installer, the AppImage and a build folder. A package manager owns those files, so
+    /// the launcher must not try to replace them itself.
     /// </summary>
     public static string? PackageType()
     {
+        // The store updates a Flatpak; nothing in the app should so much as mention it.
+        if (Environment.GetEnvironmentVariable("FLATPAK_ID") is { Length: > 0 }) return "flatpak";
+
         try
         {
             var marker = Path.Combine(AppContext.BaseDirectory, "package-type");

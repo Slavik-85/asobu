@@ -120,12 +120,19 @@ echo tar > "$TAR/package-type"
 cp -r "$HERE/icons" "$TAR/icons"
 cp "$HERE/$ID.desktop" "$TAR/"
 
+# For installing without root, which a Steam Deck needs: into ~/.local, with a menu entry.
+install -m755 "$HERE/install.sh" "$TAR/install.sh"
+
+# The store metadata too, filled in. The Flatpak is this tarball repackaged, and takes the app's
+# desktop entry, icons and metadata from it rather than from anywhere else.
+sed "s/@VERSION@/$VERSION/;s/@DATE@/$(date -u +%F)/" "$HERE/$ID.metainfo.xml" > "$TAR/$ID.metainfo.xml"
+
 # The same modes the packages get, and owned by root inside the archive. Left as copied, every
 # file carried the CI runner's own user id, and unpacking as root into /opt handed the whole app
 # to whichever account on the machine had that id.
 find "$TAR" -type d -exec chmod 755 {} +
 find "$TAR" -type f -exec chmod 644 {} +
-chmod 755 "$TAR/Asobu.App"
+chmod 755 "$TAR/Asobu.App" "$TAR/install.sh"
 if [ -f "$TAR/createdump" ]; then chmod 755 "$TAR/createdump"; fi
 
 tar --owner=0 --group=0 --numeric-owner -C "$WORK/tar" -czf "$OUT/Asobu-linux-x64.tar.gz" asobu

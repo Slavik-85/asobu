@@ -63,11 +63,10 @@
         </a>
       </div>
       <p class="tagline rise" style="font-size:0.9rem;margin-top:1rem">
-        Windows, about 65&nbsp;MB. On Linux there's a
-        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a>, an
-        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a>, an
-        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">AppImage</a> and a
-        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.tar.gz">tarball</a> &mdash; <a href="#linux">which one?</a>
+        Windows, about 65&nbsp;MB. On Linux, a
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a> for Ubuntu and Mint, an
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a> for Fedora, and an install for the Steam Deck
+        &mdash; <a href="#linux">here's how</a>.
         Every past version is <a href="https://github.com/Slavik-85/asobu/releases">on the releases page</a>.
       </p>
     </div>
@@ -177,32 +176,98 @@
       <div class="panel">
         <div class="section-head">
           <h2>Asobu on Linux</h2>
-          <p>A proper app on every desktop: in your app menu, with its own icon, and your data in <code>~/.asobu</code>.</p>
+          <p>Installed like any other app: in your app menu with its own icon, on GNOME, KDE and the Steam Deck alike. Your instances and settings live in <code>~/.asobu</code>.</p>
         </div>
 
+        <h3 style="margin:0 0 1rem">Ubuntu, Debian, Mint, Pop!_OS</h3>
         <ol class="steps">
           <li>
             <div>
-              <strong>Ubuntu, Debian, Mint, Pop!_OS</strong>
-              <span>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a>, then <code>sudo apt install ./Asobu-linux-x64.deb</code></span>
+              <strong>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a></strong>
             </div>
           </li>
           <li>
             <div>
-              <strong>Fedora, openSUSE</strong>
-              <span>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a>, then <code>sudo dnf install ./Asobu-linux-x64.rpm</code> (on openSUSE, <code>sudo zypper install --allow-unsigned-rpm ./Asobu-linux-x64.rpm</code>)</span>
+              <strong>Install it</strong>
+              <span>Open a terminal in your Downloads folder and run <code>sudo apt install ./Asobu-linux-x64.deb</code>. It pulls in anything else it needs.</span>
             </div>
           </li>
           <li>
             <div>
-              <strong>Anything else</strong>
-              <span>The <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">AppImage</a> runs anywhere: <code>chmod +x Asobu.AppImage</code> and open it. It adds itself to your app menu the first time. There's also a <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.tar.gz">tarball</a> to unpack wherever you like.</span>
+              <strong>Open Asobu from your app menu</strong>
+              <span>It's under Games, or search for it.</span>
+            </div>
+          </li>
+        </ol>
+
+        <h3 style="margin:2.2rem 0 1rem">Fedora, openSUSE</h3>
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a></strong>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Install it</strong>
+              <span>On Fedora, double-click it and GNOME Software or Discover installs it, or run <code>sudo dnf install ./Asobu-linux-x64.rpm</code>. On openSUSE, <code>sudo zypper install --allow-unsigned-rpm ./Asobu-linux-x64.rpm</code>.</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Open Asobu from your app menu</strong>
+            </div>
+          </li>
+        </ol>
+
+        <h3 style="margin:2.2rem 0 1rem">Steam Deck</h3>
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>Switch to Desktop Mode</strong>
+              <span>Press the Steam button, then Power, then Switch to Desktop.</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.tar.gz">tarball</a></strong>
+              <span>Then in your Downloads folder, right-click it and choose Extract, then Extract archive here.</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Install it</strong>
+              <span>Open Konsole from the app menu and run <code>bash ~/Downloads/asobu/install.sh</code>. Nothing asks for a password: SteamOS keeps its own system read-only, so Asobu installs into your home folder instead, where SteamOS updates leave it alone.</span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Add it to Game Mode</strong>
+              <span>Find Asobu in the app menu under Games, right-click it and choose Add to Steam. Back in Game Mode it's in your library under Non-Steam.</span>
+            </div>
+          </li>
+        </ol>
+
+        <h3 style="margin:2.2rem 0 1rem">Arch, Manjaro and everything else</h3>
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>Download the <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.tar.gz">tarball</a> and unpack it</strong>
+              <span><code>tar -xzf Asobu-linux-x64.tar.gz</code></span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Install it for yourself</strong>
+              <span><code>bash asobu/install.sh</code> puts it in your app menu, no root needed. <code>bash ~/.local/share/asobu/install.sh --uninstall</code> takes it away again.</span>
             </div>
           </li>
         </ol>
 
         <div class="note" style="margin-top:2rem">
-          <p><strong>Updates.</strong> The AppImage updates itself, like the Windows install. The .deb and .rpm belong to your package manager, so Asobu tells you when a new version is out and links you to it.</p>
+          <p><strong>On GNOME:</strong> stock GNOME has no tray, so closing Asobu quits it rather than leaving it waiting there. While a game is running it minimises instead. Ubuntu's GNOME has a tray built in; elsewhere, the <em>AppIndicator and KStatusNotifierItem Support</em> extension adds one.</p>
+          <p><strong>Updates:</strong> Asobu tells you when a new version is out. Install the new download the same way, over the old one, and your instances stay where they are.</p>
+          <p><strong>Rather not install anything?</strong> The <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">AppImage</a> runs from wherever you save it and updates itself.</p>
         </div>
       </div>
     </div>
