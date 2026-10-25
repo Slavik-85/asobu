@@ -66,7 +66,7 @@
         Windows, about 65&nbsp;MB. On Linux, a
         <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.deb">.deb</a> for Ubuntu and Mint, an
         <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.rpm">.rpm</a> for Fedora, a
-        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.pkg.tar.zst">package</a> for Arch, and an install for SteamOS
+        <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu-linux-x64.pkg.tar.zst">package</a> for Arch, and a <a href="https://asobu.cc/flatpak/asobu.flatpakref">Flatpak</a> for SteamOS and everything else
         &mdash; <a href="#linux">here's how</a>.
         Every past version is <a href="https://github.com/Slavik-85/asobu/releases">on the releases page</a>.
       </p>
@@ -177,10 +177,27 @@
       <div class="panel">
         <div class="section-head">
           <h2>Asobu on Linux</h2>
-          <p>Installed like any other app: in your app menu with its own icon, on GNOME, KDE and SteamOS alike. Your instances and settings live in <code>~/.asobu</code>.</p>
+          <p>Installed like any other app: in your app menu with its own icon, on GNOME, KDE and SteamOS alike. Your instances and settings live in <code>~/.asobu</code>, or <code>~/.var/app/cc.asobu.Asobu/data/asobu</code> for the Flatpak.</p>
         </div>
 
-        <h3 style="margin:0 0 1rem">Ubuntu, Debian, Mint, Pop!_OS</h3>
+        <h3 style="margin:0 0 1rem">Any distro with Flatpak, SteamOS included</h3>
+        <p style="margin:0 0 1rem"><a class="btn btn-primary" href="https://asobu.cc/flatpak/asobu.flatpakref">Install the Flatpak</a></p>
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>Open what it downloads</strong>
+              <span>GNOME Software or Discover opens it; click Install. Or in a terminal: <code>flatpak install --user https://asobu.cc/flatpak/asobu.flatpakref</code></span>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Open Asobu from your app menu</strong>
+              <span>Updates come through your app store like any other app.</span>
+            </div>
+          </li>
+        </ol>
+
+        <h3 style="margin:2.2rem 0 1rem">Ubuntu, Debian, Mint, Pop!_OS</h3>
         <ol class="steps">
           <li>
             <div>
@@ -287,7 +304,7 @@
 
         <div class="note" style="margin-top:2rem">
           <p><strong>On GNOME:</strong> stock GNOME has no tray, so closing Asobu quits it rather than leaving it waiting there. While a game is running it minimises instead. Ubuntu's GNOME has a tray built in; elsewhere, the <em>AppIndicator and KStatusNotifierItem Support</em> extension adds one.</p>
-          <p><strong>Updates:</strong> Asobu tells you when a new version is out. Install the new download the same way, over the old one, and your instances stay where they are.</p>
+          <p><strong>Updates:</strong> Asobu tells you when a new version is out. Install the new download the same way, over the old one, and your instances stay where they are. The Flatpak updates through your app store instead.</p>
           <p><strong>Rather not install anything?</strong> The <a href="https://github.com/Slavik-85/asobu/releases/latest/download/Asobu.AppImage">AppImage</a> runs from wherever you save it and updates itself.</p>
         </div>
       </div>
