@@ -965,6 +965,12 @@ public sealed class AsobuLauncher
                         continue;
                     }
 
+                    if (sniffed == ModKind.Modpack)
+                    {
+                        skipped.Add($"{name} — {RefusalFor(sniffed)}");
+                        continue;
+                    }
+
                     var one = AddLocalContent(instance, sniffed, [path]);
                     added.AddRange(one.Added);
                     skipped.AddRange(one.Skipped);
@@ -1053,14 +1059,24 @@ public sealed class AsobuLauncher
         return Path.Combine(directory, $"{stem} ({Guid.NewGuid().ToString("n")[..6]}){extension}");
     }
 
+    /// <summary>
+    /// Never through a link or junction: one pointing at the home folder would copy all of it in,
+    /// and one pointing back up the tree would copy until the disk filled.
+    /// </summary>
+    private static readonly EnumerationOptions OwnFilesOnly = new()
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+    };
+
     private static void CopyTree(string source, string destination)
     {
         Directory.CreateDirectory(destination);
 
-        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", OwnFilesOnly))
             Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
 
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        foreach (var file in Directory.EnumerateFiles(source, "*", OwnFilesOnly))
             File.Copy(file, Path.Combine(destination, Path.GetRelativePath(source, file)), overwrite: true);
     }
 
@@ -1091,8 +1107,10 @@ public sealed class AsobuLauncher
     /// zip. The archive usually wraps everything in one folder of its own, which becomes the
     /// world; where it does not, the file name does.
     /// </summary>
-    private static string? UnpackWorld(string archivePath, string savesDirectory, string fallbackName)
+    internal static string? UnpackWorld(string archivePath, string savesDirectory, string fallbackName)
     {
+        string? destination = null;
+
         try
         {
             using var archive = System.IO.Compression.ZipFile.OpenRead(archivePath);
@@ -1113,17 +1131,24 @@ public sealed class AsobuLauncher
 
             root ??= "";
 
-            var name = root.Length > 0
-                ? root.TrimEnd('/')
-                : Path.GetFileNameWithoutExtension(fallbackName);
+            var name = root.TrimEnd('/');
 
-            var destination = Path.Combine(savesDirectory, name);
+            // A folder name, and nothing else: "C:" or ".." from a crafted archive would put the
+            // world somewhere other than saves.
+            if (name is "" or "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name.Contains(':'))
+                name = Path.GetFileNameWithoutExtension(fallbackName);
+
+            // Room for it, judged by what the archive says it holds, before writing any of it.
+            var saves = Path.GetFullPath(savesDirectory);
+            if (archive.Entries.Sum(entry => entry.Length) > new DriveInfo(saves).AvailableFreeSpace) return null;
 
             // Never over the top of a world that is already there — including one of the
             // player's own that happens to share a name.
-            for (var n = 2; Directory.Exists(destination) && n < 100; n++)
-                destination = Path.Combine(savesDirectory, $"{name} ({n})");
+            var unique = Unique(Path.Combine(saves, name));
+            if (!Path.GetFullPath(unique).StartsWith(saves + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return null;
 
+            destination = unique;
             Directory.CreateDirectory(destination);
 
             foreach (var entry in archive.Entries)
@@ -1152,8 +1177,18 @@ public sealed class AsobuLauncher
             ModScanner.MarkWorld(destination, fallbackName);
             return Path.GetFileName(destination);
         }
-        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
         {
+            // Half a world is worse than none: the game would list it and fail to open it.
+            try
+            {
+                if (destination is not null && Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            {
+            }
+
             return null;
         }
     }

@@ -24,6 +24,33 @@ public partial class InstancesView : UserControl
     {
         InitializeComponent();
         DataContextChanged += (_, _) => Observe(DataContext as InstancesViewModel);
+
+        ContentCard.AddHandler(DragDrop.DragOverEvent, ContentDragOver);
+        ContentCard.AddHandler(DragDrop.DragLeaveEvent, (_, _) => ContentCard.Classes.Remove("dropping"));
+        ContentCard.AddHandler(DragDrop.DropEvent, ContentDrop);
+    }
+
+    // ---- Files dropped on the content card ----
+
+    private void ContentDragOver(object? sender, DragEventArgs e)
+    {
+        var files = e.DataTransfer.Contains(DataFormat.File);
+        e.DragEffects = files ? DragDropEffects.Copy : DragDropEffects.None;
+        ContentCard.Classes.Set("dropping", files);
+    }
+
+    private async void ContentDrop(object? sender, DragEventArgs e)
+    {
+        ContentCard.Classes.Remove("dropping");
+
+        // Copy, said again here: left unset, the source is told whatever it offered, and one that
+        // offered a move would delete the original once Asobu had its copy.
+        var files = e.DataTransfer.TryGetFiles();
+        e.DragEffects = files is null ? DragDropEffects.None : DragDropEffects.Copy;
+
+        if (DataContext is not InstancesViewModel vm || files is null) return;
+
+        await vm.DropContentAsync([.. files.Select(item => item.TryGetLocalPath()).OfType<string>()]);
     }
 
     // ---- The cat ----

@@ -343,16 +343,16 @@ public partial class InstancesViewModel : ViewModelBase
     public string EmptyDetail => Kind switch
     {
         ModKind.Any =>
-            "Mods, resource packs, shaders, data packs and downloaded worlds all show up here together.",
+            "Mods, resource packs, shaders, data packs and downloaded worlds all show up here together. Drag any of them onto this card and each goes where it belongs.",
         ModKind.ResourcePack =>
-            "Add some from Modrinth and CurseForge, or drop them straight into the resourcepacks folder and they show up here.",
+            "Add some from Modrinth and CurseForge, or drag them onto this card.",
         ModKind.Shader =>
-            "Add some from Modrinth and CurseForge, or drop them straight into the shaderpacks folder. Shaders need Iris or OptiFine to do anything.",
+            "Add some from Modrinth and CurseForge, or drag them onto this card. Shaders need Iris or OptiFine to do anything.",
         ModKind.DataPack =>
-            "Add some from Modrinth and CurseForge, or drop them straight into the datapacks folder. A data pack only takes effect in a world that loads it.",
+            "Add some from Modrinth and CurseForge, or drag them onto this card. A data pack only takes effect in a world that loads it.",
         ModKind.World =>
             "Worlds you download show up here. The ones you made yourself are still in the game — this list leaves them alone.",
-        _ => "Add some from Modrinth and CurseForge, or drop jars straight into the mods folder and they show up here.",
+        _ => "Add some from Modrinth and CurseForge, or drag jars onto this card.",
     };
 
     /// <summary>
@@ -797,6 +797,7 @@ public partial class InstancesViewModel : ViewModelBase
         // until something else went wrong.
         Error = null;
         DiskUsageLabel = null;
+        DropNotice = null;
 
         Backdrop = Backdrops.For(value, _launcher.Paths);
 
@@ -1536,6 +1537,67 @@ public partial class InstancesViewModel : ViewModelBase
 
         // Nothing to read means nothing to stop for.
         if (result.Skipped.Count == 0) await CloseAddContentAsync();
+    }
+
+    /// <summary>What came of files dropped on the card, shown on it for a few seconds.</summary>
+    [ObservableProperty] public partial string? DropNotice { get; set; }
+
+    public bool HasDropNotice => DropNotice is { Length: > 0 };
+
+    partial void OnDropNoticeChanged(string? value) => OnPropertyChanged(nameof(HasDropNotice));
+
+    /// <summary>
+    /// Files dropped on the card. Whatever the list is showing, each is read for what it is and
+    /// filed in its own folder. The list then turns to that kind, so what was just added is in
+    /// view rather than gone into a folder the card isn't showing.
+    /// </summary>
+    public async Task DropContentAsync(IReadOnlyList<string> paths)
+    {
+        if (Selected is not { } instance || paths.Count == 0) return;
+
+        List<ModKind> kinds;
+        AsobuLauncher.LocalAddResult result;
+
+        try
+        {
+            (kinds, result) = await Task.Run(() => (
+                paths.Select(ModScanner.SniffKind).Distinct().ToList(),
+                _launcher.AddLocalContent(instance, ModKind.Any, paths)));
+        }
+        catch (Exception e)
+        {
+            // Anything a strange file could throw, said on the card rather than taking the app down.
+            if (Selected?.Id == instance.Id) DropNotice = $"Couldn't add that: {e.Message}";
+            return;
+        }
+
+        // Somebody moved on to another instance while it copied; this belongs to the old one.
+        if (Selected?.Id != instance.Id) return;
+
+        var added = result.Added.Count switch
+        {
+            0 => "",
+            1 => $"Added {result.Added[0]}.",
+            var count => $"Added {count} files.",
+        };
+
+        var notice = string.Join(" ", [added, .. result.Skipped.Select(skipped => $"Couldn't add {skipped}.")]).Trim();
+        DropNotice = notice;
+        _ = ForgetDropNoticeAsync(notice);
+
+        // All one kind shows that kind; a mix shows Everything. Only kinds the card can list: a
+        // modpack dropped here was refused, and has no page to turn to.
+        var listed = kinds.Where(kind => kind != ModKind.Any && ContentKinds.Any(option => option.Value == kind)).ToList();
+        var show = listed.Count == 1 ? listed[0] : ModKind.Any;
+
+        if (result.Added.Count > 0 && show != Kind) ContentKind = ContentKinds.First(option => option.Value == show);
+        else await LoadModsAsync(instance);
+    }
+
+    private async Task ForgetDropNoticeAsync(string notice)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(8));
+        if (DropNotice == notice) DropNotice = null;
     }
 
     /// <summary>Called when the instance's browser closes, so anything added shows up.</summary>

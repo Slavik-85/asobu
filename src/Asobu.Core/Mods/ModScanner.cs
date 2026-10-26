@@ -559,7 +559,9 @@ public static class ModScanner
             if (!File.Exists(path)) return ModKind.Any;
 
             if (path.EndsWith(".jar", StringComparison.OrdinalIgnoreCase)) return ModKind.Mod;
-            if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) return ModKind.Any;
+            if (!path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                && !path.EndsWith(".mrpack", StringComparison.OrdinalIgnoreCase))
+                return ModKind.Any;
 
             using var archive = ZipFile.OpenRead(path);
 
@@ -575,6 +577,12 @@ public static class ModScanner
             bool HasFolder(string what) => names.Any(name =>
                 name.StartsWith(what + "/", StringComparison.OrdinalIgnoreCase)
                 || name.Contains("/" + what + "/", StringComparison.OrdinalIgnoreCase));
+
+            // First, because a modpack carries all the rest inside it — its saves, its resource
+            // packs — and would otherwise be taken for whichever of them was found first.
+            if (names.Contains("modrinth.index.json", StringComparer.OrdinalIgnoreCase)
+                || (names.Contains("manifest.json", StringComparer.OrdinalIgnoreCase) && HasFolder("overrides")))
+                return ModKind.Modpack;
 
             if (Holds("level.dat")) return ModKind.World;
             if (HasFolder("shaders")) return ModKind.Shader;

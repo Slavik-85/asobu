@@ -127,7 +127,8 @@ public static class Theming
 
     /// <summary>
     /// The controller, turned round the wheel with the accent: the "Logo" resource the sidebar and
-    /// the tray note draw, and the window's and tray's icon. Null puts the artwork back as it is.
+    /// the tray note draw, the window's and tray's icon, and Windows' shortcuts to Asobu. Null puts
+    /// the artwork back as it is.
     /// </summary>
     private static void ApplyLogo(Application app, double? delta)
     {
@@ -137,6 +138,7 @@ public static class Theming
         {
             using (var asset = AssetLoader.Open(LogoUri)) app.Resources["Logo"] = new Bitmap(asset);
             icon = App.TrayImage();
+            ShortcutIcons.Apply(null, 0);
         }
         else
         {
@@ -161,6 +163,7 @@ public static class Theming
 
             app.Resources["Logo"] = bitmap;
             icon = new WindowIcon(bitmap);
+            ShortcutIcons.Apply(turned, shift);
         }
 
         if (app.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })

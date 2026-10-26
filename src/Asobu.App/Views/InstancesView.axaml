@@ -435,8 +435,9 @@
                Stretch fills the available width and MaxWidth still centres it in the page. -->
           <StackPanel MaxWidth="760" HorizontalAlignment="Stretch" Margin="30,0">
 
-          <!-- Mods table -->
-          <Border Classes="card" Margin="0,26,0,0" ClipToBounds="True">
+          <!-- Mods table. Files dropped anywhere on it are added, each to its own folder. -->
+          <Border x:Name="ContentCard" Classes="card" Margin="0,26,0,0" ClipToBounds="True"
+                  DragDrop.AllowDrop="True">
             <StackPanel>
 
               <!-- The folder's own controls, above the table rather than below it. They belong
@@ -496,6 +497,9 @@
                 <Button Grid.Column="4" Classes="primary" Content="{Binding AddContentLabel}"
                         Command="{Binding OpenAddContentCommand}"/>
               </Grid>
+
+              <TextBlock Classes="label" Text="{Binding DropNotice}" IsVisible="{Binding HasDropNotice}"
+                         Margin="18,4,18,4" TextWrapping="Wrap"/>
 
               <!-- Header and rows share one column spec so content and dividers line up exactly.
                    Name and Creator are fixed-width and sit right next to each other, separated by

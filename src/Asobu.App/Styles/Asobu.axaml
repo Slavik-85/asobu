@@ -428,6 +428,11 @@
     <Setter Property="CornerRadius" Value="16"/>
   </Style>
 
+  <!-- A card with files held over it, ready to take them. -->
+  <Style Selector="Border.card.dropping">
+    <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+  </Style>
+
   <Style Selector="Border.badge">
     <Setter Property="Background" Value="{DynamicResource SurfaceAlt}"/>
     <Setter Property="CornerRadius" Value="6"/>
