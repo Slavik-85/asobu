@@ -1511,8 +1511,18 @@ public sealed class AsobuLauncher
             hashes.TryAdd(sha1, mod);
         }
 
+        var installed = await Modrinth.GetChannelsByHashAsync([.. hashes.Keys], cancellationToken).ConfigureAwait(false);
+
+        // Every hash is asked about, known or not: if that lookup failed, the check still runs, as
+        // it did before channels mattered — with nothing held back but a pack's own mods.
         var fromModrinth = await Modrinth
-            .GetUpdatesAsync([.. hashes.Keys], instance.MinecraftVersion, instance.Loader, cancellationToken)
+            .GetUpdatesAsync(
+                hashes.ToDictionary(
+                    pair => pair.Key,
+                    pair => Allowed(instance, pair.Value,
+                        installed.TryGetValue(pair.Key, out var known) ? known.Channel : ModChannel.Alpha),
+                    StringComparer.OrdinalIgnoreCase),
+                instance.MinecraftVersion, instance.Loader, cancellationToken)
             .ConfigureAwait(false);
 
         foreach (var (hash, version) in fromModrinth)
@@ -1522,6 +1532,12 @@ public sealed class AsobuLauncher
             hashes.Remove(hash);
 
             if (!IsNewer(mod, version.FileName) || Ignored(version.FileName)) continue;
+
+            // Never older than what is installed. Held to releases, a pack's beta can be newer
+            // than every release there is, and "updating" it would be a downgrade.
+            if (installed.TryGetValue(hash, out var current)
+                && current.Published is { } was && version.Published is { } now && now <= was)
+                continue;
 
             updates.Add(new ModUpdate(
                 mod.Path, mod.FileName, version.FileName,
@@ -1544,13 +1560,14 @@ public sealed class AsobuLauncher
             .GetModIdsByFingerprintAsync([.. prints.Keys], cancellationToken)
             .ConfigureAwait(false);
 
-        foreach (var (print, modId) in identified)
+        foreach (var (print, (modId, channel, published)) in identified)
         {
             if (!prints.TryGetValue(print, out var mod)) continue;
 
             var download = await CurseForge
-                .GetDownloadAsync(
-                    modId, instance.MinecraftVersion, instance.Loader, cancellationToken: cancellationToken)
+                .GetUpdateAsync(
+                    modId, instance.MinecraftVersion, instance.Loader, Allowed(instance, mod, channel), published,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             if (download is null || !IsNewer(mod, download.FileName) || Ignored(download.FileName)) continue;
@@ -1562,6 +1579,15 @@ public sealed class AsobuLauncher
 
         return updates;
     }
+
+    /// <summary>
+    /// The least finished build a mod may be offered. A pack's own mods get releases: the pack was
+    /// tested against what it ships, and its author chose none of the betas since. Anything else
+    /// stays as finished as what is installed — a release is offered releases, and somebody who
+    /// put a beta in themselves is offered the betas after it.
+    /// </summary>
+    internal static ModChannel Allowed(Instance instance, ModEntry mod, ModChannel installed) =>
+        instance.CameWithPack(mod.FileName) ? ModChannel.Release : installed;
 
     /// <summary>
     /// A different file name is the whole test. Comparing version strings would mean parsing

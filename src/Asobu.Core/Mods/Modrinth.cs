@@ -236,12 +236,7 @@ public sealed class Modrinth(HttpClient http) : IModSource
             file?.FileName ?? "mod.jar",
             file?.Hashes?.GetValueOrDefault("sha1"),
             file?.Size ?? 0,
-            version.VersionType switch
-            {
-                "alpha" => ModChannel.Alpha,
-                "beta" => ModChannel.Beta,
-                _ => ModChannel.Release,
-            },
+            ChannelOf(version.VersionType),
             Required(version.Dependencies));
     }
 
@@ -500,20 +495,7 @@ public sealed class Modrinth(HttpClient http) : IModSource
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, ApiRoot + "version_files");
-            request.Content = JsonContent.Create(new { hashes = sha1s, algorithm = "sha1" });
-
-            using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return found;
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-
-            // Keyed by the hash that was asked about, so the answer maps back to the file.
-            var versions = await JsonSerializer
-                .DeserializeAsync<Dictionary<string, ProjectVersion>>(stream, Options, cancellationToken)
-                .ConfigureAwait(false);
-
-            foreach (var (hash, version) in versions ?? [])
+            foreach (var (hash, version) in await VersionsByHashAsync(sha1s, cancellationToken).ConfigureAwait(false))
             {
                 // The file that actually matches, not merely the first one this version ships.
                 var file = version.Files.FirstOrDefault(f =>
@@ -531,6 +513,52 @@ public sealed class Modrinth(HttpClient http) : IModSource
 
         return found;
     }
+
+    /// <summary>
+    /// Whether each installed file was published as a release, beta or alpha, and when, by its
+    /// SHA-1. Files Modrinth doesn't know are left out.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, (ModChannel Channel, DateTimeOffset? Published)>> GetChannelsByHashAsync(
+        IReadOnlyList<string> sha1s, CancellationToken cancellationToken = default)
+    {
+        var found = new Dictionary<string, (ModChannel Channel, DateTimeOffset? Published)>(StringComparer.OrdinalIgnoreCase);
+        if (sha1s.Count == 0) return found;
+
+        try
+        {
+            foreach (var (hash, version) in await VersionsByHashAsync(sha1s, cancellationToken).ConfigureAwait(false))
+                found[hash] = (ChannelOf(version.VersionType), version.Published);
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or InvalidOperationException)
+        {
+        }
+
+        return found;
+    }
+
+    /// <summary>The versions a set of files belong to, keyed by the hash that was asked about.</summary>
+    private async Task<Dictionary<string, ProjectVersion>> VersionsByHashAsync(
+        IReadOnlyList<string> sha1s, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, ApiRoot + "version_files");
+        request.Content = JsonContent.Create(new { hashes = sha1s, algorithm = "sha1" });
+
+        using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) return [];
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        return await JsonSerializer
+            .DeserializeAsync<Dictionary<string, ProjectVersion>>(stream, Options, cancellationToken)
+            .ConfigureAwait(false) ?? [];
+    }
+
+    private static ModChannel ChannelOf(string? versionType) => versionType switch
+    {
+        "alpha" => ModChannel.Alpha,
+        "beta" => ModChannel.Beta,
+        _ => ModChannel.Release,
+    };
 
     /// <summary>
     /// Which project a file on disk belongs to, by its SHA-1. The only reliable way to identify
@@ -561,17 +589,44 @@ public sealed class Modrinth(HttpClient http) : IModSource
 
     /// <summary>
     /// The newest build of every installed file at once, keyed by the SHA-1 that was asked about.
-    /// One request for a whole mods folder — asking per mod would be forty round trips to answer
-    /// a question nobody explicitly asked.
+    /// Each hash names the least finished kind of build it may be offered — a release, or a beta
+    /// or alpha as well. One request per kind for a whole mods folder — asking per mod would be
+    /// forty round trips to answer a question nobody explicitly asked.
     /// </summary>
     public async Task<IReadOnlyDictionary<string, ModVersion>> GetUpdatesAsync(
-        IReadOnlyList<string> hashes,
+        IReadOnlyDictionary<string, ModChannel> hashes,
         string gameVersion,
         string loader,
         CancellationToken cancellationToken = default)
     {
         var updates = new Dictionary<string, ModVersion>(StringComparer.OrdinalIgnoreCase);
-        if (hashes.Count == 0) return updates;
+
+        foreach (var group in hashes.GroupBy(pair => pair.Value))
+        {
+            string[] types = group.Key switch
+            {
+                ModChannel.Release => ["release"],
+                ModChannel.Beta => ["release", "beta"],
+                _ => ["release", "beta", "alpha"],
+            };
+
+            foreach (var (hash, version) in await UpdatesOfKindAsync(
+                         [.. group.Select(pair => pair.Key)], types, gameVersion, loader, cancellationToken)
+                         .ConfigureAwait(false))
+                updates[hash] = version;
+        }
+
+        return updates;
+    }
+
+    private async Task<Dictionary<string, ModVersion>> UpdatesOfKindAsync(
+        IReadOnlyList<string> hashes,
+        string[] versionTypes,
+        string gameVersion,
+        string loader,
+        CancellationToken cancellationToken)
+    {
+        var updates = new Dictionary<string, ModVersion>(StringComparer.OrdinalIgnoreCase);
 
         try
         {
@@ -583,6 +638,7 @@ public sealed class Modrinth(HttpClient http) : IModSource
                     algorithm = "sha1",
                     loaders = new[] { loader.ToLowerInvariant() },
                     game_versions = new[] { gameVersion },
+                    version_types = versionTypes,
                 }),
             };
 
@@ -656,7 +712,10 @@ public sealed class Modrinth(HttpClient http) : IModSource
 
             if (versions is null or { Count: 0 }) return null;
 
-            var chosen = versions.FirstOrDefault(v => v.VersionType == "release") ?? versions[0];
+            // Newest first by date rather than trusting the order they arrive in, so the first
+            // release really is the latest one.
+            var newest = versions.OrderByDescending(v => v.Published ?? DateTimeOffset.MinValue).ToList();
+            var chosen = newest.FirstOrDefault(v => v.VersionType == "release") ?? newest[0];
             var file = chosen.Files.FirstOrDefault(f => f.Primary) ?? chosen.Files.FirstOrDefault();
 
             return file is null

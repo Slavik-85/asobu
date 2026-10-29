@@ -228,9 +228,24 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
 
     private static bool IsLoaderName(string value) => Loaders.IsLoaderName(value);
 
-    public async Task<ModDownload?> GetDownloadAsync(
+    public Task<ModDownload?> GetDownloadAsync(
         string modId, string gameVersion, string loader,
-        ModKind kind = ModKind.Mod, CancellationToken cancellationToken = default)
+        ModKind kind = ModKind.Mod, CancellationToken cancellationToken = default) =>
+        DownloadAsync(modId, gameVersion, loader, kind, null, cancellationToken);
+
+    /// <summary>
+    /// For an update: a mod's newest file that is no less finished than <paramref name="upTo"/>
+    /// and came out after <paramref name="after"/>, or null when there is none.
+    /// </summary>
+    public Task<ModDownload?> GetUpdateAsync(
+        string modId, string gameVersion, string loader, ModChannel upTo, DateTimeOffset? after,
+        CancellationToken cancellationToken = default) =>
+        DownloadAsync(modId, gameVersion, loader, ModKind.Mod, (upTo, after), cancellationToken);
+
+    /// <param name="update">Null to prefer a release but take whatever exists.</param>
+    private async Task<ModDownload?> DownloadAsync(
+        string modId, string gameVersion, string loader, ModKind kind,
+        (ModChannel UpTo, DateTimeOffset? After)? update, CancellationToken cancellationToken)
     {
         if (!IsAvailable) return null;
 
@@ -246,7 +261,15 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
         if (response?.Data is not { Count: > 0 } files) return null;
 
         // releaseType 1 is a release; 2 beta, 3 alpha. Prefer stability, but take what exists.
-        var chosen = files.FirstOrDefault(f => f.ReleaseType == 1) ?? files[0];
+        // An update is never older than what it replaces: a pack that shipped a beta is held to
+        // releases, and the newest release can predate that beta.
+        var chosen = update is { } wanted
+            ? files.Where(f => ChannelOf(f.ReleaseType) <= wanted.UpTo && (wanted.After is null || f.FileDate > wanted.After))
+                .OrderByDescending(f => f.FileDate ?? DateTimeOffset.MinValue)
+                .FirstOrDefault()
+            : files.FirstOrDefault(f => f.ReleaseType == 1) ?? files[0];
+
+        if (chosen is null) return null;
 
         return new ModDownload(
             chosen.DownloadUrl,
@@ -269,17 +292,25 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
     {
         var found = await GetModIdsByFingerprintAsync([fingerprint], cancellationToken).ConfigureAwait(false);
 
-        return found.Values.FirstOrDefault();
+        return found.Values.FirstOrDefault().ModId;
     }
+
+    private static ModChannel ChannelOf(int releaseType) => releaseType switch
+    {
+        3 => ModChannel.Alpha,
+        2 => ModChannel.Beta,
+        _ => ModChannel.Release,
+    };
 
     /// <summary>
     /// Which mods a set of files belong to, keyed by the fingerprint that was asked about. The
     /// bulk form of the lookup above, so a mods folder costs one request rather than one each.
+    /// With each, whether that file was published as a release, beta or alpha, and when.
     /// </summary>
-    public async Task<IReadOnlyDictionary<uint, string>> GetModIdsByFingerprintAsync(
+    public async Task<IReadOnlyDictionary<uint, (string ModId, ModChannel Channel, DateTimeOffset? Published)>> GetModIdsByFingerprintAsync(
         IReadOnlyList<uint> fingerprints, CancellationToken cancellationToken = default)
     {
-        var found = new Dictionary<uint, string>();
+        var found = new Dictionary<uint, (string ModId, ModChannel Channel, DateTimeOffset? Published)>();
         if (!IsAvailable || fingerprints.Count == 0) return found;
 
         try
@@ -302,7 +333,7 @@ public sealed class CurseForge(HttpClient http, Func<string?> apiKey) : IModSour
                 if (match.File is not { ModId: > 0, FileFingerprint: > 0 } file) continue;
 
                 found[(uint)file.FileFingerprint.Value] =
-                    file.ModId.Value.ToString(CultureInfo.InvariantCulture);
+                    (file.ModId.Value.ToString(CultureInfo.InvariantCulture), ChannelOf(file.ReleaseType), file.FileDate);
             }
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or InvalidOperationException)

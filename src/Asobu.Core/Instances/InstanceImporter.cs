@@ -542,6 +542,7 @@ public sealed partial class InstanceImporter(
                     ? "One server-only file was left out."
                     : $"{skipped} server-only files were left out.");
 
+            RememberPackMods(instance, []);
             instances.Save(instance);
             return new ImportOutcome(instance, null, notes);
         }
@@ -550,6 +551,26 @@ public sealed partial class InstanceImporter(
             instances.Delete(instance);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Notes which mods came with the pack, so their updates are offered as releases only. By the
+    /// name the mods list shows, which leaves off a disabled jar's suffix.
+    /// </summary>
+    private void RememberPackMods(Instance instance, IEnumerable<string> expected)
+    {
+        var folder = ModScanner.ModsDirectory(paths, instance.Folder);
+        var present = Directory.Exists(folder) ? Directory.EnumerateFiles(folder).Select(Path.GetFileName) : [];
+
+        instance.PackMods =
+        [
+            .. present.Concat(expected)
+                .OfType<string>()
+                .Select(name => name.EndsWith(ModScanner.DisabledSuffix, StringComparison.OrdinalIgnoreCase)
+                    ? name[..^ModScanner.DisabledSuffix.Length]
+                    : name)
+                .Distinct(StringComparer.OrdinalIgnoreCase),
+        ];
     }
 
     // ---- CurseForge packs — from a zip in hand, an exported profile, or a shared code. ----
@@ -602,6 +623,8 @@ public sealed partial class InstanceImporter(
             await _downloader.RunAsync(tasks, Stage(progress, "Downloading mods"), cancellationToken)
                 .ConfigureAwait(false);
 
+            // The ones its author only lets their own page serve are the pack's too, once fetched.
+            RememberPackMods(instance, _blocked.Select(blocked => blocked.FileName));
             instances.Save(instance);
             return new ImportOutcome(instance, null, notes) { Blocked = [.. _blocked] };
         }
@@ -1184,6 +1207,7 @@ public sealed partial class InstanceImporter(
             instance.MaxMemoryMb = source.MaxMemoryMb;
             instance.JavaSelection = source.JavaSelection;
             instance.ExtraJvmArguments = source.ExtraJvmArguments;
+            instance.PackMods = source.PackMods;
 
             instances.Save(instance);
             return new ImportOutcome(instance, null, []);

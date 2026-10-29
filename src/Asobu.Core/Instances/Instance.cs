@@ -269,6 +269,17 @@ public sealed class Instance : INotifyPropertyChanged
     public List<string> IgnoredUpdates { get; set; } = [];
 
     /// <summary>
+    /// The mod files a modpack put in, by name, when one made this instance. Their updates are
+    /// offered as releases only: a pack is tested against what it ships, and a beta its author
+    /// never chose is the likeliest thing to break it. Null when no pack made this instance.
+    /// </summary>
+    public List<string>? PackMods { get; set; }
+
+    /// <summary>Whether a mod is one the pack shipped, rather than one added since.</summary>
+    public bool CameWithPack(string fileName) =>
+        PackMods?.Contains(fileName, StringComparer.OrdinalIgnoreCase) == true;
+
+    /// <summary>
     /// Methods Java is not to compile here, in the "package.Class::method" form its own flag
     /// takes — see <see cref="Launch.CompilerExclusion"/>.
     ///
@@ -601,6 +612,9 @@ public sealed class InstanceStore(AsobuPaths paths)
 
             // The copy runs the same code on the same Java, so it would crash the same way.
             SkipCompiling = [.. source.SkipCompiling],
+
+            // And holds the same pack, whose mods still want releases only.
+            PackMods = source.PackMods is null ? null : [.. source.PackMods],
         };
 
         clone.Folder = UniqueFolderFor(clone.Name);
