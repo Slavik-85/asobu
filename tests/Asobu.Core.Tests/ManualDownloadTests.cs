@@ -57,6 +57,20 @@ public class ManualDownloadTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_instance, "mods", "shelfbackport-1.0.0.jar")));
     }
 
+    /// <summary>Downloaded on an earlier try, so the browser never needs opening again.</summary>
+    [Fact]
+    public void A_copy_from_an_earlier_try_is_taken_without_waiting()
+    {
+        var watcher = new ManualDownloadWatcher([_downloads]);
+
+        Assert.False(watcher.TryLandNow(Wanting("shelfbackport-1.0.0.jar")));
+
+        Drop("shelfbackport-1.0.0 (3).jar");
+
+        Assert.True(watcher.TryLandNow(Wanting("shelfbackport-1.0.0.jar")));
+        Assert.True(File.Exists(Path.Combine(_instance, "mods", "shelfbackport-1.0.0.jar")));
+    }
+
     /// <summary>The browser's own name for a second copy.</summary>
     [Fact]
     public async Task A_numbered_copy_is_taken()

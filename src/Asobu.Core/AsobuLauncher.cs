@@ -677,8 +677,7 @@ public sealed class AsobuLauncher
         // start with anyway — so the old file is taken out once the new one has landed.
         var previous = InstalledMods.For(Paths, instance).Find(entry);
 
-        var blocked = false;
-        (IModSource Source, ModListing Listing, ModDownload Download, BlockedDownload Item)? byHand = null;
+        (IModSource Source, ModListing Listing, ModDownload Download)? withheld = null;
 
         foreach (var listing in entry.DownloadOrder)
         {
@@ -693,18 +692,10 @@ public sealed class AsobuLauncher
             // No build for this version and loader; the next provider may still have one.
             if (download is null) continue;
 
+            // Kept for last: another shop handing it over is better still.
             if (download.Url is not { Length: > 0 } url)
             {
-                blocked = true;
-
-                // The author's own download page for exactly this file, which starts the download
-                // itself when opened. Kept for last: another shop handing it over is better still.
-                // Only with a hash: the watcher takes nothing from a Downloads folder it cannot check.
-                if (download.FileId is { } fileId && download.Sha1 is { Length: > 0 }
-                    && CurseDownloadPage(listing.PageUrl, fileId) is { } page)
-                    byHand ??= (source, listing, download, new BlockedDownload(
-                        listing.Title, download.FileName, download.Size, download.Sha1, page,
-                        Path.Combine(destination, download.FileName)));
+                withheld ??= (source, listing, download);
                 continue;
             }
 
@@ -719,11 +710,27 @@ public sealed class AsobuLauncher
             return await SettleAsync(source, listing, download, landed).ConfigureAwait(false);
         }
 
-        if (byHand is { } hand && fetchByHand is not null && await fetchByHand(hand.Item).ConfigureAwait(false))
-            return await SettleAsync(hand.Source, hand.Listing, hand.Download, hand.Item.Destination)
-                .ConfigureAwait(false);
+        if (withheld is { } file)
+        {
+            var kept = Path.Combine(destination, file.Download.FileName);
 
-        return new ModInstallResult(null, null, blocked);
+            if (await FetchSameFileAsync(file.Download.Sha1, file.Download.Size, kept, cancellationToken).ConfigureAwait(false))
+                return (await SettleAsync(file.Source, file.Listing, file.Download, kept).ConfigureAwait(false))
+                    with { From = ModProvider.Modrinth };
+
+            // The author's own download page for exactly this file, which starts the download
+            // itself when opened. Only with a hash: the watcher takes nothing from a Downloads
+            // folder it cannot check.
+            if (fetchByHand is not null
+                && file.Download is { FileId: { } fileId, Sha1.Length: > 0 }
+                && CurseDownloadPage(file.Listing.PageUrl, fileId) is { } page
+                && await fetchByHand(new BlockedDownload(
+                        file.Listing.Title, file.Download.FileName, file.Download.Size, file.Download.Sha1, page, kept))
+                    .ConfigureAwait(false))
+                return await SettleAsync(file.Source, file.Listing, file.Download, kept).ConfigureAwait(false);
+        }
+
+        return new ModInstallResult(null, null, withheld is not null);
 
         // Everything after the file is in the folder, however it got there.
         async Task<ModInstallResult> SettleAsync(
@@ -786,13 +793,14 @@ public sealed class AsobuLauncher
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         // Only the author's page may serve it. Same arrangement as InstallModAsync's.
-        else if (fetchByHand is null
-                 || version.FileId is not { } fileId
-                 || version.Sha1 is not { Length: > 0 }
-                 || project is null
-                 || CurseDownloadPage(project.CurseForge?.PageUrl, fileId) is not { } page
-                 || !await fetchByHand(new BlockedDownload(
-                         project.Title, version.FileName, version.Size, version.Sha1, page, landed)).ConfigureAwait(false))
+        else if (!await FetchSameFileAsync(version.Sha1, version.Size, landed, cancellationToken).ConfigureAwait(false)
+                 && (fetchByHand is null
+                     || version.FileId is not { } fileId
+                     || version.Sha1 is not { Length: > 0 }
+                     || project is null
+                     || CurseDownloadPage(project.CurseForge?.PageUrl, fileId) is not { } page
+                     || !await fetchByHand(new BlockedDownload(
+                             project.Title, version.FileName, version.Size, version.Sha1, page, landed)).ConfigureAwait(false)))
         {
             return new ModInstallResult(null, null, Blocked: true);
         }
@@ -819,6 +827,53 @@ public sealed class AsobuLauncher
                 version.Requires, cancellationToken).ConfigureAwait(false);
 
         return new ModInstallResult(version.FileName, version.Provider, Dependencies: carried);
+    }
+
+    /// <summary>
+    /// Where Modrinth serves the very same file as one only CurseForge's own page may, or null.
+    /// Plenty of authors put one jar in both shops, under titles too different for the catalogue
+    /// to know they are one mod. By hash, so it can only ever be those bytes; nothing here checks
+    /// who published them on Modrinth, which is that shop's own moderation to answer for.
+    /// </summary>
+    private async Task<string?> SameFileAddressAsync(string? sha1, CancellationToken cancellationToken)
+    {
+        if (sha1 is not { Length: > 0 }) return null;
+
+        try
+        {
+            var same = await Modrinth.GetDownloadsByHashAsync([sha1], cancellationToken).ConfigureAwait(false);
+
+            return same.GetValueOrDefault(sha1)?.Url;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Modrinth not answering in time, as opposed to anybody calling this off.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Fetches that same file to <paramref name="destination"/>, checked against the hash. False
+    /// when it isn't there or anything at all goes wrong: this is the easy way round, and failing
+    /// only means carrying on to the browser, or leaving a dependency out.
+    /// </summary>
+    private async Task<bool> FetchSameFileAsync(
+        string? sha1, long size, string destination, CancellationToken cancellationToken)
+    {
+        if (await SameFileAddressAsync(sha1, cancellationToken).ConfigureAwait(false) is not { } url) return false;
+
+        try
+        {
+            await _downloader.RunAsync(
+                [new DownloadTask(url, destination, sha1, size)],
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            return true;
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -1239,13 +1294,16 @@ public sealed class AsobuLauncher
             // No build for this instance, or an author who forbids third-party downloads. Said
             // nowhere and thrown nowhere: the mod itself is in, and a missing dependency shows up
             // as a mod that does not load, which is what it already would have been.
-            if (download?.Url is not { Length: > 0 } url) continue;
+            if (download is null) continue;
 
             var landed = Path.Combine(directory, download.FileName);
 
-            await _downloader.RunAsync(
-                [new DownloadTask(url, landed, download.Sha1, download.Size)],
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (download.Url is { Length: > 0 } url)
+                await _downloader.RunAsync(
+                    [new DownloadTask(url, landed, download.Sha1, download.Size)],
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            else if (!await FetchSameFileAsync(download.Sha1, download.Size, landed, cancellationToken).ConfigureAwait(false))
+                continue;
 
             // A dependency is only ever a mod, so the world guard never applies here — but it
             // costs nothing to go through the same door as everything else.
@@ -1572,9 +1630,14 @@ public sealed class AsobuLauncher
 
             if (download is null || !IsNewer(mod, download.FileName) || Ignored(download.FileName)) continue;
 
+            // Found here rather than when it is applied: a row with no address offers no button.
+            var address = download.Url is { Length: > 0 }
+                ? download.Url
+                : await SameFileAddressAsync(download.Sha1, cancellationToken).ConfigureAwait(false);
+
             updates.Add(new ModUpdate(
                 mod.Path, mod.FileName, download.FileName,
-                download.Url, download.Sha1, download.Size, ModProvider.CurseForge));
+                address, download.Sha1, download.Size, ModProvider.CurseForge));
         }
 
         return updates;

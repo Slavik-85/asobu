@@ -32,7 +32,7 @@ public static class ModInstall
             {
                 // Called from the launcher's own continuation, off the UI thread.
                 Dispatcher.UIThread.Post(() =>
-                    card.Notice = "Only CurseForge's site may serve this one, so it's downloading in your browser. It goes in once it lands.");
+                    card.Notice = "The author only allows CurseForge's site, so it's downloading in your browser. It goes in once it lands.");
 
                 return FetchByHandAsync(item);
             });
@@ -64,7 +64,7 @@ public static class ModInstall
             // Blocked only survives to here when the other provider had nothing either.
             card.Notice = result.Reason
                 ?? (result.Blocked
-                    ? "Only on its CurseForge page, and the download never landed."
+                    ? "The author only allows CurseForge's site, and the download never landed."
                     // A loader means nothing to a resource pack, so a refusal must not cite one.
                     : card.Mod.Kind is ModKind.Mod or ModKind.Any
                         ? $"No build for {instance.LoaderName} {instance.MinecraftVersion}."
@@ -89,6 +89,8 @@ public static class ModInstall
     /// </summary>
     public static async Task<bool> FetchByHandAsync(BlockedDownload item)
     {
+        if (new ManualDownloadWatcher().TryLandNow(item)) return true;
+
         AsobuLauncher.OpenUrl(item.PageUrl);
 
         // ponytail: fixed ten minutes, no cancel button; add one if people sit through slow downloads.

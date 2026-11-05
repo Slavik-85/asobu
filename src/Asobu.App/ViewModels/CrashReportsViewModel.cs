@@ -167,7 +167,7 @@ public partial class CrashReportsViewModel(AsobuLauncher launcher, Action onBack
                 ? $"Added {result.FileName}. Launch again."
                 : result.Reason
                   ?? (result.Blocked
-                      ? "Only on its CurseForge page, and the download never landed."
+                      ? "The author only allows CurseForge's site, and the download never landed."
                       : $"No build for {instance.LoaderName} {instance.MinecraftVersion}.");
         }
         catch (Exception e)

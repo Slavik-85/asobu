@@ -737,7 +737,7 @@ public partial class ModPageViewModel(
             var result = await launcher.InstallVersionAsync(
                 instance, row.Version, Card?.Mod.Kind ?? ModKind.Mod, Card?.Mod, item =>
                 {
-                    Dispatcher.UIThread.Post(() => row.Notice = "Downloading in your browser. It goes in once it lands.");
+                    Dispatcher.UIThread.Post(() => row.Notice = "The author only allows CurseForge's site, so it's downloading in your browser. It goes in once it lands.");
                     return ModInstall.FetchByHandAsync(item);
                 });
 
@@ -754,7 +754,7 @@ public partial class ModPageViewModel(
                 return null;
             }
 
-            row.Notice = result.Reason ?? "Only on its CurseForge page, and the download never landed.";
+            row.Notice = result.Reason ?? "The author only allows CurseForge's site, and the download never landed.";
         }
         catch (Exception ex)
         {

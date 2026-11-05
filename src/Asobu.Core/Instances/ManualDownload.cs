@@ -133,6 +133,12 @@ public sealed class ManualDownloadWatcher(IReadOnlyList<string>? folders = null)
     }
 
     /// <summary>
+    /// Files it now if a copy is already sitting in Downloads, from an earlier try, so nobody is
+    /// sent to the browser for another one.
+    /// </summary>
+    public bool TryLandNow(BlockedDownload item) => TryLand(item);
+
+    /// <summary>
     /// Files a download the user pointed at themselves, for when it was saved somewhere nothing
     /// is watching. The name is not checked — they said which file this is.
     /// </summary>
