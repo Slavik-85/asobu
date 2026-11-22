@@ -773,9 +773,7 @@ public partial class SkinsViewModel : ViewModelBase
     public string WearNote => _accounts.Active switch
     {
         null => "Sign in to an account to wear a skin.",
-        { Kind: AccountKind.Microsoft } account =>
-            $"Puts it on {account.Username}'s Microsoft account, and into your instances as a "
-            + "fallback for when the game can't reach it.",
+        { Kind: AccountKind.Microsoft } account => $"Puts it on {account.Username}'s Microsoft account.",
 
         // Offline accounts get it locally instead: the game has no skin to fetch for them, so
         // the one it falls back to is replaced in every instance.
@@ -783,11 +781,15 @@ public partial class SkinsViewModel : ViewModelBase
              + "pack, so you see it yourself. Other players won't.",
     };
 
-    /// <summary>What the local half of wearing actually does, said where it can be read beforehand.</summary>
-    public string LocalNote =>
-        "The local copy is an ordinary resource pack named asobu-skin. It only shows where the "
-        + "game would otherwise draw the default player, so anyone else whose skin fails to load "
-        + "appears wearing it too. Turn it off in the game's resource pack list to stop that.";
+    /// <summary>
+    /// What wearing a skin locally actually does, said where it can be read beforehand. Only for
+    /// an offline account, the one kind that wears it that way.
+    /// </summary>
+    public string? LocalNote => _accounts.Active is { Kind: AccountKind.Microsoft }
+        ? null
+        : "The local copy is an ordinary resource pack named asobu-skin. It only shows where the "
+          + "game would otherwise draw the default player, so anyone else whose skin fails to load "
+          + "appears wearing it too. Turn it off in the game's resource pack list to stop that.";
 
     /// <summary>Puts what the figure is wearing onto the signed-in account.</summary>
     [RelayCommand]
@@ -806,19 +808,12 @@ public partial class SkinsViewModel : ViewModelBase
 
         IsBusy = true;
 
-        // Locally either way, and first.
-        //
-        // For an offline account it is the only thing that can work. For a Microsoft one it is
-        // the safety net: the game only draws the skin Mojang serves if it manages to resolve the
-        // profile, and there are several ways for that to fail that have nothing to do with the
-        // skin being right — a server that hands out unsigned profiles, a mod in the middle, no
-        // connection at the moment it asked. When it fails the game falls back to the default
-        // player, and this makes the default player you.
-        var locally = WearLocally(png);
-
+        // An offline account has no profile for the game to fetch a skin from, so the only way to
+        // wear one is locally, as the default player. A Microsoft account wears the real thing,
+        // and a local copy as well would dress every player whose skin failed to load as you.
         if (account.Kind != AccountKind.Microsoft)
         {
-            Status = locally;
+            Status = WearLocally(png);
             IsBusy = false;
             return;
         }
@@ -828,10 +823,13 @@ public partial class SkinsViewModel : ViewModelBase
             var session = await _launcher.ResolveSessionAsync(account);
             await _service.ApplyAsync(session, png, ShownModel);
 
+            // Only once Mojang has it, so a failed upload changes nothing.
+            ForgetLocalCopies();
+
             // Asked back rather than assumed. Mojang took the upload, but "it took it" and "it is
             // wearing it" are different claims, and the second is the one worth making — so the
             // profile is read again and the answer compared with what was sent.
-            Status = $"{account.Username} is wearing it now. {locally}";
+            Status = $"{account.Username} is wearing it now.";
 
             await Task.Delay(TimeSpan.FromSeconds(2));
 
@@ -840,8 +838,8 @@ public partial class SkinsViewModel : ViewModelBase
                 var live = await _service.DownloadAsync(worn.Url);
 
                 Status = live.AsSpan().SequenceEqual(png)
-                    ? $"{account.Username} is wearing it — Mojang confirms it. {locally}"
-                    : $"Mojang took the skin but is still serving the old one; it usually catches up within a minute. {locally}";
+                    ? $"{account.Username} is wearing it — Mojang confirms it."
+                    : "Mojang took the skin but is still serving the old one; it usually catches up within a minute.";
             }
         }
         catch (Exception e) when (e is SkinException or MicrosoftAuthException or HttpRequestException)
@@ -894,6 +892,18 @@ public partial class SkinsViewModel : ViewModelBase
         }
 
         return $"Wearing it in {done} instance{(done == 1 ? "" : "s")} — it shows next time each one starts.";
+    }
+
+    /// <summary>
+    /// Takes the local copy back out of every instance. Older builds put one in for Microsoft
+    /// accounts too, and it would go on dressing every player whose skin fails to load in a skin
+    /// that is no longer this one. Packs belong to instances rather than accounts, so one an
+    /// offline account put there goes as well; wearing a skin on that account puts it back.
+    /// </summary>
+    private void ForgetLocalCopies()
+    {
+        foreach (var instance in _launcher.Instances.LoadAll())
+            SkinPack.Remove(_launcher.Paths.InstanceGameDir(instance.Folder));
     }
 
     // ---- Browse ----
@@ -1694,6 +1704,7 @@ public partial class SkinsViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanWear));
         OnPropertyChanged(nameof(WearNote));
+        OnPropertyChanged(nameof(LocalNote));
 
         _ = ShowCurrentThenHistoryAsync();
         _ = LoadCapesAsync();

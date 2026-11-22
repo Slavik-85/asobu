@@ -82,7 +82,8 @@
             <TextBlock Classes="label" TextWrapping="Wrap" TextAlignment="Center"
                        Text="{Binding WearNote}"/>
             <TextBlock Classes="label" TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{DynamicResource TextMuted}" Text="{Binding LocalNote}"/>
+                       Foreground="{DynamicResource TextMuted}" Text="{Binding LocalNote}"
+                       IsVisible="{Binding LocalNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
           </StackPanel>
         </Grid>
       </Border>
